@@ -1,4 +1,4 @@
-import type { VisualResult } from "../types.js";
+import type { GateError, VisualResult } from "../types.js";
 import {
   getBrowser,
   startDevServer,
@@ -38,7 +38,7 @@ export async function verifyVisual(
       return {
         gate: "visual",
         passed: false,
-        errors: [`Dev server failed to start: ${message}`],
+        errors: [{ message: `Dev server failed to start: ${message}` }],
         warnings,
         duration_ms: Date.now() - start,
         screenshots,
@@ -52,7 +52,7 @@ export async function verifyVisual(
       return {
         gate: "visual",
         passed: false,
-        errors: [`Dev server not reachable on port ${port}`],
+        errors: [{ message: `Dev server not reachable on port ${port}` }],
         warnings,
         duration_ms: Date.now() - start,
         screenshots,
@@ -111,10 +111,15 @@ export async function verifyVisual(
       await context.close();
     }
 
+    // Convert console errors to GateError objects
+    const errors: GateError[] = consoleErrors.map((msg) => ({
+      message: msg,
+    }));
+
     return {
       gate: "visual",
       passed: consoleErrors.length === 0,
-      errors: [...consoleErrors],
+      errors,
       warnings,
       duration_ms: Date.now() - start,
       screenshots,
@@ -126,7 +131,7 @@ export async function verifyVisual(
     return {
       gate: "visual",
       passed: false,
-      errors: [message],
+      errors: [{ message }],
       warnings,
       duration_ms: Date.now() - start,
       screenshots,

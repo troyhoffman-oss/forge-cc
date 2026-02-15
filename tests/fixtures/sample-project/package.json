@@ -1,0 +1,11 @@
+{
+  "name": "sample-project",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "echo 'no tests'"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

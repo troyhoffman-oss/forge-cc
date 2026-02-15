@@ -1,4 +1,4 @@
-import type { GateResult } from "../types.js";
+import type { GateError, GateResult } from "../types.js";
 import {
   startDevServer,
   stopDevServer,
@@ -15,7 +15,7 @@ export async function verifyRuntime(
 ): Promise<GateResult> {
   const start = Date.now();
   const port = options?.devServerPort ?? 3000;
-  const errors: string[] = [];
+  const errors: GateError[] = [];
   const warnings: string[] = [];
 
   try {
@@ -28,7 +28,7 @@ export async function verifyRuntime(
       return {
         gate: "runtime",
         passed: false,
-        errors: [`Dev server failed to start: ${message}`],
+        errors: [{ message: `Dev server failed to start: ${message}` }],
         warnings,
         duration_ms: Date.now() - start,
       };
@@ -40,7 +40,7 @@ export async function verifyRuntime(
       return {
         gate: "runtime",
         passed: false,
-        errors: [`Dev server not reachable on port ${port}`],
+        errors: [{ message: `Dev server not reachable on port ${port}` }],
         warnings,
         duration_ms: Date.now() - start,
       };
@@ -69,22 +69,26 @@ export async function verifyRuntime(
         });
 
         if (response.status >= 200 && response.status < 300) {
-          // Success — try to parse as JSON for informational warning
+          // Success -- try to parse as JSON for informational warning
           try {
             const json = await response.json();
             const keys = Object.keys(json);
-            warnings.push(`${label} → ${response.status} (JSON, ${keys.length} keys)`);
+            warnings.push(`${label} -> ${response.status} (JSON, ${keys.length} keys)`);
           } catch {
-            // Not JSON — still a success, just note it
-            warnings.push(`${label} → ${response.status} (non-JSON response)`);
+            // Not JSON -- still a success, just note it
+            warnings.push(`${label} -> ${response.status} (non-JSON response)`);
           }
         } else {
-          errors.push(`${label} → ${response.status} ${response.statusText}`);
+          errors.push({
+            message: `${label} -> ${response.status} ${response.statusText}`,
+          });
         }
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Request failed";
-        errors.push(`${label} → FAILED: ${message}`);
+        errors.push({
+          message: `${label} -> FAILED: ${message}`,
+        });
       }
     }
 
@@ -101,7 +105,7 @@ export async function verifyRuntime(
     return {
       gate: "runtime",
       passed: false,
-      errors: [message],
+      errors: [{ message }],
       warnings,
       duration_ms: Date.now() - start,
     };

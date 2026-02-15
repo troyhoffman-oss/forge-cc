@@ -1,9 +1,12 @@
 import { execSync } from "node:child_process";
-import type { GateResult } from "../types.js";
+import type { GateError, GateResult } from "../types.js";
+
+/** Regex to parse tsc error lines: src/foo.ts(10,5): error TS2322: ... */
+const TSC_ERROR_RE = /^(.+?)\((\d+),\d+\):\s*(.+)$/;
 
 export async function verifyTypes(projectDir: string): Promise<GateResult> {
   const start = Date.now();
-  const errors: string[] = [];
+  const errors: GateError[] = [];
   const warnings: string[] = [];
 
   try {
@@ -33,12 +36,21 @@ export async function verifyTypes(projectDir: string): Promise<GateResult> {
       if (trimmed.toLowerCase().includes("warning")) {
         warnings.push(trimmed);
       } else if (trimmed.includes("error TS")) {
-        errors.push(trimmed);
+        const match = TSC_ERROR_RE.exec(trimmed);
+        if (match) {
+          errors.push({
+            file: match[1],
+            line: Number.parseInt(match[2], 10),
+            message: match[3],
+          });
+        } else {
+          errors.push({ message: trimmed });
+        }
       }
     }
 
     if (errors.length === 0) {
-      errors.push("tsc exited with non-zero status but no TS errors were parsed");
+      errors.push({ message: "tsc exited with non-zero status but no TS errors were parsed" });
     }
 
     return {
