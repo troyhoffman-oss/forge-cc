@@ -22,37 +22,48 @@ program
   .option("--json", "Output structured JSON instead of human-readable report")
   .option("--prd <path>", "Path to PRD for acceptance criteria matching")
   .action(async (opts) => {
-    const projectDir = process.cwd();
-    const config = loadConfig(projectDir);
+    try {
+      const projectDir = process.cwd();
+      const config = loadConfig(projectDir);
 
-    const gates = opts.gate ? opts.gate.split(",").map((g: string) => g.trim()) : config.gates;
-    const prdPath = opts.prd ?? config.prdPath;
+      const gates = opts.gate ? opts.gate.split(",").map((g: string) => g.trim()) : config.gates;
+      const prdPath = opts.prd ?? config.prdPath;
 
-    const result = await runPipeline({
-      projectDir,
-      gates,
-      prdPath,
-      maxIterations: config.maxIterations,
-      devServerCommand: config.devServer?.command,
-      devServerPort: config.devServer?.port,
-    });
+      const result = await runPipeline({
+        projectDir,
+        gates,
+        prdPath,
+        maxIterations: config.maxIterations,
+        devServerCommand: config.devServer?.command,
+        devServerPort: config.devServer?.port,
+      });
 
-    // Generate report if pipeline didn't produce one
-    if (!result.report) {
-      result.report = formatReport(result);
+      // Generate report if pipeline didn't produce one
+      if (!result.report) {
+        result.report = formatReport(result);
+      }
+
+      // Write verify cache (non-fatal if this fails)
+      try {
+        writeVerifyCache(projectDir, result);
+      } catch (cacheErr) {
+        const msg = cacheErr instanceof Error ? cacheErr.message : String(cacheErr);
+        console.error(`Warning: Could not write verify cache: ${msg}`);
+      }
+
+      // Output
+      if (opts.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(result.report);
+      }
+
+      process.exit(result.passed ? 0 : 1);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Error: forge verify failed — ${message}`);
+      process.exit(1);
     }
-
-    // Write verify cache
-    writeVerifyCache(projectDir, result);
-
-    // Output
-    if (opts.json) {
-      console.log(JSON.stringify(result, null, 2));
-    } else {
-      console.log(result.report);
-    }
-
-    process.exit(result.passed ? 0 : 1);
   });
 
 program

@@ -7,8 +7,13 @@ export function loadConfig(projectDir: string): ForgeConfig {
   const configPath = join(projectDir, ".forge.json");
 
   if (existsSync(configPath)) {
-    const raw = JSON.parse(readFileSync(configPath, "utf-8"));
-    return forgeConfigSchema.parse(raw);
+    try {
+      const raw = JSON.parse(readFileSync(configPath, "utf-8"));
+      return forgeConfigSchema.parse(raw);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`Warning: Failed to parse .forge.json (${message}). Falling back to auto-detect.`);
+    }
   }
 
   // Auto-detect from package.json

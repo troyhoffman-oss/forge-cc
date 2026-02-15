@@ -1,0 +1,21 @@
+# Source code (dist/ is published instead)
+src/
+tests/
+
+# Planning and docs (internal only)
+.planning/
+.claude/
+tasks/
+
+# Config and tooling
+tsconfig.json
+vitest.config.ts
+biome.json
+.forge/
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp

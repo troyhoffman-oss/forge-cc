@@ -148,7 +148,7 @@ describe("loadConfig", () => {
     expect(config.gates).toEqual(["types", "lint", "tests"]);
   });
 
-  it("throws on invalid .forge.json (Zod validation error)", () => {
+  it("falls back to auto-detect on invalid .forge.json (Zod validation error)", () => {
     const invalidConfig = {
       gates: "not-an-array", // should be string[]
       maxIterations: -1, // should be positive
@@ -157,13 +157,19 @@ describe("loadConfig", () => {
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue(JSON.stringify(invalidConfig));
 
-    expect(() => loadConfig("/fake/project")).toThrow();
+    // Graceful degradation: falls back to auto-detect instead of throwing
+    const config = loadConfig("/fake/project");
+    expect(config).toBeDefined();
+    expect(Array.isArray(config.gates)).toBe(true);
   });
 
-  it("throws on malformed JSON in .forge.json", () => {
+  it("falls back to auto-detect on malformed JSON in .forge.json", () => {
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue("{invalid json");
 
-    expect(() => loadConfig("/fake/project")).toThrow();
+    // Graceful degradation: falls back to auto-detect instead of throwing
+    const config = loadConfig("/fake/project");
+    expect(config).toBeDefined();
+    expect(Array.isArray(config.gates)).toBe(true);
   });
 });

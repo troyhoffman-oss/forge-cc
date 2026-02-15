@@ -182,20 +182,55 @@ export function commitMilestoneWork(options: CommitOptions): CommitResult {
     );
   }
 
-  // Stage only the specified files
-  for (const file of filesToStage) {
-    execSync(`git add ${JSON.stringify(file)}`, {
+  // Check if git is available
+  try {
+    execSync("git --version", { cwd: projectDir, stdio: "pipe" });
+  } catch {
+    throw new Error("git is not available on this system. Cannot commit milestone work.");
+  }
+
+  // Check for detached HEAD
+  try {
+    const headRef = execSync("git symbolic-ref HEAD", {
       cwd: projectDir,
+      encoding: "utf-8",
       stdio: "pipe",
-    });
+    }).trim();
+    if (!headRef) {
+      throw new Error("Detached HEAD detected — cannot commit. Check out a branch first.");
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Detached HEAD")) {
+      throw err;
+    }
+    // git symbolic-ref fails on detached HEAD with exit code 128
+    throw new Error("Detached HEAD detected — cannot commit. Check out a branch first.");
+  }
+
+  // Stage only the specified files, skipping files that don't exist
+  for (const file of filesToStage) {
+    try {
+      execSync(`git add ${JSON.stringify(file)}`, {
+        cwd: projectDir,
+        stdio: "pipe",
+      });
+    } catch {
+      // File may not exist or be outside the repo — skip and continue
+      console.warn(`Warning: Could not stage file "${file}" — skipping.`);
+    }
   }
 
   // Commit with a descriptive message
   const commitMessage = `feat: ${milestoneName} (Milestone ${milestoneNumber})`;
-  execSync(`git commit -m ${JSON.stringify(commitMessage)}`, {
-    cwd: projectDir,
-    stdio: "pipe",
-  });
+  try {
+    execSync(`git commit -m ${JSON.stringify(commitMessage)}`, {
+      cwd: projectDir,
+      stdio: "pipe",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`git commit failed: ${msg}`);
+  }
 
   // Read back the commit SHA
   const commitSha = execSync("git rev-parse HEAD", {
@@ -206,11 +241,16 @@ export function commitMilestoneWork(options: CommitOptions): CommitResult {
   // Optionally push to remote
   let pushed = false;
   if (push && branch) {
-    execSync(`git push origin ${branch}`, {
-      cwd: projectDir,
-      stdio: "pipe",
-    });
-    pushed = true;
+    try {
+      execSync(`git push origin ${branch}`, {
+        cwd: projectDir,
+        stdio: "pipe",
+      });
+      pushed = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`Warning: git push failed: ${msg}. Commit was created locally.`);
+    }
   }
 
   return { commitSha, pushed };

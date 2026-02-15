@@ -7,6 +7,7 @@
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 500;
+const REQUEST_TIMEOUT_MS = 30_000; // 30 seconds per request
 
 // ---------------------------------------------------------------------------
 // Types
@@ -445,17 +446,30 @@ export class LinearClient {
 
       let res: Response;
       try {
-        res = await fetch(LINEAR_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: this.apiKey,
-          },
-          body: JSON.stringify({ query, variables }),
-        });
+        const controller = new AbortController();
+        const timeoutId = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        try {
+          res = await fetch(LINEAR_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: this.apiKey,
+            },
+            body: JSON.stringify({ query, variables }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
       } catch (err) {
-        lastError =
-          err instanceof Error ? err : new Error(String(err));
+        if (err instanceof DOMException && err.name === "AbortError" || (err instanceof Error && err.name === "AbortError")) {
+          lastError = new LinearClientError(
+            `Linear API request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`,
+          );
+        } else {
+          lastError =
+            err instanceof Error ? err : new Error(String(err));
+        }
         continue;
       }
 

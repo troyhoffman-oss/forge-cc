@@ -1,0 +1,11 @@
+{
+  "name": "failing-project",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "echo 'tests would fail'"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

@@ -82,17 +82,28 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
   };
 }
 
+const GATE_TIMEOUT_MS = 120_000; // 2 minutes per gate
+
 async function runGateSafe(name: string, fn: () => Promise<GateResult>): Promise<GateResult> {
+  const start = Date.now();
   try {
-    return await fn();
+    const result = await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) =>
+        globalThis.setTimeout(() => reject(new Error(`Gate "${name}" timed out after ${GATE_TIMEOUT_MS / 1000}s`)), GATE_TIMEOUT_MS),
+      ),
+    ]);
+    return result;
   } catch (err) {
+    const duration = Date.now() - start;
     const message = err instanceof Error ? err.message : String(err);
+    const isTimeout = message.includes("timed out");
     return {
       gate: name,
       passed: false,
-      errors: [{ message: `Gate crashed: ${message}` }],
+      errors: [{ message: isTimeout ? message : `Gate "${name}" crashed: ${message}` }],
       warnings: [],
-      duration_ms: 0,
+      duration_ms: duration,
     };
   }
 }

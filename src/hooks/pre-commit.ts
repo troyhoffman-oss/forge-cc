@@ -38,6 +38,15 @@ export function checkPreCommit(projectDir: string): HookResult {
   try {
     const cache = JSON.parse(readFileSync(cachePath, "utf-8"));
 
+    // Validate cache structure — treat malformed cache as invalid
+    if (typeof cache.passed !== "boolean" || typeof cache.timestamp !== "string") {
+      return {
+        allowed: false,
+        reason:
+          "Verification cache is malformed (missing or invalid fields). Run `npx forge verify`.",
+      };
+    }
+
     if (!cache.passed) {
       return {
         allowed: false,
@@ -48,6 +57,13 @@ export function checkPreCommit(projectDir: string): HookResult {
 
     const config = loadConfig(projectDir);
     const age = Date.now() - new Date(cache.timestamp).getTime();
+    if (Number.isNaN(age) || age < 0) {
+      return {
+        allowed: false,
+        reason:
+          "Verification cache has an invalid timestamp. Run `npx forge verify`.",
+      };
+    }
     if (age > config.verifyFreshness) {
       const ageMin = Math.round(age / 60_000);
       return {
