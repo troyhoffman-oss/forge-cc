@@ -128,7 +128,7 @@ function parseMilestoneSection(section: string): {
   // Parse waves
   const waves: MilestoneWave[] = [];
   const wavePattern =
-    /\*\*Wave\s+(\d+)\s*[^*]*\*\*:\s*\n([\s\S]*?)(?=\*\*Wave\s+\d+|\*\*Verification|\*\*Acceptance|$)/g;
+    /\*\*Wave\s+(\d+)\s*[^*]*\*\*:?\s*\n([\s\S]*?)(?=\*\*Wave\s+\d+|\*\*Verification|\*\*Acceptance|$)/g;
 
   let waveMatch: RegExpExecArray | null;
   while ((waveMatch = wavePattern.exec(section)) !== null) {
