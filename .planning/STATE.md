@@ -1,23 +1,26 @@
-# forge-mcp — Project State
+# forge-cc — Project State
 
 ## Current Position
-- **Project:** forge-mcp (research phase)
-- **Milestone:** Milestone 1 — ready for `/flow:go`
-- **Branch:** main (will create feat/forge-research)
-- **Active PRD:** `.planning/prds/forge-mcp.md`
+- **Project:** forge-cc (build phase)
+- **Milestone:** Milestone 1 — Core CLI + Verification Engine
+- **Branch:** feat/forge-build
+- **Active PRD:** `.planning/prds/forge-build.md`
 - **Last Session:** 2026-02-15
 
 ## Milestone Progress
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Parallel Deep Research (5 agents) | Pending |
-| 2 | Cross-Cutting Analysis (3 agents) | Pending |
-| 3 | Synthesis → RECOMMENDATION.md | Pending |
+| 1 | Core CLI + Verification Engine | In Progress |
+| 2 | Linear Integration + Triage Skill | Pending |
+| 3 | Spec Skill | Pending |
+| 4 | Execution Engine (go) | Pending |
+| 5 | Integration, Testing + Documentation | Pending |
 
-## What Was Built (This Session)
-- Project initialized with `/flow:setup`
-- Research PRD written via `/flow:spec`
-- Full context gathered: Flow plugin, msig-am-etl, OAI article, workflow architecture
+## Previous Phase (Research — COMPLETE)
+- 9 research documents in `.planning/research/`
+- Key output: RECOMMENDATION.md (6,489 words)
+- Recommendation: 6-layer hybrid architecture
 
 ## Next Actions
-1. Run `/flow:go` to execute Milestone 1 (5 parallel research agents)
+1. Execute Milestone 1: Core CLI + Verification Engine
+2. After all 5 milestones: ship forge-cc as npm package, deprecate flow-cc
