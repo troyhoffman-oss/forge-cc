@@ -1,5 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { join, dirname } from "node:path";
+import { readRoadmapProgress } from "./reader.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -128,4 +130,187 @@ export async function writeSessionMemory(
 
   await ensureDir(filePath);
   await writeFile(filePath, content, "utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// Types — go execution engine
+// ---------------------------------------------------------------------------
+
+export interface CommitOptions {
+  projectDir: string;
+  milestoneNumber: number;
+  milestoneName: string;
+  filesToStage: string[]; // specific files to stage (never git add .)
+  push?: boolean;
+  branch?: string;
+}
+
+export interface CommitResult {
+  commitSha: string;
+  pushed: boolean;
+}
+
+export interface MilestoneUpdateOptions {
+  projectDir: string;
+  project: string;
+  milestoneNumber: number;
+  milestoneName: string;
+  branch: string;
+  activePrd: string;
+  developer: string;
+  nextMilestone?: { number: number; name: string };
+  milestoneTable: Array<{ number: number; name: string; status: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// commitMilestoneWork — commits and optionally pushes milestone work
+// ---------------------------------------------------------------------------
+
+export function commitMilestoneWork(options: CommitOptions): CommitResult {
+  const {
+    projectDir,
+    milestoneNumber,
+    milestoneName,
+    filesToStage,
+    push,
+    branch,
+  } = options;
+
+  if (filesToStage.length === 0) {
+    throw new Error(
+      "filesToStage must contain at least one file — never use git add .",
+    );
+  }
+
+  // Stage only the specified files
+  for (const file of filesToStage) {
+    execSync(`git add ${JSON.stringify(file)}`, {
+      cwd: projectDir,
+      stdio: "pipe",
+    });
+  }
+
+  // Commit with a descriptive message
+  const commitMessage = `feat: ${milestoneName} (Milestone ${milestoneNumber})`;
+  execSync(`git commit -m ${JSON.stringify(commitMessage)}`, {
+    cwd: projectDir,
+    stdio: "pipe",
+  });
+
+  // Read back the commit SHA
+  const commitSha = execSync("git rev-parse HEAD", {
+    cwd: projectDir,
+    encoding: "utf-8",
+  }).trim();
+
+  // Optionally push to remote
+  let pushed = false;
+  if (push && branch) {
+    execSync(`git push origin ${branch}`, {
+      cwd: projectDir,
+      stdio: "pipe",
+    });
+    pushed = true;
+  }
+
+  return { commitSha, pushed };
+}
+
+// ---------------------------------------------------------------------------
+// isLastMilestone — detects if this is the final pending milestone
+// ---------------------------------------------------------------------------
+
+export async function isLastMilestone(
+  projectDir: string,
+  milestoneNumber: number,
+): Promise<boolean> {
+  const roadmap = await readRoadmapProgress(projectDir);
+  if (!roadmap || roadmap.milestones.length === 0) {
+    return true; // No roadmap data — treat as last by default
+  }
+
+  const maxMilestone = Math.max(...roadmap.milestones.map((m) => m.number));
+
+  // If this IS the highest milestone number, it's the last
+  if (milestoneNumber >= maxMilestone) {
+    return true;
+  }
+
+  // If all milestones after this one are already complete, this is effectively last
+  const remaining = roadmap.milestones.filter(
+    (m) =>
+      m.number > milestoneNumber &&
+      !m.status.toLowerCase().startsWith("complete"),
+  );
+
+  return remaining.length === 0;
+}
+
+// ---------------------------------------------------------------------------
+// updateMilestoneProgress — updates all state docs after milestone completion
+// ---------------------------------------------------------------------------
+
+export async function updateMilestoneProgress(
+  options: MilestoneUpdateOptions,
+): Promise<void> {
+  const {
+    projectDir,
+    project,
+    milestoneNumber,
+    milestoneName,
+    branch,
+    activePrd,
+    developer,
+    nextMilestone,
+    milestoneTable,
+  } = options;
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Mark this milestone as complete in ROADMAP.md
+  await updateRoadmapMilestone(
+    projectDir,
+    milestoneNumber,
+    `Complete (${today})`,
+  );
+
+  // 2. Build next actions based on whether there's a next milestone
+  const nextActions: string[] = nextMilestone
+    ? [
+        `Begin Milestone ${nextMilestone.number} — ${nextMilestone.name}`,
+        "Read PRD for next milestone scope",
+        "Spawn agent team for next milestone",
+      ]
+    : [
+        "All milestones complete — final review and cleanup",
+        "Merge feature branch to main",
+        "Archive planning docs",
+      ];
+
+  // 3. Update STATE.md with current position
+  const stateTarget = nextMilestone ?? {
+    number: milestoneNumber,
+    name: milestoneName,
+  };
+  await writeStateFile(projectDir, {
+    project,
+    milestone: stateTarget,
+    branch,
+    activePrd,
+    lastSession: today,
+    milestoneTable,
+    nextActions,
+  });
+
+  // 4. Write session memory for this branch
+  await writeSessionMemory(projectDir, branch, {
+    date: today,
+    developer,
+    workingOn: `Milestone ${milestoneNumber} — ${milestoneName}`,
+    status: "Complete",
+    next: nextMilestone
+      ? `Milestone ${nextMilestone.number} — ${nextMilestone.name}`
+      : "All milestones complete",
+    blockers: "None",
+  });
 }
