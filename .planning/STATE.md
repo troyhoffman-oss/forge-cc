@@ -10,7 +10,7 @@
 ## Milestone Progress
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Core CLI + Verification Engine | In Progress |
+| 1 | Core CLI + Verification Engine | Complete (2026-02-15) |
 | 2 | Linear Integration + Triage Skill | Pending |
 | 3 | Spec Skill | Pending |
 | 4 | Execution Engine (go) | Pending |

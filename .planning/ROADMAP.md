@@ -16,7 +16,7 @@
 
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Core CLI + Verification Engine — gates, CLI, hooks, MCP, tests | In Progress |
+| 1 | Core CLI + Verification Engine — gates, CLI, hooks, MCP, tests | Complete (2026-02-15) |
 | 2 | Linear Integration + Triage Skill — Linear lifecycle, /forge:triage | Pending |
 | 3 | Spec Skill — /forge:spec interview, PRD generation, Linear sync | Pending |
 | 4 | Execution Engine — /forge:go manual + auto mode, context resets, PR creation | Pending |
