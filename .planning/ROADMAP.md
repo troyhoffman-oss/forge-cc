@@ -4,7 +4,7 @@
 | Project | Status | Milestones |
 |---------|--------|------------|
 | forge-mcp (research) | Complete (2026-02-15) | 3 milestones |
-| forge-cc (build) | In Progress | 5 milestones |
+| forge-cc (build) | Complete (2026-02-15) | 5 milestones |
 
 ---
 
@@ -20,7 +20,7 @@
 | 2 | Linear Integration + Triage Skill — Linear lifecycle, /forge:triage | Complete (2026-02-15) |
 | 3 | Spec Skill — /forge:spec interview, PRD generation, Linear sync | Complete (2026-02-15) |
 | 4 | Execution Engine — /forge:go manual + auto mode, context resets, PR creation | Complete (2026-02-15) |
-| 5 | Integration, Testing + Documentation — E2E, README, npm publish readiness | Pending |
+| 5 | Integration, Testing + Documentation — E2E, README, npm publish readiness | Complete (2026-02-15) |
 
 ---
 
