@@ -1,0 +1,24 @@
+{
+  "name": "forge-mcp",
+  "version": "1.0.0",
+  "description": "Verification harness MCP server — pre-PR validation pipeline for Claude Code agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "forge-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "playwright": "^1.50.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
