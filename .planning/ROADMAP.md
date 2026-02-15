@@ -18,7 +18,7 @@
 |-----------|------|--------|
 | 1 | Core CLI + Verification Engine — gates, CLI, hooks, MCP, tests | Complete (2026-02-15) |
 | 2 | Linear Integration + Triage Skill — Linear lifecycle, /forge:triage | Complete (2026-02-15) |
-| 3 | Spec Skill — /forge:spec interview, PRD generation, Linear sync | Pending |
+| 3 | Spec Skill — /forge:spec interview, PRD generation, Linear sync | Complete (2026-02-15) |
 | 4 | Execution Engine — /forge:go manual + auto mode, context resets, PR creation | Pending |
 | 5 | Integration, Testing + Documentation — E2E, README, npm publish readiness | Pending |
 
