@@ -4,7 +4,7 @@
 - **Project:** forge-cc (build phase)
 - **Milestone:** All milestones complete
 - **Branch:** feat/forge-build
-- **Active PRD:** `.planning/prds/forge-build.md`
+- **Active PRD:** None (archived to `.planning/archive/PRD-forge-build.md`)
 - **Last Session:** 2026-02-15
 
 ## Milestone Progress
@@ -23,6 +23,6 @@
 - **Verification:** tsc clean, all tests pass, CLI smoke tested, npm pack verified
 
 ## Next Actions
-1. Run `/flow:done` to finalize: create PR, move Linear issues to In Review
-2. Merge PR to main
-3. Publish to npm: `npm publish`
+1. Review + merge PR to main
+2. Publish to npm: `npm publish`
+3. Install in a test project, verify `npx forge verify` works end-to-end
