@@ -1,24 +1,68 @@
 {
-  "name": "forge-mcp",
-  "version": "1.0.0",
-  "description": "Verification harness MCP server — pre-PR validation pipeline for Claude Code agents",
+  "name": "forge-cc",
+  "version": "0.1.0",
+  "description": "Pre-PR verification harness for Claude Code agents — gate runner + CLI + MCP server",
   "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "forge-mcp": "dist/index.js"
+  "license": "MIT",
+  "author": "Troy Hoffman",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/troyhoffman/forge-cc.git"
   },
+  "keywords": [
+    "forge",
+    "verification",
+    "claude-code",
+    "mcp",
+    "pre-commit",
+    "lint",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/gates/index.js",
+  "exports": {
+    ".": "./dist/gates/index.js",
+    "./cli": "./dist/cli.js",
+    "./server": "./dist/server.js"
+  },
+  "bin": {
+    "forge": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "hooks/",
+    ".forge.json",
+    "README.md",
+    "AGENTS.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "node dist/cli.js verify",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "playwright": "^1.50.0",
+    "commander": "^13.0.0",
     "zod": "^3.24.0"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
   }
 }

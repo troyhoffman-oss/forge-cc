@@ -1,0 +1,5 @@
+{
+  "gates": ["types", "lint", "tests"],
+  "maxIterations": 5,
+  "verifyFreshness": 600000
+}

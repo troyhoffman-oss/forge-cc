@@ -1,5 +1,5 @@
 import { chromium, type Browser, type BrowserContext } from "playwright";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
 
 let browserInstance: Browser | null = null;
@@ -7,7 +7,17 @@ let devServerProcess: ChildProcess | null = null;
 
 export async function getBrowser(): Promise<Browser> {
   if (!browserInstance || !browserInstance.isConnected()) {
-    browserInstance = await chromium.launch({ headless: true });
+    try {
+      browserInstance = await chromium.launch({ headless: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("Executable doesn't exist") || message.includes("browserType.launch")) {
+        throw new Error(
+          `Playwright browsers are not installed. Run "npx playwright install chromium" to fix this. Original error: ${message}`,
+        );
+      }
+      throw err;
+    }
   }
   return browserInstance;
 }
@@ -54,7 +64,18 @@ export async function stopDevServer(): Promise<void> {
     devServerProcess = null;
 
     try {
-      proc.kill();
+      if (process.platform === "win32" && proc.pid) {
+        // On Windows, proc.kill() doesn't kill the child process tree.
+        // Use taskkill with /T (tree) /F (force) to kill the process and its children.
+        try {
+          execSync(`taskkill /pid ${proc.pid} /T /F`, { stdio: "pipe" });
+        } catch {
+          // taskkill may fail if the process already exited — fall back to proc.kill()
+          try { proc.kill(); } catch { /* already exited */ }
+        }
+      } else {
+        proc.kill();
+      }
     } catch {
       // Process may have already exited — ignore
     }

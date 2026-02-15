@@ -1,10 +1,10 @@
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import type { GateResult } from "../types.js";
+import type { GateError, GateResult } from "../types.js";
 
 /**
  * Reads the git diff and compares against PRD acceptance criteria
- * to check coverage. This is a heuristic check — it helps catch
+ * to check coverage. This is a heuristic check -- it helps catch
  * obvious omissions but cannot verify behavior.
  */
 export async function verifyPrd(
@@ -13,7 +13,7 @@ export async function verifyPrd(
   baseBranch = "main",
 ): Promise<GateResult> {
   const start = Date.now();
-  const errors: string[] = [];
+  const errors: GateError[] = [];
   const warnings: string[] = [];
 
   try {
@@ -50,7 +50,7 @@ export async function verifyPrd(
     } catch {
       changedFiles = [];
       warnings.push(
-        "Could not get git diff — branch may not have diverged from base",
+        "Could not get git diff -- branch may not have diverged from base",
       );
     }
 
@@ -63,20 +63,20 @@ export async function verifyPrd(
         timeout: 30_000,
       });
     } catch {
-      // Non-critical — we still have changedFiles
+      // Non-critical -- we still have changedFiles
     }
 
     if (changedFiles.length === 0 && diffStat === "") {
       warnings.push(
-        "No changes detected against base branch — all criteria marked unclear",
+        "No changes detected against base branch -- all criteria marked unclear",
       );
       for (const criterion of criteria) {
-        warnings.push(`? ${criterion} — no changes to evaluate against`);
+        warnings.push(`? ${criterion} -- no changes to evaluate against`);
       }
       return {
         gate: "prd",
         passed: false,
-        errors: [`No changes found to evaluate against ${criteria.length} criteria`],
+        errors: [{ message: `No changes found to evaluate against ${criteria.length} criteria` }],
         warnings,
         duration_ms: Date.now() - start,
       };
@@ -88,17 +88,20 @@ export async function verifyPrd(
 
       if (result.status === "covered") {
         warnings.push(
-          `\u2713 ${criterion} — likely covered (matched: ${result.matchedFiles.join(", ")})`,
+          `\u2713 ${criterion} -- likely covered (matched: ${result.matchedFiles.join(", ")})`,
         );
       } else if (result.status === "unclear") {
-        warnings.push(`? ${criterion} — could not determine coverage`);
+        warnings.push(`? ${criterion} -- could not determine coverage`);
       } else {
-        errors.push(`\u2717 ${criterion} — no matching changes found`);
+        errors.push({
+          message: `\u2717 ${criterion} -- no matching changes found`,
+          remediation: "Ensure the relevant code changes are committed and address this criterion",
+        });
       }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    errors.push(`PRD verification failed: ${message}`);
+    errors.push({ message: `PRD verification failed: ${message}` });
   }
 
   return {

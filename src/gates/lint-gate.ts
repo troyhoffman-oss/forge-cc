@@ -1,9 +1,16 @@
 import { execSync } from "node:child_process";
-import type { GateResult } from "../types.js";
+import type { GateError, GateResult } from "../types.js";
+
+/**
+ * Biome diagnostics often look like:
+ *   path/to/file.ts:10:5 lint/rule ...
+ * or header lines with ━━ separators
+ */
+const BIOME_LOC_RE = /^(.+?):(\d+):\d+\s+(.+)$/;
 
 export async function verifyLint(projectDir: string): Promise<GateResult> {
   const start = Date.now();
-  const errors: string[] = [];
+  const errors: GateError[] = [];
   const warnings: string[] = [];
 
   try {
@@ -13,13 +20,7 @@ export async function verifyLint(projectDir: string): Promise<GateResult> {
       timeout: 60_000,
     });
 
-    return {
-      gate: "lint",
-      passed: true,
-      errors,
-      warnings,
-      duration_ms: Date.now() - start,
-    };
+    return { gate: "lint", passed: true, errors, warnings, duration_ms: Date.now() - start };
   } catch (err: unknown) {
     const stdout =
       err instanceof Error && "stdout" in err
@@ -31,6 +32,7 @@ export async function verifyLint(projectDir: string): Promise<GateResult> {
         : "";
 
     const output = `${stdout}\n${stderr}`;
+    const rawErrors: GateError[] = [];
 
     for (const line of output.split("\n")) {
       const trimmed = line.trim();
@@ -41,18 +43,27 @@ export async function verifyLint(projectDir: string): Promise<GateResult> {
         trimmed.toLowerCase().includes("error") ||
         trimmed.includes("×")
       ) {
-        errors.push(trimmed);
+        const match = BIOME_LOC_RE.exec(trimmed);
+        if (match) {
+          rawErrors.push({
+            file: match[1],
+            line: Number.parseInt(match[2], 10),
+            message: match[3],
+          });
+        } else {
+          rawErrors.push({ message: trimmed });
+        }
       }
     }
 
     // Cap at 50 errors to avoid massive output
-    const cappedErrors = errors.slice(0, 50);
-    if (errors.length > 50) {
-      cappedErrors.push(`... and ${errors.length - 50} more errors`);
+    const cappedErrors = rawErrors.slice(0, 50);
+    if (rawErrors.length > 50) {
+      cappedErrors.push({ message: `... and ${rawErrors.length - 50} more errors` });
     }
 
     if (cappedErrors.length === 0) {
-      cappedErrors.push("biome check exited with non-zero status but no errors were parsed");
+      cappedErrors.push({ message: "biome check exited with non-zero status but no errors were parsed" });
     }
 
     return {

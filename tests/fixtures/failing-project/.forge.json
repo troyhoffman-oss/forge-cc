@@ -1,0 +1,5 @@
+{
+  "gates": ["types"],
+  "maxIterations": 1,
+  "verifyFreshness": 300000
+}

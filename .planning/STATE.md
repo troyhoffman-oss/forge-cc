@@ -1,23 +1,28 @@
-# forge-mcp — Project State
+# forge-cc — Project State
 
 ## Current Position
-- **Project:** forge-mcp (research phase)
-- **Milestone:** Milestone 1 — ready for `/flow:go`
-- **Branch:** main (will create feat/forge-research)
-- **Active PRD:** `.planning/prds/forge-mcp.md`
+- **Project:** forge-cc (build phase)
+- **Milestone:** All milestones complete
+- **Branch:** feat/forge-build
+- **Active PRD:** None (archived to `.planning/archive/PRD-forge-build.md`)
 - **Last Session:** 2026-02-15
 
 ## Milestone Progress
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Parallel Deep Research (5 agents) | Pending |
-| 2 | Cross-Cutting Analysis (3 agents) | Pending |
-| 3 | Synthesis → RECOMMENDATION.md | Pending |
+| 1 | Core CLI + Verification Engine | Complete (2026-02-15) |
+| 2 | Linear Integration + Triage Skill | Complete (2026-02-15) |
+| 3 | Spec Skill | Complete (2026-02-15) |
+| 4 | Execution Engine (go) | Complete (2026-02-15) |
+| 5 | Integration, Testing + Documentation | Complete (2026-02-15) |
 
-## What Was Built (This Session)
-- Project initialized with `/flow:setup`
-- Research PRD written via `/flow:spec`
-- Full context gathered: Flow plugin, msig-am-etl, OAI article, workflow architecture
+## Build Summary
+- **Files:** 31 source files, 19 test files, 3 skills, 1 hook
+- **Tests:** 175 passing (unit + integration + E2E)
+- **Commit:** da64a9c (Milestone 5)
+- **Verification:** tsc clean, all tests pass, CLI smoke tested, npm pack verified
 
 ## Next Actions
-1. Run `/flow:go` to execute Milestone 1 (5 parallel research agents)
+1. Review + merge PR to main
+2. Publish to npm: `npm publish`
+3. Install in a test project, verify `npx forge verify` works end-to-end

@@ -1,9 +1,17 @@
 import { execSync } from "node:child_process";
-import type { GateResult } from "../types.js";
+import type { GateError, GateResult } from "../types.js";
+
+/**
+ * Common test failure patterns with file/line info:
+ *   FAIL src/foo.test.ts > suite > test name
+ *   at src/foo.test.ts:42:10
+ */
+const TEST_FILE_RE = /^FAIL\s+(.+?)(?:\s+>|$)/;
+const STACKTRACE_RE = /at\s+.*?([^\s(]+):(\d+):\d+/;
 
 export async function verifyTests(projectDir: string): Promise<GateResult> {
   const start = Date.now();
-  const errors: string[] = [];
+  const errors: GateError[] = [];
   const warnings: string[] = [];
 
   // Check if the test script exists in package.json
@@ -18,7 +26,7 @@ export async function verifyTests(projectDir: string): Promise<GateResult> {
       return {
         gate: "tests",
         passed: true,
-        errors,
+        errors: [],
         warnings: ["No test script found"],
         duration_ms: Date.now() - start,
       };
@@ -27,7 +35,7 @@ export async function verifyTests(projectDir: string): Promise<GateResult> {
     return {
       gate: "tests",
       passed: true,
-      errors,
+      errors: [],
       warnings: ["No test script found"],
       duration_ms: Date.now() - start,
     };
@@ -55,7 +63,7 @@ export async function verifyTests(projectDir: string): Promise<GateResult> {
     return {
       gate: "tests",
       passed: true,
-      errors,
+      errors: [],
       warnings,
       duration_ms: Date.now() - start,
     };
@@ -70,18 +78,36 @@ export async function verifyTests(projectDir: string): Promise<GateResult> {
         : "";
 
     const output = `${stdout}\n${stderr}`;
+    let lastFailFile: string | undefined;
 
     for (const line of output.split("\n")) {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
+      // Track which test file we're in
+      const failMatch = TEST_FILE_RE.exec(trimmed);
+      if (failMatch) {
+        lastFailFile = failMatch[1];
+      }
+
+      // Try to extract stack trace location
+      const stackMatch = STACKTRACE_RE.exec(trimmed);
+      if (stackMatch) {
+        lastFailFile = stackMatch[1];
+      }
+
       if (
         trimmed.includes("FAIL") ||
+        trimmed.includes("AssertionError") ||
         trimmed.includes("AssertionError") ||
         trimmed.includes("Expected") ||
         trimmed.includes("Received")
       ) {
-        errors.push(trimmed);
+        errors.push({
+          file: lastFailFile,
+          line: stackMatch ? Number.parseInt(stackMatch[2], 10) : undefined,
+          message: trimmed,
+        });
       }
     }
 
@@ -96,7 +122,7 @@ export async function verifyTests(projectDir: string): Promise<GateResult> {
     }
 
     if (errors.length === 0) {
-      errors.push("Test runner exited with non-zero status");
+      errors.push({ message: "Test runner exited with non-zero status" });
     }
 
     return {
