@@ -36,7 +36,7 @@ const program = new Command();
 program
   .name("forge")
   .description("forge-cc — verification + workflow CLI for Claude Code agents")
-  .version("0.1.0");
+  .version("0.1.7");
 
 program
   .command("verify")
