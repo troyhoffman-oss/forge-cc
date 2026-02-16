@@ -474,35 +474,51 @@ describe("deleteBranch", () => {
   it("refuses to delete the currently checked-out branch", () => {
     mockedExecSync.mockReturnValue("feat/my-feature");
     expect(deleteBranch(repoRoot, "feat/my-feature")).toBe(false);
-    // Only rev-parse called, no branch -D
+    // Only rev-parse called, no branch -d
     expect(mockedExecSync).toHaveBeenCalledTimes(1);
   });
 
-  it("deletes a normal branch and returns true", () => {
+  it("deletes a merged branch with safe -d by default", () => {
     mockedExecSync.mockImplementation((cmd) => {
       const cmdStr = typeof cmd === "string" ? cmd : "";
       if (cmdStr.includes("rev-parse --abbrev-ref")) {
         return "main";
       }
-      // branch -D succeeds
+      // branch -d succeeds
       return "";
     });
 
     expect(deleteBranch(repoRoot, "feat/old-feature")).toBe(true);
     const calls = mockedExecSync.mock.calls.map((c) => c[0] as string);
-    expect(calls.some((c) => c.includes("branch -D"))).toBe(true);
+    expect(calls.some((c) => c.includes("branch -d"))).toBe(true);
+    // Should NOT use force -D by default
+    expect(calls.some((c) => c.includes("branch -D"))).toBe(false);
   });
 
-  it("returns false when git branch -D fails", () => {
+  it("uses force -D when force option is true", () => {
     mockedExecSync.mockImplementation((cmd) => {
       const cmdStr = typeof cmd === "string" ? cmd : "";
       if (cmdStr.includes("rev-parse --abbrev-ref")) {
         return "main";
       }
-      throw new Error("branch not found");
+      return "";
     });
 
-    expect(deleteBranch(repoRoot, "nonexistent-branch")).toBe(false);
+    expect(deleteBranch(repoRoot, "forge/troy/m1", { force: true })).toBe(true);
+    const calls = mockedExecSync.mock.calls.map((c) => c[0] as string);
+    expect(calls.some((c) => c.includes("branch -D"))).toBe(true);
+  });
+
+  it("returns false when git branch -d fails (unmerged branch)", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("rev-parse --abbrev-ref")) {
+        return "main";
+      }
+      throw new Error("branch not fully merged");
+    });
+
+    expect(deleteBranch(repoRoot, "feat/unmerged")).toBe(false);
   });
 
   it("returns false when rev-parse fails", () => {

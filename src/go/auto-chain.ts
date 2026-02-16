@@ -398,8 +398,8 @@ export async function runAutoChain(
     } catch {
       // Non-fatal: best-effort cleanup
     }
-    // Delete the worktree branch — dead weight once the worktree is gone
-    deleteBranch(repoRoot, worktreeBranch);
+    // Delete the worktree branch — force-delete since it was merged via worktree flow
+    deleteBranch(repoRoot, worktreeBranch, { force: true });
   }
 }
 

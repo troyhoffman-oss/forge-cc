@@ -256,12 +256,19 @@ const PROTECTED_BRANCHES = new Set(["main", "master"]);
  * Delete a local branch by name.
  *
  * Safety: refuses to delete `main`, `master`, or the currently checked-out branch.
- * Uses `git branch -D` (force-delete) since worktree branches may not be fully
- * merged into the current HEAD but are merged via the worktree merge flow.
+ *
+ * By default uses `git branch -d` (safe delete) which only removes branches that
+ * are fully merged into HEAD. Pass `force: true` to use `git branch -D` for
+ * worktree branches that were merged via the worktree merge flow but may not
+ * appear merged from HEAD's perspective.
  *
  * Non-fatal: returns boolean success, never throws.
  */
-export function deleteBranch(repoRoot: string, branch: string): boolean {
+export function deleteBranch(
+  repoRoot: string,
+  branch: string,
+  options?: { force?: boolean },
+): boolean {
   if (!branch || PROTECTED_BRANCHES.has(branch)) {
     return false;
   }
@@ -277,8 +284,9 @@ export function deleteBranch(repoRoot: string, branch: string): boolean {
     return false;
   }
 
+  const flag = options?.force ? "-D" : "-d";
   try {
-    git(`branch -D ${shellQuote(branch)}`, repoRoot);
+    git(`branch ${flag} ${shellQuote(branch)}`, repoRoot);
     return true;
   } catch {
     return false;
@@ -370,8 +378,8 @@ export function cleanupStaleWorktrees(
       if (existsSync(session.worktreePath)) {
         removeWorktree(repoRoot, session.worktreePath);
       }
-      // Delete the worktree branch — dead weight once the worktree is gone
-      deleteBranch(repoRoot, session.branch);
+      // Delete the worktree branch — force-delete since it was merged via worktree flow
+      deleteBranch(repoRoot, session.branch, { force: true });
       // Whether it existed or not, record as successfully removed
       result.removed.push({
         sessionId: session.id,
