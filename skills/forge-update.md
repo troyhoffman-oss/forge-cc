@@ -48,7 +48,27 @@ Verify the update succeeded:
 npm list -g forge-cc --json 2>/dev/null | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');const j=JSON.parse(d);console.log(j.dependencies?.['forge-cc']?.version||'failed')"
 ```
 
-### Step 4 — Post-Update Check
+### Step 4 — Re-sync Skills
+
+After updating, copy the latest skills to `~/.claude/commands/forge/`:
+
+```bash
+mkdir -p ~/.claude/commands/forge
+
+SKILLS_DIR="$(dirname "$(which forge)")/../lib/node_modules/forge-cc/skills"
+if [ ! -d "$SKILLS_DIR" ]; then
+  SKILLS_DIR="node_modules/forge-cc/skills"
+fi
+
+for f in "$SKILLS_DIR"/forge-*.md; do
+  name=$(basename "$f" | sed 's/^forge-//')
+  cp "$f" ~/.claude/commands/forge/"$name"
+done
+```
+
+Print: "Synced skills to ~/.claude/commands/forge/"
+
+### Step 5 — Post-Update Check
 
 After updating, check if the current project's forge files need refreshing:
 

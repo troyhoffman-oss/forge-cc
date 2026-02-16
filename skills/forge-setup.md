@@ -93,7 +93,32 @@ Check if `~/.claude/CLAUDE.md` exists:
 - **If it does not exist:** Create it using `globalClaudeMdTemplate()` from the templates.
 - **If it exists:** Leave it alone. Do not overwrite the user's global config.
 
-### Step 6 — Install Hooks
+### Step 6 — Install Skills
+
+Copy all forge skills to `~/.claude/commands/forge/` so they're discoverable via `/forge:*`:
+
+```bash
+mkdir -p ~/.claude/commands/forge
+```
+
+Find the installed forge-cc package and copy skill files, stripping the `forge-` prefix:
+
+```bash
+SKILLS_DIR="$(dirname "$(which forge)")/../lib/node_modules/forge-cc/skills"
+# Fallback: check local node_modules
+if [ ! -d "$SKILLS_DIR" ]; then
+  SKILLS_DIR="node_modules/forge-cc/skills"
+fi
+
+for f in "$SKILLS_DIR"/forge-*.md; do
+  name=$(basename "$f" | sed 's/^forge-//')
+  cp "$f" ~/.claude/commands/forge/"$name"
+done
+```
+
+Print: "Installed forge skills to ~/.claude/commands/forge/"
+
+### Step 7 — Install Hooks
 
 Check if the user has a `.claude/settings.json` or `.claude/settings.local.json` in the project:
 
@@ -126,7 +151,7 @@ If a settings file already exists, inform the user:
 > Settings file already exists. To add the version-check hook manually, add this to your hooks config:
 > `"command": "node node_modules/forge-cc/hooks/version-check.js"`
 
-### Step 7 — Summary
+### Step 8 — Summary
 
 Print a summary of everything that was created or updated:
 
@@ -138,6 +163,7 @@ Print a summary of everything that was created or updated:
 **Gates:** {comma-separated list}
 
 ### Files Created/Updated
+- ~/.claude/commands/forge/*.md ✓ (skills)
 - .forge.json ✓
 - CLAUDE.md ✓
 - .planning/STATE.md ✓

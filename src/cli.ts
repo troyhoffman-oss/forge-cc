@@ -2,10 +2,29 @@
 
 import { Command } from "commander";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { runPipeline } from "./gates/index.js";
 import { loadConfig } from "./config/loader.js";
+import {
+  forgeConfigTemplate,
+  claudeMdTemplate,
+  stateMdTemplate,
+  roadmapMdTemplate,
+  lessonsMdTemplate,
+  globalClaudeMdTemplate,
+  gitignoreForgeLines,
+  type SetupContext,
+} from "./setup/templates.js";
 import type { PipelineResult, VerifyCache } from "./types.js";
 
 const program = new Command();
@@ -105,6 +124,183 @@ program
       console.log(`**Config:** auto-detected (no .forge.json)`);
     }
   });
+
+// ── Skill installation helper ──────────────────────────────────────
+
+function getPackageRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+function installSkills(): string[] {
+  const skillsDir = join(getPackageRoot(), "skills");
+  const targetDir = join(homedir(), ".claude", "commands", "forge");
+  mkdirSync(targetDir, { recursive: true });
+
+  const installed: string[] = [];
+  const files = readdirSync(skillsDir).filter(
+    (f) => f.startsWith("forge-") && f.endsWith(".md"),
+  );
+
+  for (const file of files) {
+    const targetName = file.replace(/^forge-/, "");
+    copyFileSync(join(skillsDir, file), join(targetDir, targetName));
+    installed.push(targetName);
+  }
+
+  return installed;
+}
+
+// ── setup command ──────────────────────────────────────────────────
+
+program
+  .command("setup")
+  .description("Initialize forge project and install skills")
+  .option("--skills-only", "Only install skills to ~/.claude/commands/forge/")
+  .action((opts) => {
+    // Always install skills
+    const installed = installSkills();
+    console.log(`Installed ${installed.length} skills to ~/.claude/commands/forge/`);
+    for (const s of installed) {
+      console.log(`  - ${s}`);
+    }
+
+    if (opts.skillsOnly) {
+      return;
+    }
+
+    // Check if project already initialized
+    const projectDir = process.cwd();
+    if (existsSync(join(projectDir, ".forge.json"))) {
+      console.log(
+        "\nProject already initialized. Run `/forge:setup` to refresh.",
+      );
+      return;
+    }
+
+    // Scaffold project files
+    const projectName = basename(projectDir);
+    const ctx: SetupContext = {
+      projectName,
+      techStack: "TypeScript, Node.js",
+      description: "Project description — customize in CLAUDE.md",
+      gates: ["types", "lint", "tests"],
+      date: new Date().toISOString().split("T")[0],
+    };
+
+    mkdirSync(join(projectDir, ".planning"), { recursive: true });
+    mkdirSync(join(projectDir, "tasks"), { recursive: true });
+
+    writeFileSync(join(projectDir, ".forge.json"), forgeConfigTemplate(ctx));
+    writeFileSync(join(projectDir, "CLAUDE.md"), claudeMdTemplate(ctx));
+    writeFileSync(
+      join(projectDir, ".planning", "STATE.md"),
+      stateMdTemplate(ctx),
+    );
+    writeFileSync(
+      join(projectDir, ".planning", "ROADMAP.md"),
+      roadmapMdTemplate(ctx),
+    );
+    writeFileSync(
+      join(projectDir, "tasks", "lessons.md"),
+      lessonsMdTemplate(ctx),
+    );
+
+    // Append to .gitignore
+    const gitignorePath = join(projectDir, ".gitignore");
+    const forgeLines = gitignoreForgeLines();
+    if (existsSync(gitignorePath)) {
+      const content = readFileSync(gitignorePath, "utf-8");
+      if (!content.includes(".forge/")) {
+        writeFileSync(gitignorePath, content + "\n" + forgeLines);
+      }
+    } else {
+      writeFileSync(gitignorePath, forgeLines);
+    }
+
+    // Create global CLAUDE.md if needed
+    const globalClaudeMdPath = join(homedir(), ".claude", "CLAUDE.md");
+    if (!existsSync(globalClaudeMdPath)) {
+      mkdirSync(dirname(globalClaudeMdPath), { recursive: true });
+      writeFileSync(globalClaudeMdPath, globalClaudeMdTemplate());
+      console.log("\nCreated ~/.claude/CLAUDE.md");
+    }
+
+    console.log(`\n## Forge Setup Complete`);
+    console.log(`**Project:** ${projectName}`);
+    console.log(`**Gates:** ${ctx.gates.join(", ")}`);
+    console.log(`\nFiles created:`);
+    console.log(`  - .forge.json`);
+    console.log(`  - CLAUDE.md`);
+    console.log(`  - .planning/STATE.md`);
+    console.log(`  - .planning/ROADMAP.md`);
+    console.log(`  - tasks/lessons.md`);
+    console.log(`  - .gitignore (forge lines)`);
+    console.log(`\nNext: Review CLAUDE.md, then run \`npx forge verify\``);
+  });
+
+// ── update command ─────────────────────────────────────────────────
+
+program
+  .command("update")
+  .description("Check for updates and install latest forge-cc")
+  .action(() => {
+    // Get current version from our own package.json
+    const pkgPath = join(getPackageRoot(), "package.json");
+    const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version;
+
+    // Get latest version from npm registry
+    let latestVersion: string;
+    try {
+      latestVersion = execSync("npm view forge-cc version", {
+        encoding: "utf-8",
+      }).trim();
+    } catch {
+      console.error(
+        "Could not reach npm registry. Check your internet connection.",
+      );
+      process.exit(1);
+    }
+
+    console.log(`## Forge Version Check\n`);
+    console.log(`**Installed:** v${currentVersion}`);
+    console.log(`**Latest:** v${latestVersion}`);
+
+    if (currentVersion === latestVersion) {
+      console.log(`**Status:** Up to date\n`);
+      console.log("You're on the latest version.");
+      return;
+    }
+
+    console.log(`**Status:** Update available\n`);
+    console.log(`Updating forge-cc to v${latestVersion}...`);
+
+    try {
+      execSync("npm install -g forge-cc@latest", { stdio: "inherit" });
+    } catch {
+      console.error(
+        "Update failed. Try manually: npm install -g forge-cc@latest",
+      );
+      process.exit(1);
+    }
+
+    // Re-sync skills after update
+    const installed = installSkills();
+    console.log(
+      `\nSynced ${installed.length} skills to ~/.claude/commands/forge/`,
+    );
+
+    console.log(`\n## Update Complete`);
+    console.log(`**Previous:** v${currentVersion}`);
+    console.log(`**Current:** v${latestVersion}`);
+
+    if (existsSync(join(process.cwd(), ".forge.json"))) {
+      console.log(
+        `\nConsider running \`/forge:setup\` (Refresh) to update project files.`,
+      );
+    }
+  });
+
+// ── helpers ────────────────────────────────────────────────────────
 
 function writeVerifyCache(projectDir: string, result: PipelineResult): void {
   const forgeDir = join(projectDir, ".forge");
