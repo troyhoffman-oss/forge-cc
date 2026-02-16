@@ -14,14 +14,20 @@ export interface CodexGateOptions {
 /**
  * Fetch PR review comments using the GitHub CLI.
  * Returns an empty array if the `gh` command fails.
+ *
+ * Uses `in_reply_to_id` to skip reply comments (only returns thread roots),
+ * and accepts `knownIds` to exclude previously-addressed comments so the
+ * polling loop can converge.
  */
 export function fetchPRComments(options: {
   owner: string;
   repo: string;
   prNumber: number;
   projectDir?: string;
+  /** Comment IDs that have already been addressed (skip these) */
+  knownIds?: Set<number>;
 }): CodexComment[] {
-  const { owner, repo, prNumber, projectDir } = options;
+  const { owner, repo, prNumber, projectDir, knownIds } = options;
 
   try {
     const raw = execSync(
@@ -32,18 +38,26 @@ export function fetchPRComments(options: {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.map(
-      (c: Record<string, unknown>): CodexComment => ({
-        id: c.id as number,
-        body: c.body as string,
-        path: c.path as string,
-        line:
-          (c.line as number | null) ??
-          (c.original_line as number | null) ??
-          undefined,
-        resolved: false,
-      }),
-    );
+    return parsed
+      .filter((c: Record<string, unknown>) => {
+        // Skip replies — only keep thread-root comments
+        if (c.in_reply_to_id != null) return false;
+        // Skip previously-addressed comments
+        if (knownIds && knownIds.has(c.id as number)) return false;
+        return true;
+      })
+      .map(
+        (c: Record<string, unknown>): CodexComment => ({
+          id: c.id as number,
+          body: c.body as string,
+          path: c.path as string,
+          line:
+            (c.line as number | null) ??
+            (c.original_line as number | null) ??
+            undefined,
+          resolved: false,
+        }),
+      );
   } catch {
     return [];
   }
@@ -67,11 +81,14 @@ export function formatCommentForFix(comment: CodexComment): string {
 }
 
 /**
- * Poll for PR comments at a regular interval until unresolved comments appear
+ * Poll for PR comments at a regular interval until new comments appear
  * or the maximum number of polls is reached.
+ *
+ * Accepts `knownIds` to exclude previously-addressed comments so re-polls
+ * after a fix cycle only surface genuinely new feedback.
  */
 export async function pollForCodexComments(
-  options: CodexGateOptions,
+  options: CodexGateOptions & { knownIds?: Set<number> },
 ): Promise<CodexComment[]> {
   const intervalMs = options.pollIntervalMs ?? 60_000;
   const maxPolls = options.maxPolls ?? 8;
@@ -87,11 +104,11 @@ export async function pollForCodexComments(
       repo: options.repo,
       prNumber: options.prNumber,
       projectDir: options.projectDir,
+      knownIds: options.knownIds,
     });
 
-    const unresolved = getUnresolvedComments(comments);
-    if (unresolved.length > 0) {
-      return unresolved;
+    if (comments.length > 0) {
+      return comments;
     }
   }
 

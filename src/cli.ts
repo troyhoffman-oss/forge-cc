@@ -515,6 +515,15 @@ program
     }
 
     // Single PRD mode (existing behavior)
+    // Validate --prd slug if provided
+    if (opts.prd) {
+      const slugExists = prds.some((p) => p.slug === opts.prd);
+      if (!slugExists) {
+        console.error(`Error: PRD "${opts.prd}" not found. Available PRDs: ${prds.map((p) => p.slug).join(", ")}`);
+        process.exit(1);
+      }
+    }
+
     // Pre-flight: check pending milestones
     let pending = await countPendingMilestones(projectDir, opts.prd);
     if (pending === 0) {

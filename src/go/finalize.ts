@@ -143,16 +143,17 @@ export async function pollAndResolvePRComments(options: {
     return { unresolved, gateResult };
   }
 
-  // Attempt to fix each unresolved comment
+  // Attempt to fix each unresolved comment, tracking addressed IDs
   const comments = fetchPRComments({ owner, repo, prNumber, projectDir });
-  const unresolved = getUnresolvedComments(comments);
+  const addressedIds = new Set<number>();
 
-  for (const comment of unresolved) {
+  for (const comment of comments) {
     await onFixComment(comment);
+    addressedIds.add(comment.id);
   }
 
-  // After fixes, do one more poll cycle to check for any new comments
-  // from a re-review (use a single poll with short interval)
+  // After fixes, do one more poll cycle to check for any NEW comments
+  // from a re-review (exclude already-addressed IDs so the loop converges)
   const recheckComments = await pollForCodexComments({
     owner,
     repo,
@@ -160,9 +161,10 @@ export async function pollAndResolvePRComments(options: {
     pollIntervalMs: pollIntervalMs ?? 60_000,
     maxPolls: 1,
     projectDir,
+    knownIds: addressedIds,
   });
 
-  const stillUnresolved = getUnresolvedComments(recheckComments);
+  const stillUnresolved = recheckComments;
 
   // Build a final gate result reflecting the post-fix state
   const finalGateResult: GateResult = {
