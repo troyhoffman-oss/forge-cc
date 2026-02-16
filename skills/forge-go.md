@@ -32,23 +32,23 @@ If all milestones are complete:
 
 > All milestones complete! Create a PR with `gh pr create` or run `/forge:spec` to start a new project.
 
-### Step 1.5 — Choose Execution Mode
+### Step 1.5 — Choose Execution Mode (MANDATORY)
 
-**Unless `--auto` was passed as an argument**, prompt the user to choose their execution mode using AskUserQuestion:
+**STOP. Do NOT proceed to Step 2 until this step is complete.**
 
-```
-Question: "How should this project be executed?"
-Header: "Mode"
-Options:
-  1. Label: "Single milestone"
-     Description: "Execute the next milestone, then stop. Good for reviewing progress between milestones or when context is tight."
-  2. Label: "Auto (all milestones)"
-     Description: "Chain all remaining milestones with fresh context between each. Prints continuation instructions after each milestone completes."
-```
+If `--auto` was passed as an argument, set mode to auto and skip the prompt below.
 
-If `--auto` was passed as an argument, skip this prompt and proceed in auto mode.
+Otherwise, you MUST use the AskUserQuestion tool RIGHT NOW to ask the user which mode they want. Do not skip this. Do not assume single milestone. Do not proceed without an answer.
 
-Store the user's choice and apply it in Step 8 (Route Next).
+Use AskUserQuestion with exactly these parameters:
+- question: "How should this project be executed?"
+- header: "Mode"
+- options:
+  - label: "Single milestone", description: "Execute the next pending milestone, then stop. Good for reviewing progress between milestones."
+  - label: "Auto (all milestones)", description: "Chain all remaining milestones with fresh context between each. After each milestone, prints a continuation prompt for the next session."
+- multiSelect: false
+
+**Wait for the user's response before continuing.** Store their choice and apply it in Step 8 (Route Next).
 
 ### Step 2 — Pre-flight Checks
 
