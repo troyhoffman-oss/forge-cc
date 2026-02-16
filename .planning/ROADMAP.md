@@ -5,6 +5,7 @@
 |---------|--------|------------|
 | forge-mcp (research) | Complete | 3 |
 | forge-cc (build) | Complete | 5 |
+| setup/update skills | Complete (v0.1.4) | — |
 | forge-concurrency | In Progress | 3 |
 
 ---
