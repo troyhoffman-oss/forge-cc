@@ -236,6 +236,28 @@ export async function findNextPendingMilestone(
 }
 
 // ---------------------------------------------------------------------------
+// countPendingMilestones
+// ---------------------------------------------------------------------------
+
+/**
+ * Count the number of pending (not complete/done) milestones in the roadmap.
+ *
+ * Used by `npx forge run` to determine if there are milestones to execute
+ * and to detect stalls (pending count should decrease each iteration).
+ */
+export async function countPendingMilestones(
+  projectDir: string,
+): Promise<number> {
+  const roadmap = await readRoadmapProgress(projectDir);
+  if (!roadmap) return 0;
+  return roadmap.milestones.filter(
+    (m) =>
+      !m.status.toLowerCase().startsWith("complete") &&
+      !m.status.toLowerCase().startsWith("done"),
+  ).length;
+}
+
+// ---------------------------------------------------------------------------
 // runAutoChain
 // ---------------------------------------------------------------------------
 

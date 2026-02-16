@@ -38,6 +38,8 @@ If all milestones are complete:
 
 If `--auto` was passed as an argument, set mode to auto and skip the prompt.
 
+If `--single` was passed as an argument, set mode to single and skip the prompt.
+
 Otherwise: **your very next tool call MUST be AskUserQuestion.** No file reads, no git commands, no exploration — ask the user first. Use exactly these parameters:
 
 - question: "How should this project be executed?"
@@ -282,7 +284,7 @@ After milestone completion, determine the next action:
 - Verification: PASSED
 - Branch: {branch} (pushed)
 
-**Next:** Run `/clear` to reset context, then `/forge:go` for Milestone {N+1}: {Next Milestone Name}.
+**Next:** Run `/clear` then `/forge:go` for Milestone {N+1}, or exit and run `npx forge run` to auto-chain all remaining milestones.
 ```
 
 #### If this IS the last milestone:
@@ -324,27 +326,29 @@ The PR is ready for review.
 
 ### Auto Mode
 
-When the user selects "Auto (all milestones)" in Step 1.5 or invokes with `--auto` (e.g., `/forge:go --auto`), chain all remaining milestones with context resets between each.
+When the user selects "Auto (all milestones)" in Step 1 Part B or invokes with `--auto` (e.g., `/forge:go --auto`):
 
-After each milestone completes (Step 5-7):
+Print the following instructions and then **stop** (do not execute a milestone):
 
-1. Print the completion summary for the milestone.
-2. Print instructions for the context reset:
+```
+## Auto Mode — Fresh Context Execution
 
-   ```
-   ## Context Reset for Milestone {N+1}
+Auto mode runs each milestone in a fresh Claude session for maximum quality.
 
-   Milestone {N} is complete and committed. Starting fresh context for the next milestone.
+**To start:** Exit this Claude session (Ctrl+C), then run in your terminal:
 
-   To continue autonomously, start a new session and run:
-   > /forge:go --auto
+    npx forge run
 
-   The new session will read STATE.md (just updated) and pick up at Milestone {N+1}.
-   ```
+**What happens:**
+- Each milestone gets a fresh Claude session (no context rot)
+- Output streams inline to your terminal
+- Stops on completion, failure, or stall
+- Resume after failure: fix the issue, run `npx forge run` again
 
-**IMPORTANT:** Auto mode does NOT continue in the same context window. Each milestone gets a fresh context (the Ralph Loop pattern). The `--auto` flag simply means "after completing this milestone, print the instructions for continuing" rather than "execute everything in one session."
+**Requires:** claude CLI on PATH, --dangerously-skip-permissions (automatic)
+```
 
-This prevents context rot — each milestone starts with clean context reading CLAUDE.md + STATE.md + current milestone section only (~20% of context window).
+**IMPORTANT:** Auto mode does NOT execute milestones in the current session. It redirects the user to `npx forge run`, which handles spawning fresh Claude sessions per milestone via the Ralph Loop pattern.
 
 ### Parallel Milestones (dependsOn)
 

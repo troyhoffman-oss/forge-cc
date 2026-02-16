@@ -14,6 +14,7 @@ Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, work
 | Run specific gates | `npx forge verify --gate types,lint` |
 | Check status | `npx forge status` |
 | Clean stale sessions | `npx forge cleanup` |
+| Auto-chain milestones | `npx forge run` |
 | Build | `npm run build` |
 | Test | `npm test` |
 | Type check | `npx tsc --noEmit` |
