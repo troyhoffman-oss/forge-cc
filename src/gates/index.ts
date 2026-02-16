@@ -6,6 +6,7 @@ import { verifyTests } from "./tests-gate.js";
 import { verifyVisual } from "./visual-gate.js";
 import { verifyRuntime } from "./runtime-gate.js";
 import { verifyPrd } from "./prd-gate.js";
+import { verifyReview } from "./review-gate.js";
 
 /** Gate registry -- maps gate name to its function */
 export const gateRegistry: Record<string, (input: PipelineInput) => Promise<GateResult>> = {
@@ -21,6 +22,10 @@ export const gateRegistry: Record<string, (input: PipelineInput) => Promise<Gate
     devServerPort: input.devServerPort,
   }),
   prd: (input) => verifyPrd(input.projectDir, input.prdPath ?? "", input.baseBranch),
+  review: (input) => verifyReview(input.projectDir, {
+    prdPath: input.prdPath,
+    baseBranch: input.baseBranch,
+  }),
 };
 
 /** Run the full verification pipeline */
@@ -115,3 +120,4 @@ export { verifyTests } from "./tests-gate.js";
 export { verifyVisual, captureBeforeSnapshots, clearBeforeSnapshots } from "./visual-gate.js";
 export { verifyRuntime } from "./runtime-gate.js";
 export { verifyPrd } from "./prd-gate.js";
+export { verifyReview } from "./review-gate.js";

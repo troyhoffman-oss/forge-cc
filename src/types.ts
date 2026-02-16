@@ -24,6 +24,19 @@ export interface VisualResult extends GateResult {
   consoleErrors: string[];
 }
 
+/** Extended result for code review with review-specific metadata */
+export interface ReviewResult extends GateResult {
+  reviewFindings: Array<{
+    type: "prd_compliance" | "rule_violation" | "style";
+    severity: "error" | "warning";
+    file?: string;
+    line?: number;
+    message: string;
+    remediation: string;
+    source: string; // e.g., "PRD: US-2 AC3" or "CLAUDE.md: [agent staging]"
+  }>;
+}
+
 /** Input for the full verification pipeline */
 export interface PipelineInput {
   projectDir: string;
@@ -59,6 +72,9 @@ export interface ForgeConfig {
   };
   prdPath?: string;
   linearProject?: string;
+  review?: {
+    blocking: boolean;
+  };
 }
 
 /** Verification cache written to .forge/last-verify.json */
