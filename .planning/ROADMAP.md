@@ -5,6 +5,7 @@
 |---------|--------|------------|
 | forge-mcp (research) | Complete (2026-02-15) | 3 milestones |
 | forge-cc (build) | Complete (2026-02-15) | 5 milestones |
+| forge-concurrency | In Progress (2026-02-15) | 3 milestones |
 
 ---
 
@@ -21,6 +22,20 @@
 | 3 | Spec Skill — /forge:spec interview, PRD generation, Linear sync | Complete (2026-02-15) |
 | 4 | Execution Engine — /forge:go manual + auto mode, context resets, PR creation | Complete (2026-02-15) |
 | 5 | Integration, Testing + Documentation — E2E, README, npm publish readiness | Complete (2026-02-15) |
+
+---
+
+## Forge Concurrency Model
+**Goal:** Add automatic git worktree-based session isolation so multiple terminals and multiple users can run forge commands simultaneously without corruption.
+
+**PRD:** `.planning/prds/forge-concurrency.md`
+**Branch:** `feat/forge-concurrency`
+
+| Milestone | Name | Status |
+|-----------|------|--------|
+| 1 | Worktree Manager + Session Registry (includes Wave 0: spec system rules) | Pending |
+| 2 | Skill Integration — wire worktrees into /forge:go, /forge:spec, per-branch cache | Pending |
+| 3 | Status Command + Cleanup UX — npx forge status, npx forge cleanup, e2e tests | Pending |
 
 ---
 

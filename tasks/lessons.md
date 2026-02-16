@@ -8,3 +8,5 @@ One-liner format: `- **[topic]** The rule`
 - **[cross-agent types]** Inline actual code from created files into downstream agent prompts — never use predicted/spec types that may differ from what was actually built
 - **[between-wave verify]** Run `tsc --noEmit` between every wave, not just at the end — catches cross-agent integration issues before spawning the next wave's agents
 - **[test-behavior-sync]** When edge-case agents change function behavior (e.g., throw → fallback), update existing tests in the same wave to match — cross-agent test/impl conflicts are caught late
+- **[interview mode]** forge:spec interview MUST always use AskUserQuestion with multiple-choice options — never text-based numbered questions. Update the skill and interview engine to enforce this.
+- **[milestone sizing]** Every milestone must be completable in one main agent context window. This is a hard constraint — if a milestone is too large, split it. Bake this into PRD templates and spec skill docs.

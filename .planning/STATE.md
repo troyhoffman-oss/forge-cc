@@ -1,28 +1,30 @@
 # forge-cc — Project State
 
 ## Current Position
-- **Project:** forge-cc (build phase)
-- **Milestone:** All milestones complete
-- **Branch:** feat/forge-build
-- **Active PRD:** None (archived to `.planning/archive/PRD-forge-build.md`)
+- **Project:** Forge Concurrency Model
+- **Milestone:** Not started (PRD approved)
+- **Branch:** feat/forge-concurrency (not yet created)
+- **Active PRD:** `.planning/prds/forge-concurrency.md`
 - **Last Session:** 2026-02-15
 
 ## Milestone Progress
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Core CLI + Verification Engine | Complete (2026-02-15) |
-| 2 | Linear Integration + Triage Skill | Complete (2026-02-15) |
-| 3 | Spec Skill | Complete (2026-02-15) |
-| 4 | Execution Engine (go) | Complete (2026-02-15) |
-| 5 | Integration, Testing + Documentation | Complete (2026-02-15) |
+| 1 | Worktree Manager + Session Registry | Pending |
+| 2 | Skill Integration | Pending |
+| 3 | Status Command + Cleanup UX | Pending |
 
-## Build Summary
-- **Files:** 31 source files, 19 test files, 3 skills, 1 hook
-- **Tests:** 175 passing (unit + integration + E2E)
-- **Commit:** da64a9c (Milestone 5)
-- **Verification:** tsc clean, all tests pass, CLI smoke tested, npm pack verified
+## Key Decisions
+- Git worktrees for automatic session isolation (not branch-based, not file-locking)
+- Worktrees for /forge:go AND /forge:spec
+- Hidden sibling directory: `../.forge-worktrees/<repo>/<session-id>/`
+- Separate PRs always — no shared branches
+- Per-session STATE.md, merged on completion
+- Identity from git config user.name/email
+- Per-branch verify cache (replaces single last-verify.json)
+- No Linear project for this work — local PRD only
+- M1 Wave 0 enforces spec system rules (AskUserQuestion, milestone sizing) before building concurrency
 
 ## Next Actions
-1. Review + merge PR to main
-2. Publish to npm: `npm publish`
-3. Install in a test project, verify `npx forge verify` works end-to-end
+1. Create branch `feat/forge-concurrency`
+2. Run `/forge:go` to execute Milestone 1
