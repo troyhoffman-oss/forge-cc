@@ -235,12 +235,32 @@ function getCurrentUser(): { name: string; email: string } {
 - E2E test proves two sessions don't corrupt each other
 - All gates pass: `npx forge verify`
 
+## Dogfooding Directive
+
+This is forge-cc's first end-to-end project run on its own codebase. Treat every session as a live test of the entire forge workflow. This is not optional — it's the primary meta-deliverable alongside the concurrency features.
+
+**What to observe and record:**
+- Every point of friction with `/forge:spec`, `/forge:go`, `/forge:triage`
+- Every moment where the skill instructions are ambiguous, wrong, or produce bad output
+- Every place where the PRD format doesn't match what `/forge:go` expects to parse
+- Every gap between what the interview captured and what execution actually needed
+- Wave sizing — did milestones actually fit in one context window? Were agents scoped correctly?
+- State management — did STATE.md/ROADMAP.md updates work cleanly between sessions?
+- Lessons system — did `tasks/lessons.md` get updated with real issues? Did the cap/promotion system work?
+
+**Where to record findings:**
+- `tasks/lessons.md` — one-liner per issue (existing system, max 10, promote when full)
+- `.planning/prds/forge-dogfood-findings.md` — detailed findings doc. Create after M1 completes. No length cap. Include: what broke, what was clunky, what worked well, proposed fixes. This becomes the backlog for the next forge improvement cycle.
+
+**Standard:** If a session completes without adding at least one lesson or finding, something was missed. Forge is new — there WILL be friction. Find it and write it down.
+
 ## Verification
 
 ### Per-Milestone
 - `npx tsc --noEmit` passes after every wave
 - `npm test` passes after every wave
 - No regressions in existing gate tests
+- At least one dogfooding finding captured per milestone
 
 ### Overall
 - Two simultaneous `/forge:go` sessions on different milestones produce separate, clean PRs
@@ -248,4 +268,5 @@ function getCurrentUser(): { name: string; email: string } {
 - STATE.md and ROADMAP.md reflect both sessions' work after completion
 - Stale session cleanup works (kill a session, run cleanup, verify worktree removed)
 - Zero new npm dependencies added
+- `.planning/prds/forge-dogfood-findings.md` exists with actionable findings
 
