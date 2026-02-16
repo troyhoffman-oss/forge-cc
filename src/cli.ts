@@ -434,7 +434,7 @@ program
 
       const result = spawnSync(
         "claude",
-        ["-p", prompt, "--dangerously-skip-permissions"],
+        [prompt, "--dangerously-skip-permissions"],
         {
           stdio: "inherit",
           cwd: projectDir,
