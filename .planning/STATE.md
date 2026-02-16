@@ -3,7 +3,7 @@
 ## Current Position
 - **Version:** 0.1.5
 - **Project:** Forge Concurrency Model
-- **Milestone:** Milestone 3 — Status Command + Cleanup UX
+- **Milestone:** All milestones complete
 - **Branch:** feat/forge-concurrency
 - **Active PRD:** `.planning/prds/forge-concurrency.md`
 - **Last Session:** 2026-02-15
@@ -13,7 +13,7 @@
 |-----------|------|--------|
 | 1 | Worktree Manager + Session Registry | Complete (2026-02-15) |
 | 2 | Skill Integration | Complete (2026-02-15) |
-| 3 | Status Command + Cleanup UX | Pending |
+| 3 | Status Command + Cleanup UX | Complete (2026-02-15) |
 
 ## Key Decisions
 - Git worktrees for automatic session isolation (not branch-based, not file-locking)
@@ -28,4 +28,4 @@
 - No Linear project for this work — local PRD only
 
 ## Next Actions
-1. Run `/forge:go` to execute Milestone 3 — Status Command + Cleanup UX
+1. Create PR for feat/forge-concurrency -> main
