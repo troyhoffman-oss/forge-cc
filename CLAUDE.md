@@ -13,6 +13,7 @@ Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, work
 | Run verification | `npx forge verify` |
 | Run specific gates | `npx forge verify --gate types,lint` |
 | Check status | `npx forge status` |
+| Clean stale sessions | `npx forge cleanup` |
 | Build | `npm run build` |
 | Test | `npm test` |
 | Type check | `npx tsc --noEmit` |
@@ -21,18 +22,20 @@ Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, work
 
 ```
 src/
-  cli.ts              # CLI entry — npx forge commands
+  cli.ts              # CLI entry — npx forge commands (verify, status, setup, update, cleanup)
   server.ts           # MCP server (stdio transport)
   types.ts            # Core types
   gates/              # Verification gates (types, lint, tests, visual, runtime, prd)
   config/             # .forge.json schema + loader
   linear/             # Linear lifecycle (client, projects, milestones, issues)
   hooks/              # Pre-commit enforcement
-  reporter/           # Output formatting (human, json)
+  reporter/           # Output formatting (human, json, sessions)
   state/              # Session state (reader, writer)
   spec/               # /forge:spec engine (scanner, interview, generator, templates)
   go/                 # /forge:go engine (executor, verify-loop, auto-chain, finalize)
   setup/              # /forge:setup templates
+  worktree/           # Git worktree manager, session registry, state merge, parallel scheduler
+  utils/              # Platform utilities (atomic writes, path normalization, shell quoting)
 skills/               # Skill files (triage, spec, go, setup, update)
 hooks/                # Installable hooks (pre-commit, version-check)
 ```
@@ -45,6 +48,10 @@ hooks/                # Installable hooks (pre-commit, version-check)
 | `.planning/ROADMAP.md` | Milestone progress tracker |
 | `tasks/lessons.md` | Lessons learned (max 10 active) |
 
+## Session Protocol
+- **On start:** Read CLAUDE.md → .planning/STATE.md → .planning/ROADMAP.md → tasks/lessons.md
+- **When lost:** Re-read planning docs, don't guess from stale context
+
 ## Session Protocol END (Mandatory)
 1. `.planning/STATE.md` — replace, don't append
 2. `.planning/ROADMAP.md` — check off completed milestones
@@ -53,14 +60,9 @@ hooks/                # Installable hooks (pre-commit, version-check)
 
 ## Execution Rules
 - **Plan before building.** Read the PRD before touching code.
-- **Delegate immediately.** 3+ files or 3+ steps → spawn agent team.
 - **Verify everything.** Run `npx tsc --noEmit` after changes land.
 - **All changes via PR.** Never commit directly to main.
 - **Branch naming:** `feat/short-description` or `fix/short-description`
-
-## Critical Rules
-- forge-cc has NO dependency on Flow — must work standalone
-- Leave code better than you found it
 
 ## Learned Rules
 - **[agent staging]** Restage all files at wave boundaries — parallel agents can disrupt each other's git index

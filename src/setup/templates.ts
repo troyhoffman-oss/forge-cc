@@ -56,6 +56,10 @@ src/
 | \`.planning/ROADMAP.md\` | Milestone progress tracker |
 | \`tasks/lessons.md\` | Lessons learned (max 10 active) |
 
+## Session Protocol
+- **On start:** Read CLAUDE.md → .planning/STATE.md → .planning/ROADMAP.md → tasks/lessons.md
+- **When lost:** Re-read planning docs, don't guess from stale context
+
 ## Session Protocol END (Mandatory)
 1. \`.planning/STATE.md\` — replace, don't append
 2. \`.planning/ROADMAP.md\` — check off completed milestones
@@ -64,7 +68,6 @@ src/
 
 ## Execution Rules
 - **Plan before building.** Read the PRD before touching code.
-- **Delegate immediately.** 3+ files or 3+ steps → spawn agent team.
 - **Verify everything.** Run \`npx forge verify\` after changes land.
 - **All changes via PR.** Never commit directly to main.
 - **Branch naming:** \`feat/short-description\` or \`fix/short-description\`
@@ -129,46 +132,18 @@ export function lessonsMdTemplate(ctx: SetupContext): string {
 export function globalClaudeMdTemplate(): string {
   return `# Global Claude Code Instructions
 
-## Autonomous Execution Mode
-
-- **Default to action.** Plan internally, execute immediately, verify results.
+## How to Work
+- **Follow instructions exactly.** Skills, CLAUDE.md rules, and workflow steps are tested — execute every step as written, including all AskUserQuestion prompts.
+- **Default to action.** Don't ask for confirmation. Plan internally, execute, verify.
+- **Iterate on failure.** Fix what breaks. Only stop to ask when truly blocked on missing credentials, ambiguous business requirements, or destructive actions on shared infrastructure.
 - **Use agent teams** for non-trivial work (3+ files or 3+ steps).
-- **Don't ask questions** unless truly blocked on: missing credentials, ambiguous business logic, or destructive actions on shared infrastructure. **Exception:** Always honor AskUserQuestion prompts defined in skills — those are workflow inputs, not questions.
-- **Make mistakes and iterate.** If something breaks, fix it.
-- **Summarize after completion**, not during.
 
-## Session Protocol
+## Verification
+- Never mark complete without proving it works.
+- Build and tests must pass. Run them.
 
-Fresh context per phase. Memory lives in the repo, not the conversation.
-
-- **On start:** Read CLAUDE.md → STATE.md → ROADMAP.md → lessons files
-- **On finish (MANDATORY — work is not done without these):**
-  1. Update \`.planning/STATE.md\` — replace, don't append, <80 lines
-  2. Update \`.planning/ROADMAP.md\` — check off completed items
-  3. Update \`tasks/lessons.md\` — max 10 one-liners, promote to CLAUDE.md Learned Rules when full (max 15)
-  4. Commit and push doc updates on the feature branch
-  5. Write handoff summary
-- **Fresh sessions preferred** over long sessions with context bloat
-- **When lost:** Re-read planning docs rather than guessing from stale context
-
-## Verification (Mandatory)
-
-- Never mark a task complete without proving it works
-- Build must pass. Tests must pass. No exceptions.
-- Run tests, check logs, demonstrate correctness
-- If verification fails, fix it and re-verify
-
-## Lessons System
-
-- **\`tasks/lessons.md\`**: max 10 active one-liners
-- **\`CLAUDE.md ## Learned Rules\`**: max 15 permanent one-liners (promoted from lessons.md)
-- **When to write:** After any correction, and when agents hit issues
-
-## Core Principles
-
-- **Simplicity First:** Make every change as simple as possible.
-- **No Laziness:** Find root causes. No temporary fixes.
-- **Minimal Impact:** Changes should only touch what's necessary.
+## Principles
+- Simple changes only. Find root causes. Touch only what's necessary.
 `;
 }
 

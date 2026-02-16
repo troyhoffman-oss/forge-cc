@@ -10,8 +10,9 @@ export interface HookResult {
 
 export function checkPreCommit(projectDir: string): HookResult {
   // Wrong branch protection
+  let branch = "unknown";
   try {
-    const branch = execSync("git branch --show-current", {
+    branch = execSync("git branch --show-current", {
       cwd: projectDir,
       encoding: "utf-8",
     }).trim();
@@ -25,8 +26,13 @@ export function checkPreCommit(projectDir: string): HookResult {
     // Can't determine branch — allow
   }
 
-  // Check verify cache
-  const cachePath = join(projectDir, ".forge", "last-verify.json");
+  // Check verify cache — per-branch first, fall back to legacy path
+  const slug = branch.replace(/\//g, "-").toLowerCase();
+  const perBranchCachePath = join(projectDir, ".forge", "verify-cache", `${slug}.json`);
+  const legacyCachePath = join(projectDir, ".forge", "last-verify.json");
+  const cachePath = existsSync(perBranchCachePath)
+    ? perBranchCachePath
+    : legacyCachePath;
   if (!existsSync(cachePath)) {
     return {
       allowed: false,

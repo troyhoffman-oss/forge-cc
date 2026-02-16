@@ -11,6 +11,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { join } from "node:path";
 import {
   readStateFile,
@@ -23,13 +24,22 @@ import {
   updateMilestoneProgress,
   commitMilestoneWork,
 } from "../state/writer.js";
-import type {
-  CommitOptions,
-  CommitResult,
-  MilestoneUpdateOptions,
-} from "../state/writer.js";
+import type { CommitResult } from "../state/writer.js";
 import { buildMilestoneContext } from "./executor.js";
 import type { ForgeConfig } from "../types.js";
+import {
+  createWorktree,
+  removeWorktree,
+  getRepoRoot,
+} from "../worktree/manager.js";
+import {
+  registerSession,
+  deregisterSession,
+  updateSessionStatus,
+} from "../worktree/session.js";
+import { getCurrentUser } from "../worktree/identity.js";
+import { buildScheduleFromPRD } from "../worktree/parallel.js";
+import type { SchedulerResult } from "../worktree/parallel.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +56,8 @@ export interface AutoChainOptions {
   activePrd: string;
   /** Developer name for session memory */
   developer: string;
+  /** Repository root (for worktree operations). Defaults to projectDir. */
+  repoRoot?: string;
   /** If not provided, detect from STATE.md */
   startMilestone?: number;
   /** Called when a milestone begins execution */
@@ -67,6 +79,8 @@ export interface MilestoneResult {
   isLast: boolean;
   /** Fresh-context prompt for spawning this milestone's agent */
   freshPrompt: string;
+  /** Path to the worktree used for execution */
+  worktreePath?: string;
   errors: string[];
 }
 
@@ -230,9 +244,15 @@ export async function findNextPendingMilestone(
  *
  * For each pending milestone:
  * 1. Determines the starting milestone (from options or STATE.md/ROADMAP.md)
- * 2. Builds a fresh-context prompt for the milestone agent
- * 3. Calls the milestone context builder for structured data
- * 4. Returns results so the calling skill can spawn agents and drive execution
+ * 2. Creates a git worktree for isolated execution
+ * 3. Registers a session in the session registry
+ * 4. Builds a fresh-context prompt for the milestone agent
+ * 5. Calls the milestone context builder for structured data
+ * 6. Returns results so the calling skill can spawn agents and drive execution
+ * 7. On completion or failure, deregisters the session and cleans up the worktree
+ *
+ * The worktree is created ONCE per /forge:go session, not per milestone.
+ * All milestones in the chain execute in the same worktree.
  *
  * The chain stops on the first milestone failure, or when all milestones
  * are complete. The caller is responsible for actually executing each
@@ -277,95 +297,141 @@ export async function runAutoChain(
     currentMilestoneNumber = nextPending.number;
   }
 
-  // Loop through milestones until we run out or hit a failure
-  while (true) {
-    // Build fresh-context prompt for this milestone
-    const freshPrompt = await buildFreshSessionPrompt(
-      projectDir,
-      prdPath,
-      currentMilestoneNumber,
-    );
+  // --- Worktree lifecycle: create once for the entire chain ---
+  const repoRoot = options.repoRoot ?? getRepoRoot(projectDir);
+  const user = getCurrentUser(projectDir);
+  const slug = `${project}-m${currentMilestoneNumber}`;
 
-    // Build structured context (validates milestone exists in PRD)
-    let context;
-    try {
-      context = await buildMilestoneContext({
+  const worktreeResult = createWorktree(repoRoot, slug, user.name, {
+    baseBranch: branch,
+  });
+  const { worktreePath, branch: worktreeBranch } = worktreeResult;
+
+  const session = registerSession(repoRoot, {
+    user,
+    skill: "go",
+    milestone: `M${currentMilestoneNumber}`,
+    branch: worktreeBranch,
+    worktreePath,
+  });
+
+  // Use worktree path as the effective project directory for code execution.
+  // CLAUDE.md and STATE.md are read from the main projectDir (see buildFreshSessionPrompt),
+  // but PRD files and milestone context come from the worktree.
+  const effectiveProjectDir = worktreePath;
+
+  try {
+    // Loop through milestones until we run out or hit a failure
+    while (true) {
+      // Update session milestone tracking
+      updateSessionStatus(repoRoot, session.id, "active");
+
+      // Build fresh-context prompt: CLAUDE.md/STATE.md from main project,
+      // PRD path resolved relative to the worktree
+      const effectivePrdPath = join(effectiveProjectDir, prdPath);
+      const freshPrompt = await buildFreshSessionPrompt(
         projectDir,
-        prdPath,
+        effectivePrdPath,
+        currentMilestoneNumber,
+      );
+
+      // Build structured context from the worktree (validates milestone exists in PRD)
+      let context;
+      try {
+        context = await buildMilestoneContext({
+          projectDir: effectiveProjectDir,
+          prdPath,
+          milestoneNumber: currentMilestoneNumber,
+          config,
+        });
+        // Attach worktree path to context
+        context.worktreePath = worktreePath;
+      } catch (err) {
+        // Milestone not found in PRD — chain cannot continue
+        const errorMessage =
+          err instanceof Error ? err.message : String(err);
+        const failResult: MilestoneResult = {
+          milestoneNumber: currentMilestoneNumber,
+          milestoneName: "Unknown",
+          success: false,
+          isLast: false,
+          freshPrompt,
+          worktreePath,
+          errors: [errorMessage],
+        };
+
+        completed.push(failResult);
+        onMilestoneComplete?.(currentMilestoneNumber, failResult);
+
+        const chainResult: AutoChainResult = {
+          completed,
+          stopped: true,
+          stoppedAt: currentMilestoneNumber,
+          allComplete: false,
+        };
+        onChainComplete?.(completed);
+        return chainResult;
+      }
+
+      // Notify: milestone starting
+      onMilestoneStart?.(currentMilestoneNumber, context.milestoneName);
+
+      // Build the milestone result with the fresh prompt.
+      // The caller uses `freshPrompt` to spawn an agent, then calls
+      // `completeMilestone()` after the agent finishes.
+      const milestoneResult: MilestoneResult = {
         milestoneNumber: currentMilestoneNumber,
-        config,
-      });
-    } catch (err) {
-      // Milestone not found in PRD — chain cannot continue
-      const errorMessage =
-        err instanceof Error ? err.message : String(err);
-      const failResult: MilestoneResult = {
-        milestoneNumber: currentMilestoneNumber,
-        milestoneName: "Unknown",
-        success: false,
-        isLast: false,
+        milestoneName: context.milestoneName,
+        success: true, // Optimistic; caller updates via completeMilestone
+        isLast: await isLastMilestone(effectiveProjectDir, currentMilestoneNumber),
         freshPrompt,
-        errors: [errorMessage],
+        worktreePath,
+        errors: [],
       };
 
-      completed.push(failResult);
-      onMilestoneComplete?.(currentMilestoneNumber, failResult);
+      completed.push(milestoneResult);
 
-      const chainResult: AutoChainResult = {
-        completed,
-        stopped: true,
-        stoppedAt: currentMilestoneNumber,
-        allComplete: false,
-      };
-      onChainComplete?.(completed);
-      return chainResult;
+      // Notify: milestone complete (caller will drive actual execution)
+      onMilestoneComplete?.(currentMilestoneNumber, milestoneResult);
+
+      // If this was the last milestone, we're done
+      if (milestoneResult.isLast) {
+        const chainResult: AutoChainResult = {
+          completed,
+          stopped: false,
+          allComplete: true,
+        };
+        onChainComplete?.(completed);
+        return chainResult;
+      }
+
+      // Find the next pending milestone
+      const nextPending = await findNextPendingMilestone(effectiveProjectDir);
+      if (!nextPending) {
+        // All milestones are complete
+        const chainResult: AutoChainResult = {
+          completed,
+          stopped: false,
+          allComplete: true,
+        };
+        onChainComplete?.(completed);
+        return chainResult;
+      }
+
+      currentMilestoneNumber = nextPending.number;
     }
-
-    // Notify: milestone starting
-    onMilestoneStart?.(currentMilestoneNumber, context.milestoneName);
-
-    // Build the milestone result with the fresh prompt.
-    // The caller uses `freshPrompt` to spawn an agent, then calls
-    // `completeMilestone()` after the agent finishes.
-    const milestoneResult: MilestoneResult = {
-      milestoneNumber: currentMilestoneNumber,
-      milestoneName: context.milestoneName,
-      success: true, // Optimistic; caller updates via completeMilestone
-      isLast: await isLastMilestone(projectDir, currentMilestoneNumber),
-      freshPrompt,
-      errors: [],
-    };
-
-    completed.push(milestoneResult);
-
-    // Notify: milestone complete (caller will drive actual execution)
-    onMilestoneComplete?.(currentMilestoneNumber, milestoneResult);
-
-    // If this was the last milestone, we're done
-    if (milestoneResult.isLast) {
-      const chainResult: AutoChainResult = {
-        completed,
-        stopped: false,
-        allComplete: true,
-      };
-      onChainComplete?.(completed);
-      return chainResult;
+  } finally {
+    // --- Worktree cleanup: always runs, even on error ---
+    try {
+      deregisterSession(repoRoot, session.id);
+    } catch {
+      // Non-fatal: best-effort deregistration
     }
-
-    // Find the next pending milestone
-    const nextPending = await findNextPendingMilestone(projectDir);
-    if (!nextPending) {
-      // All milestones are complete
-      const chainResult: AutoChainResult = {
-        completed,
-        stopped: false,
-        allComplete: true,
-      };
-      onChainComplete?.(completed);
-      return chainResult;
+    try {
+      removeWorktree(repoRoot, worktreePath);
+    } catch {
+      // Non-fatal: best-effort cleanup
     }
-
-    currentMilestoneNumber = nextPending.number;
   }
 }
 
@@ -378,8 +444,9 @@ export async function runAutoChain(
  *
  * Handles:
  * 1. Updating milestone progress in STATE.md and ROADMAP.md
- * 2. Committing milestone work to git
- * 3. Returning the commit SHA for the milestone result
+ * 2. Committing milestone work to git (in the worktree if one was used)
+ * 3. Merging worktree branch into the feature branch (if worktree was used)
+ * 4. Returning the commit SHA for the milestone result
  *
  * The caller should update the MilestoneResult with the returned commit info.
  */
@@ -393,6 +460,10 @@ export async function completeMilestone(options: {
   developer: string;
   filesToStage: string[];
   push?: boolean;
+  /** Path to the worktree used for execution. If set, commit happens in the worktree. */
+  worktreePath?: string;
+  /** Repository root, required when worktreePath is provided (for merge operations). */
+  repoRoot?: string;
 }): Promise<{ commitResult: CommitResult; isLast: boolean }> {
   const {
     projectDir,
@@ -404,13 +475,19 @@ export async function completeMilestone(options: {
     developer,
     filesToStage,
     push,
+    worktreePath,
+    repoRoot,
   } = options;
 
+  // The effective directory for state doc updates and commits:
+  // if a worktree was used, commit there; otherwise use projectDir
+  const commitDir = worktreePath ?? projectDir;
+
   // Check if this is the last milestone
-  const last = await isLastMilestone(projectDir, milestoneNumber);
+  const last = await isLastMilestone(commitDir, milestoneNumber);
 
   // Find next milestone for state docs
-  const roadmap = await readRoadmapProgress(projectDir);
+  const roadmap = await readRoadmapProgress(commitDir);
   const milestoneTable = roadmap?.milestones.map((m) => ({
     number: m.number,
     name: m.name,
@@ -437,7 +514,7 @@ export async function completeMilestone(options: {
 
   // Update state docs (STATE.md, ROADMAP.md, session memory)
   await updateMilestoneProgress({
-    projectDir,
+    projectDir: commitDir,
     project,
     milestoneNumber,
     milestoneName,
@@ -448,15 +525,106 @@ export async function completeMilestone(options: {
     milestoneTable,
   });
 
-  // Commit milestone work
+  // Commit milestone work (in the worktree if one was used)
   const commitResult = commitMilestoneWork({
-    projectDir,
+    projectDir: commitDir,
     milestoneNumber,
     milestoneName,
     filesToStage,
-    push,
+    push: false, // Don't push from worktree; push happens after merge
     branch,
   });
 
+  // If a worktree was used, merge the worktree branch into the feature branch
+  if (worktreePath && repoRoot) {
+    const worktreeBranch = execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    }).trim();
+
+    mergeWorktreeBranch(repoRoot, worktreeBranch, branch);
+
+    // Optionally push the feature branch after merge
+    if (push) {
+      try {
+        execSync(`git push origin ${branch}`, {
+          cwd: repoRoot,
+          stdio: "pipe",
+          encoding: "utf-8",
+        });
+      } catch {
+        // Non-fatal: push failure doesn't invalidate the milestone
+      }
+    }
+  } else if (push) {
+    // No worktree — push directly from projectDir (original behavior)
+    try {
+      execSync(`git push origin ${branch}`, {
+        cwd: projectDir,
+        stdio: "pipe",
+        encoding: "utf-8",
+      });
+    } catch {
+      // Non-fatal
+    }
+  }
+
   return { commitResult, isLast: last };
+}
+
+// ---------------------------------------------------------------------------
+// mergeWorktreeBranch — brings worktree commits into the feature branch
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge worktree branch commits into the target branch.
+ * Used after milestone completion to bring worktree work back to the feature branch.
+ *
+ * Checks out the target branch in the main repo, merges the worktree branch,
+ * then returns. The caller is responsible for pushing if desired.
+ */
+function mergeWorktreeBranch(
+  repoRoot: string,
+  worktreeBranch: string,
+  targetBranch: string,
+): void {
+  // Ensure we're on the target branch in the main repo
+  execSync(`git checkout ${targetBranch}`, {
+    cwd: repoRoot,
+    stdio: "pipe",
+    encoding: "utf-8",
+  });
+
+  // Merge the worktree branch into the target branch
+  execSync(`git merge ${worktreeBranch} --no-edit`, {
+    cwd: repoRoot,
+    stdio: "pipe",
+    encoding: "utf-8",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// buildParallelPlan — parallel execution planner
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a parallel execution plan for all milestones in a PRD.
+ *
+ * Parses the PRD markdown for milestone definitions and `dependsOn` fields,
+ * builds a dependency DAG, and computes parallel execution waves showing
+ * which milestones can run simultaneously.
+ *
+ * If no `dependsOn` fields are found in the PRD, all milestones are treated
+ * as roots (no dependencies) and placed in a single wave. This is backward
+ * compatible — the caller can process them sequentially by milestone number.
+ *
+ * @param prdPath - Absolute path to the PRD markdown file
+ * @returns The wave schedule showing which milestones can run simultaneously
+ * @throws If a dependency cycle is detected or a referenced dependency doesn't exist
+ */
+export async function buildParallelPlan(
+  prdPath: string,
+): Promise<SchedulerResult> {
+  return buildScheduleFromPRD(prdPath);
 }

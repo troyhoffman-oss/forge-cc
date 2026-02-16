@@ -8,7 +8,7 @@ Pre-PR verification harness and development workflow tool for Claude Code agents
 
 - **Verification gates** -- runs TypeScript type-checking, linting, tests, visual screenshots, runtime endpoint validation, and PRD acceptance criteria checks against your project before you commit.
 - **Mechanical enforcement** -- Claude Code PreToolUse hook and git pre-commit hook block commits that haven't passed verification. No discipline required; the machine enforces it.
-- **Workflow skills** -- `/forge:triage` turns brain dumps into Linear projects, `/forge:spec` interviews you and generates a PRD with milestones, `/forge:go` executes milestones with wave-based agent teams.
+- **Workflow skills** -- `/forge:triage` turns brain dumps into Linear projects, `/forge:spec` interviews you and generates a PRD with milestones, `/forge:go` executes milestones with wave-based agent teams, `/forge:setup` scaffolds new projects, `/forge:update` keeps forge-cc current.
 - **Linear lifecycle** -- programmatic status transitions through Backlog, Planned, In Progress, In Review, and Done. Every skill keeps Linear in sync automatically.
 
 ## Quick Start
@@ -93,13 +93,23 @@ Results are cached to `.forge/last-verify.json` for freshness checking by hooks.
 
 ### `forge status`
 
-Print current project state: branch, last verification result, config source.
+Print current project state: branch, last verification result, config source, and active sessions.
 
 ```bash
 npx forge status
 ```
 
-Output includes which gates passed/failed, how long ago verification ran, and whether config is from `.forge.json` or auto-detected.
+Output includes which gates passed/failed, how long ago verification ran, config source, and a table of active forge sessions (if any) showing user, skill, milestone, branch, duration, and worktree path. Stale sessions are flagged with a warning symbol.
+
+### `forge cleanup`
+
+Remove stale worktrees, deregister dead sessions, and reclaim disk space. Idempotent — safe to run multiple times.
+
+```bash
+npx forge cleanup
+```
+
+Output shows which stale sessions were removed and their worktree paths. If no stale sessions exist, prints a clean message.
 
 ## Verification Gates
 
@@ -148,6 +158,32 @@ Add to your `.claude/settings.json`:
   }
 }
 ```
+
+### Version Check Hook
+
+Optional session hook that checks for forge-cc updates when Claude Code starts a task. Prints a one-line notice to stderr if a newer version is available. Never blocks execution.
+
+Add to `.claude/settings.local.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node node_modules/forge-cc/hooks/version-check.js"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`/forge:setup` installs this hook automatically.
 
 ### Git Pre-Commit Hook
 
@@ -208,6 +244,18 @@ Execute the next pending milestone from your PRD with wave-based agent teams. Ea
 
 **Flow:** Orient (read state) -> pre-flight checks -> execute waves -> verify -> update state -> (optional) create PR.
 
+### `/forge:setup` -- Initialize or Refresh a Project
+
+Bootstrap a new project with forge-cc scaffolding (`.forge.json`, `CLAUDE.md`, planning docs, hooks), or refresh an existing project's files to the latest templates while preserving your learned rules and lessons.
+
+**Flow:** Detect project -> choose mode (Fresh/Refresh) -> configure gates -> create files -> patch global config -> install hooks -> summary.
+
+### `/forge:update` -- Update Forge
+
+Check for newer versions of forge-cc and install the latest. After updating, suggests running `/forge:setup` in Refresh mode to pick up new templates.
+
+**Flow:** Check versions -> compare -> update via npm -> post-update check.
+
 ## Linear Integration
 
 forge-cc manages the full Linear project lifecycle:
@@ -226,12 +274,47 @@ For a new developer joining the team:
 
 1. **Clone the repo** that uses forge-cc.
 2. **Install dependencies:** `npm install` (forge-cc should be in `devDependencies`).
-3. **Run verification:** `npx forge verify` -- confirms your environment is set up correctly.
-4. **Check status:** `npx forge status` -- shows current branch and last verification.
-5. **Install the hook** (optional but recommended): add the PreToolUse hook to `.claude/settings.json` (see Enforcement section above).
-6. **Create a `.forge.json`** if the auto-detected gates don't match your needs.
+3. **Run `/forge:setup`** -- scaffolds `.forge.json`, `CLAUDE.md`, planning docs, and installs hooks automatically. Or set up manually:
+   - `npx forge verify` to confirm your environment.
+   - Add the PreToolUse hook to `.claude/settings.json` (see Enforcement section).
+   - Create `.forge.json` if auto-detected gates don't match.
 
-That's it. The gates run the same commands your CI does, so if `npx forge verify` passes locally, CI will pass too.
+The gates run the same commands your CI does, so if `npx forge verify` passes locally, CI will pass too.
+
+## Concurrency & Session Isolation
+
+forge-cc supports multiple simultaneous sessions on the same repository using git worktrees. Each `/forge:go` or `/forge:spec` invocation runs in an isolated worktree — separate git index, separate working directory, separate state files.
+
+### How It Works
+
+1. **Worktree creation:** When a forge skill starts, it creates a git worktree in `../.forge-wt/<repo>/<session-id>/` with its own branch.
+2. **Session registry:** Active sessions are tracked in `.forge/sessions.json` with user identity, skill type, milestone, PID, and timestamps.
+3. **Isolation:** Each session has its own git index and file system. Two sessions staging files simultaneously cannot corrupt each other.
+4. **State merge:** On completion, session state (STATE.md, ROADMAP.md updates) merges back to the main repo intelligently — not last-write-wins.
+5. **Cleanup:** Successful sessions auto-cleanup. Crashed sessions are detected via PID and cleaned up with `npx forge cleanup`.
+
+### Session Visibility
+
+```bash
+# See all active sessions
+npx forge status
+
+# Clean up stale sessions (process died, worktree left behind)
+npx forge cleanup
+```
+
+### Parallel Milestones
+
+Milestones can declare dependencies using the `dependsOn` field in the PRD. Independent milestones can execute in parallel, each in their own worktree:
+
+- Milestones with no unmet dependencies start simultaneously
+- When a dependency completes, dependent milestones become unblocked
+- Each milestone produces its own branch and PR
+
+### Platform Notes
+
+- **Windows:** Short session IDs (8-char hex) avoid the 260-character path limit. Atomic writes use retry-on-rename for Windows file locking.
+- **Git version:** Requires git 2.5+ (2015) for worktree support.
 
 ## Project Structure
 
@@ -249,8 +332,11 @@ forge-cc/
     state/              # Session state reader/writer (STATE.md, ROADMAP.md)
     spec/               # Spec interview engine + PRD generation
     go/                 # Execution engine + verify loop + PR creation
-  skills/               # Claude Code skill definitions (/forge:triage, /forge:spec, /forge:go)
-  hooks/                # Installable hook files (PreToolUse)
+    setup/              # Setup templates for project scaffolding
+    worktree/           # Git worktree manager, session registry, state merge, parallel scheduler
+    utils/              # Platform utilities (atomic writes, path normalization)
+  skills/               # Claude Code skill definitions
+  hooks/                # Installable hook files (PreToolUse, version-check)
   tests/                # Test suite (vitest)
   .forge.json           # Default configuration
 ```

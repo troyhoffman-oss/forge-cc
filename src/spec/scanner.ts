@@ -1,5 +1,10 @@
 import { readdir, readFile, stat } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { join, relative, extname, basename } from "node:path";
+import { createWorktree, removeWorktree, getRepoRoot } from "../worktree/manager.js";
+import { registerSession, deregisterSession, updateSessionStatus } from "../worktree/session.js";
+import { getCurrentUser } from "../worktree/identity.js";
+import type { UserIdentity } from "../worktree/identity.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -561,4 +566,130 @@ export async function scanAll(projectDir: string): Promise<ScanAllResult> {
   ]);
 
   return { structure, routes, dataAPIs };
+}
+
+// ── Worktree-Aware Spec Session ───────────────────────────────────────────
+
+export interface SpecSessionOptions {
+  /** Main project directory to scan. */
+  projectDir: string;
+  /** Git repo root (defaults to detected from projectDir). */
+  repoRoot?: string;
+  /** User name for worktree branch naming (defaults to git config). */
+  userName?: string;
+  /** Project slug for worktree naming (e.g. "my-feature"). */
+  slug?: string;
+}
+
+export interface SpecSession {
+  sessionId: string;
+  worktreePath: string;
+  worktreeBranch: string;
+  scanResult: ScanAllResult;
+}
+
+/**
+ * Start a spec session: create worktree, register session, scan project.
+ *
+ * The caller should use `worktreePath` to write PRD files (via
+ * `writePRDToWorktree`), then call `completeSpecSession` when done.
+ * The scan runs against `projectDir` (the real codebase), not the worktree.
+ */
+export async function startSpecSession(
+  options: SpecSessionOptions,
+): Promise<SpecSession> {
+  const repoRoot = options.repoRoot ?? getRepoRoot(options.projectDir);
+  const user: UserIdentity = getCurrentUser(repoRoot);
+  const userName = options.userName ?? user.name;
+  const slug = options.slug ?? "spec";
+  const branchName = `forge/${userName}/spec-${slug}`;
+
+  // 1. Create a worktree for isolation
+  const wt = createWorktree(repoRoot, `spec-${slug}`, userName, {
+    branchName,
+  });
+
+  // 2. Register the session
+  const session = registerSession(repoRoot, {
+    user,
+    skill: "spec",
+    branch: wt.branch,
+    worktreePath: wt.worktreePath,
+  });
+
+  // 3. Scan the main project directory (not the worktree)
+  let scanResult: ScanAllResult;
+  try {
+    scanResult = await scanAll(options.projectDir);
+  } catch (err) {
+    // Cleanup on scan failure
+    deregisterSession(repoRoot, session.id);
+    removeWorktree(repoRoot, wt.worktreePath);
+    throw err;
+  }
+
+  return {
+    sessionId: session.id,
+    worktreePath: wt.worktreePath,
+    worktreeBranch: wt.branch,
+    scanResult,
+  };
+}
+
+/**
+ * Complete a spec session: commit PRD files in the worktree, merge the
+ * worktree branch into `targetBranch`, deregister session, and remove
+ * the worktree.
+ *
+ * @param repoRoot - The main repo root directory.
+ * @param session  - The spec session returned by `startSpecSession`.
+ * @param targetBranch - The branch to merge the PRD files into.
+ */
+export function completeSpecSession(
+  repoRoot: string,
+  session: SpecSession,
+  targetBranch: string,
+): void {
+  try {
+    // Mark session as completing
+    updateSessionStatus(repoRoot, session.sessionId, "completing");
+
+    // 1. Stage and commit all new/changed files in the worktree
+    try {
+      execSync("git add -A", {
+        cwd: session.worktreePath,
+        encoding: "utf-8",
+        stdio: "pipe",
+      });
+      execSync('git commit -m "spec: add PRD from spec session"', {
+        cwd: session.worktreePath,
+        encoding: "utf-8",
+        stdio: "pipe",
+      });
+    } catch {
+      // No changes to commit — that's fine, the worktree may be empty
+    }
+
+    // 2. Checkout the target branch, then merge the worktree branch into it
+    execSync(
+      `git checkout ${targetBranch}`,
+      {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        stdio: "pipe",
+      },
+    );
+    execSync(
+      `git merge --no-edit ${session.worktreeBranch}`,
+      {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        stdio: "pipe",
+      },
+    );
+  } finally {
+    // 3. Always clean up: deregister + remove worktree
+    deregisterSession(repoRoot, session.sessionId);
+    removeWorktree(repoRoot, session.worktreePath);
+  }
 }

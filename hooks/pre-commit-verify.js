@@ -35,8 +35,9 @@ function checkPreCommit(hookData) {
   const projectDir = process.cwd();
 
   // Check 1: Wrong branch protection
+  let branch = "unknown";
   try {
-    const branch = execSync("git branch --show-current", {
+    branch = execSync("git branch --show-current", {
       encoding: "utf-8",
     }).trim();
     if (branch === "main" || branch === "master") {
@@ -49,8 +50,13 @@ function checkPreCommit(hookData) {
     // Can't determine branch — allow
   }
 
-  // Check 2: Verify cache exists
-  const cachePath = join(projectDir, ".forge", "last-verify.json");
+  // Check 2: Verify cache exists — per-branch first, fall back to legacy path
+  const slug = branch.replace(/\//g, "-").toLowerCase();
+  const perBranchCachePath = join(projectDir, ".forge", "verify-cache", `${slug}.json`);
+  const legacyCachePath = join(projectDir, ".forge", "last-verify.json");
+  const cachePath = existsSync(perBranchCachePath)
+    ? perBranchCachePath
+    : legacyCachePath;
   if (!existsSync(cachePath)) {
     return {
       decision: "block",

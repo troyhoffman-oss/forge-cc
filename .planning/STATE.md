@@ -1,18 +1,19 @@
 # forge-cc — Project State
 
 ## Current Position
+- **Version:** 0.1.5
 - **Project:** Forge Concurrency Model
-- **Milestone:** Not started (PRD approved)
-- **Branch:** feat/forge-concurrency (not yet created)
+- **Milestone:** All milestones complete
+- **Branch:** feat/forge-concurrency
 - **Active PRD:** `.planning/prds/forge-concurrency.md`
 - **Last Session:** 2026-02-15
 
 ## Milestone Progress
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Worktree Manager + Session Registry | Pending |
-| 2 | Skill Integration | Pending |
-| 3 | Status Command + Cleanup UX | Pending |
+| 1 | Worktree Manager + Session Registry | Complete (2026-02-15) |
+| 2 | Skill Integration | Complete (2026-02-15) |
+| 3 | Status Command + Cleanup UX | Complete (2026-02-15) |
 
 ## Key Decisions
 - Git worktrees for automatic session isolation (not branch-based, not file-locking)
@@ -25,9 +26,6 @@
 - Windows-safe platform utils (atomic writes with retry, path normalization)
 - Parallel milestone execution via `dependsOn` field + DAG scheduler
 - No Linear project for this work — local PRD only
-- M1 Wave 0 enforces spec system rules (AskUserQuestion, milestone sizing)
-- Dogfooding: every session records friction/findings
 
 ## Next Actions
-1. Create branch `feat/forge-concurrency`
-2. Run `/forge:go` to execute Milestone 1
+1. Create PR for feat/forge-concurrency -> main
