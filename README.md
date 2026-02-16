@@ -1,37 +1,171 @@
+<p align="center">
+  <img src="https://img.shields.io/npm/v/forge-cc?style=flat-square&color=0969da" alt="npm version" />
+  <img src="https://img.shields.io/npm/l/forge-cc?style=flat-square&color=22863a" alt="license" />
+  <img src="https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square&logo=node.js&logoColor=white" alt="node version" />
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="typescript strict" />
+  <img src="https://img.shields.io/badge/Claude_Code-ready-7c3aed?style=flat-square" alt="Claude Code ready" />
+</p>
+
 # forge-cc
 
-Pre-PR verification harness and development workflow tool for Claude Code agents. Gate runner + CLI + MCP server + workflow skills.
+**The development workflow engine for Claude Code agents.**
 
-<!-- Badges: npm version, CI status, license -->
+forge-cc gives AI coding agents the same guardrails a senior engineering team enforces: type safety, linting, test coverage, visual regression, PRD compliance, and code review -- all verified automatically before code ever hits a PR. Combined with workflow skills that manage the entire lifecycle from idea to merged code, forge-cc turns Claude Code into a self-verifying, project-aware development partner.
 
-## What It Does
+---
 
-- **Verification gates** -- runs TypeScript type-checking, linting, tests, visual screenshots, runtime endpoint validation, and PRD acceptance criteria checks against your project before you commit.
-- **Mechanical enforcement** -- Claude Code PreToolUse hook and git pre-commit hook block commits that haven't passed verification. No discipline required; the machine enforces it.
-- **Workflow skills** -- `/forge:triage` turns brain dumps into Linear projects, `/forge:spec` interviews you and generates a PRD with milestones, `/forge:go` executes milestones with wave-based agent teams, `/forge:setup` scaffolds new projects, `/forge:update` keeps forge-cc current.
-- **Linear lifecycle** -- programmatic status transitions through Backlog, Planned, In Progress, In Review, and Done. Every skill keeps Linear in sync automatically.
+## Why forge-cc?
+
+AI coding agents write code fast, but speed without quality gates means you spend more time reviewing than you save. forge-cc solves this by:
+
+- **Catching errors before commit** -- TypeScript, linting, tests, visual regressions, and PRD compliance checks run automatically, so agents self-correct before you see the code.
+- **Enforcing standards mechanically** -- Pre-commit hooks and Claude Code hooks block unverified commits. No discipline required; the machine enforces it.
+- **Managing the full lifecycle** -- From triaging ideas into Linear to generating PRDs to executing milestones with parallel agent teams, forge-cc handles the project management plumbing so you focus on decisions.
+- **Isolating concurrent work** -- Multiple agents can work on different milestones simultaneously using git worktrees with automatic state merging.
+
+---
 
 ## Quick Start
 
 ```bash
-# Install
-npm install forge-cc
+# Install globally
+npm install -g forge-cc
 
-# Run verification against current project
+# Or as a dev dependency in your project
+npm install --save-dev forge-cc
+
+# Initialize your project
+npx forge setup
+
+# Run verification
 npx forge verify
 
-# Check last verification status
+# Check status
 npx forge status
 ```
 
 On first run with no `.forge.json`, forge auto-detects gates from your `package.json`:
-- Has `typescript` in dependencies? Enables the **types** gate.
-- Has `@biomejs/biome` or `biome` in dependencies? Enables the **lint** gate.
-- Has a `test` script? Enables the **tests** gate.
+
+| Detected | Gate Enabled |
+|----------|-------------|
+| `typescript` in dependencies | **types** -- `tsc --noEmit` |
+| `@biomejs/biome` in dependencies | **lint** -- `biome check` |
+| `test` script in package.json | **tests** -- `npm test` |
+
+---
+
+## Workflow Overview
+
+forge-cc manages the complete development lifecycle through five workflow skills. Here's how a typical project flows from idea to merged PR:
+
+```
+  Brain dump           PRD with              Code built &          Merged
+  or idea              milestones            verified              to main
+     |                    |                     |                    |
+     v                    v                     v                    v
+/forge:triage  -->  /forge:spec  -->  /forge:go  -->  PR Review  -->  Done
+     |                    |                     |
+     v                    v                     v
+  Linear projects     Codebase scan         Wave-based agent
+  created in          + interview +         teams execute each
+  Backlog             PRD generation        milestone with
+                      + Linear sync         verification gates
+```
+
+### Step 1: Triage Ideas (`/forge:triage`)
+
+Paste unstructured notes, feature requests, or brainstorms. The skill extracts distinct projects, deduplicates against your existing Linear backlog, and creates them after your confirmation.
+
+```
+You: /forge:triage
+     "We need auth, a dashboard with charts, and email notifications.
+      Also the onboarding flow is broken on mobile."
+
+Forge: Extracted 4 projects:
+       1. User Authentication System
+       2. Analytics Dashboard
+       3. Email Notification Service
+       4. Mobile Onboarding Fix
+       Creating in Linear...
+```
+
+### Step 2: Spec & Plan (`/forge:spec`)
+
+Select a project from your Linear backlog. Forge scans your codebase (structure, patterns, dependencies), conducts an adaptive interview (leading with recommendations, not blank-slate questions), then generates a PRD with milestones and syncs everything back to Linear.
+
+```
+You: /forge:spec
+
+Forge: Scanning codebase... found Next.js + Prisma + tRPC
+       Based on your stack, I recommend:
+       - Milestone 1: Database schema + auth provider
+       - Milestone 2: Login/signup UI components
+       - Milestone 3: Session management + middleware
+       [Interview continues with focused questions...]
+       PRD generated -> Milestones created in Linear
+```
+
+### Step 3: Execute (`/forge:go`)
+
+Executes milestones using wave-based agent teams. Each wave runs parallel agents for independent work, with type-checking between waves. The verify loop catches errors and retries automatically.
+
+```
+You: /forge:go
+
+Forge: Executing Milestone 1: Database Schema
+       Wave 1: [schema-agent] [migration-agent] -- parallel
+       Verify: tsc --noEmit ... PASS
+       Wave 2: [seed-agent] [test-agent] -- parallel
+       Verify: types PASS | lint PASS | tests PASS
+       Milestone 1 complete. Creating PR...
+```
+
+### Step 4: Auto-Chain (Optional)
+
+Run all remaining milestones autonomously:
+
+```bash
+npx forge run
+```
+
+Each milestone executes in a fresh session with full verification. Stall detection stops the loop if a milestone fails to make progress.
+
+### Supporting Skills
+
+| Skill | Purpose |
+|-------|---------|
+| `/forge:setup` | Initialize or refresh project scaffolding, hooks, and config |
+| `/forge:update` | Check for and install the latest forge-cc version |
+
+---
+
+## Verification Gates
+
+Gates are the core of forge-cc's quality enforcement. Each gate checks one aspect of your codebase and returns structured results with file paths, line numbers, and actionable error messages.
+
+| Gate | What It Checks | Requires |
+|------|---------------|----------|
+| `types` | TypeScript compilation (`tsc --noEmit`) | `typescript` in dependencies |
+| `lint` | Biome linting (`biome check`) | `@biomejs/biome` in dependencies |
+| `tests` | Test suite (`npm test`) | A `test` script in package.json |
+| `visual` | Multi-viewport screenshots (desktop, tablet, mobile) + DOM extraction + before/after comparison + console error detection | Dev server config, `playwright` |
+| `runtime` | HTTP endpoint validation (status codes, response shape) | Dev server config, endpoint list |
+| `prd` | Diff against PRD acceptance criteria | PRD file path, git history |
+| `review` | Code review against PRD criteria and CLAUDE.md rules | Git history |
+
+### Gate Remediation
+
+When gates fail, forge-cc doesn't just report errors -- it generates structured remediation templates that give fix agents actionable instructions. Each error includes the file, line, message, and a specific remediation step.
+
+### Pipeline Behavior
+
+Gates run in the configured order. If all three core gates (types, lint, tests) fail, remaining gates are skipped to save time. Each gate has a 2-minute timeout.
+
+---
 
 ## Configuration
 
-Create a `.forge.json` in your project root to customize behavior:
+Create a `.forge.json` in your project root:
 
 ```json
 {
@@ -44,52 +178,43 @@ Create a `.forge.json` in your project root to customize behavior:
     "readyPattern": "ready on"
   },
   "prdPath": ".planning/prds/active.md",
-  "linearProject": "My Project"
+  "linearProject": "My Project",
+  "review": {
+    "blocking": false
+  }
 }
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `gates` | `string[]` | `["types", "lint", "tests"]` | Which verification gates to run |
-| `maxIterations` | `number` | `5` | Max retry iterations for the verification pipeline |
-| `verifyFreshness` | `number` | `600000` | How long (ms) a passing verification stays valid. Default: 10 minutes |
-| `devServer.command` | `string` | -- | Command to start the dev server (for visual/runtime gates) |
-| `devServer.port` | `number` | -- | Port the dev server listens on |
-| `devServer.readyPattern` | `string` | -- | Stdout pattern indicating the server is ready |
-| `prdPath` | `string` | -- | Path to PRD file for acceptance criteria checking |
+| `gates` | `string[]` | `["types", "lint", "tests"]` | Verification gates to run |
+| `maxIterations` | `number` | `5` | Max retry iterations for the verify loop |
+| `verifyFreshness` | `number` | `600000` | Cache validity period in ms (default: 10 min) |
+| `devServer.command` | `string` | -- | Command to start the dev server |
+| `devServer.port` | `number` | -- | Dev server port |
+| `devServer.readyPattern` | `string` | -- | Stdout pattern indicating server is ready |
+| `prdPath` | `string` | -- | Path to PRD for acceptance criteria checking |
 | `linearProject` | `string` | -- | Linear project name for lifecycle tracking |
+| `review.blocking` | `boolean` | `false` | When `true`, review findings fail the gate |
 
-If no `.forge.json` exists, forge auto-detects from `package.json` (see Quick Start).
+---
 
-## CLI Commands
+## CLI Reference
 
 ### `forge verify`
 
 Run verification gates against the current project.
 
 ```bash
-# Run all configured gates
-npx forge verify
-
-# Run specific gates only
-npx forge verify --gate types,lint
-
-# Output structured JSON (for programmatic use)
-npx forge verify --json
-
-# Include PRD acceptance criteria check
-npx forge verify --prd .planning/prds/active.md
+npx forge verify                              # Run all configured gates
+npx forge verify --gate types,lint            # Run specific gates
+npx forge verify --json                       # Output structured JSON
+npx forge verify --prd .planning/prds/active.md  # Include PRD check
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--gate <gates>` | Comma-separated list of gates to run (overrides config) |
-| `--json` | Output structured JSON instead of human-readable markdown |
-| `--prd <path>` | Path to PRD file for the `prd` gate |
+Exit code `0` = all gates pass. Exit code `1` = any gate fails.
 
-Exit code: `0` if all gates pass, `1` if any gate fails.
-
-Results are cached to `.forge/last-verify.json` for freshness checking by hooks.
+Results are cached per-branch to `.forge/verify-cache/<branch>.json`.
 
 ### `forge status`
 
@@ -99,47 +224,43 @@ Print current project state: branch, last verification result, config source, an
 npx forge status
 ```
 
-Output includes which gates passed/failed, how long ago verification ran, config source, and a table of active forge sessions (if any) showing user, skill, milestone, branch, duration, and worktree path. Stale sessions are flagged with a warning symbol.
+### `forge setup`
+
+Initialize a new project with forge-cc scaffolding or reinstall skills.
+
+```bash
+npx forge setup                # Full project initialization
+npx forge setup --skills-only  # Only install skills to ~/.claude/commands/forge/
+```
 
 ### `forge cleanup`
 
-Remove stale worktrees, deregister dead sessions, and reclaim disk space. Idempotent — safe to run multiple times.
+Remove stale worktrees, deregister dead sessions, and reclaim disk space.
 
 ```bash
 npx forge cleanup
 ```
 
-Output shows which stale sessions were removed and their worktree paths. If no stale sessions exist, prints a clean message.
+### `forge run`
 
-## Verification Gates
+Execute all remaining milestones autonomously in fresh Claude sessions.
 
-| Gate | What It Checks | Requires |
-|------|---------------|----------|
-| `types` | TypeScript compilation (`tsc --noEmit`) | `typescript` in dependencies |
-| `lint` | Biome linting (`biome check`) | `@biomejs/biome` in dependencies |
-| `tests` | Test suite (`npm run test`) | A `test` script in `package.json` |
-| `visual` | Playwright screenshots + console error detection | Dev server config, `playwright` |
-| `runtime` | HTTP endpoint validation (status codes, response shape) | Dev server config, endpoint list |
-| `prd` | Diff against PRD acceptance criteria | PRD file path, git history |
+```bash
+npx forge run                      # Run until all milestones complete
+npx forge run --max-iterations 10  # Safety cap on iterations
+```
 
-**Pipeline behavior:** Gates run in order. If all three core gates (types, lint, tests) fail, remaining gates are skipped. Each gate returns structured results with file paths, line numbers, and error messages.
+---
 
 ## Enforcement
 
-forge-cc provides two enforcement mechanisms that block commits without passing verification.
+forge-cc provides two enforcement mechanisms that block unverified commits.
 
-### Claude Code PreToolUse Hook
+### Claude Code Hook (Recommended)
 
-The recommended enforcement for Claude Code users. Intercepts `git commit` commands and checks:
+Intercepts `git commit` and checks: branch protection, verification required, verification passed, and freshness.
 
-1. **Branch protection** -- blocks commits directly to `main` or `master`.
-2. **Verification required** -- blocks if no `.forge/last-verify.json` exists.
-3. **Verification passed** -- blocks if the last run failed.
-4. **Freshness** -- blocks if verification is older than `verifyFreshness` (default 10 min).
-
-**Install:**
-
-Add to your `.claude/settings.json`:
+Add to `.claude/settings.json`:
 
 ```json
 {
@@ -159,9 +280,13 @@ Add to your `.claude/settings.json`:
 }
 ```
 
-### Version Check Hook
+### Git Pre-Commit Hook
 
-Optional session hook that checks for forge-cc updates when Claude Code starts a task. Prints a one-line notice to stderr if a newer version is available. Never blocks execution.
+Standard git hook for non-Claude-Code environments. Same checks as the Claude Code hook. Wire `src/hooks/pre-commit.ts` into your hook runner (husky, simple-git-hooks, etc.).
+
+### Version Check Hook (Optional)
+
+Prints a one-line notice when a newer forge-cc version is available. Never blocks execution.
 
 Add to `.claude/settings.local.json`:
 
@@ -183,19 +308,13 @@ Add to `.claude/settings.local.json`:
 }
 ```
 
-`/forge:setup` installs this hook automatically.
-
-### Git Pre-Commit Hook
-
-Standard git hook for non-Claude-Code environments. Same four checks as the PreToolUse hook.
-
-The hook logic lives in `src/hooks/pre-commit.ts` and can be wired into any git hook runner (husky, simple-git-hooks, etc.).
+---
 
 ## MCP Server
 
-forge-cc registers its gates as MCP tools so agents can call them programmatically.
+Expose verification gates as MCP tools for programmatic agent access.
 
-**Configure in `.mcp.json`:**
+Add to `.mcp.json`:
 
 ```json
 {
@@ -208,113 +327,79 @@ forge-cc registers its gates as MCP tools so agents can call them programmatical
 }
 ```
 
-**Available MCP tools:**
+**Available tools:**
 
 | Tool | Description |
 |------|-------------|
 | `forge_verify_types` | Run TypeScript type checking |
 | `forge_verify_lint` | Run Biome linting |
 | `forge_verify_tests` | Run project test suite |
-| `forge_verify_visual` | Take screenshots, check console errors |
+| `forge_verify_visual` | Multi-viewport screenshots + DOM comparison |
 | `forge_verify_runtime` | Validate API endpoints |
 | `forge_verify_prd` | Check changes against PRD criteria |
 | `forge_run_pipeline` | Run full verification pipeline |
 
 All tools accept `projectDir` (absolute path) and return structured JSON results.
 
-## Workflow Skills
-
-Claude Code skills that drive the full development lifecycle. Invoke them with slash commands.
-
-### `/forge:triage` -- Brain Dump to Linear Projects
-
-Paste unstructured ideas, sticky notes, or stream-of-consciousness text. The skill extracts distinct projects, deduplicates against your existing Linear backlog, and creates them after your confirmation.
-
-**Flow:** Input text -> extract projects -> deduplicate against Linear -> confirm -> create in Linear (Backlog state).
-
-### `/forge:spec` -- Interview to PRD
-
-Select a Linear project in Backlog state. The skill scans your codebase (structure, patterns, dependencies), conducts an adaptive interview (leading with recommendations, not blank-slate questions), generates a PRD with milestones, and syncs the plan back to Linear.
-
-**Flow:** Select project -> scan codebase -> interview -> generate PRD -> create milestones + issues in Linear -> move project to Planned.
-
-### `/forge:go` -- Execute Milestones
-
-Execute the next pending milestone from your PRD with wave-based agent teams. Each wave runs parallel agents for independent work, with verification between waves. Supports `--auto` to chain all remaining milestones without manual intervention.
-
-**Flow:** Orient (read state) -> pre-flight checks -> execute waves -> verify -> update state -> (optional) create PR.
-
-### `/forge:setup` -- Initialize or Refresh a Project
-
-Bootstrap a new project with forge-cc scaffolding (`.forge.json`, `CLAUDE.md`, planning docs, hooks), or refresh an existing project's files to the latest templates while preserving your learned rules and lessons.
-
-**Flow:** Detect project -> choose mode (Fresh/Refresh) -> configure gates -> create files -> patch global config -> install hooks -> summary.
-
-### `/forge:update` -- Update Forge
-
-Check for newer versions of forge-cc and install the latest. After updating, suggests running `/forge:setup` in Refresh mode to pick up new templates.
-
-**Flow:** Check versions -> compare -> update via npm -> post-update check.
+---
 
 ## Linear Integration
 
-forge-cc manages the full Linear project lifecycle:
+forge-cc manages the full Linear project lifecycle automatically:
 
 ```
-Backlog  ->  Planned  ->  In Progress  ->  In Review  ->  Done
-  |            |              |               |            |
-triage     spec/PRD      go/execute      PR created    PR merged
+Backlog  ──>  Planned  ──>  In Progress  ──>  In Review  ──>  Done
+   |             |               |                |             |
+ triage       spec/PRD       go/execute       PR created    PR merged
 ```
 
-Each skill transitions projects and issues to the appropriate status automatically. The Linear client (`src/linear/client.ts`) handles GraphQL queries, and dedicated modules manage projects, milestones, and issues.
+Each skill transitions projects and issues to the appropriate status. Set `FORGE_LINEAR_API_KEY` (or `LINEAR_API_KEY`) in your environment and `linearProject` in `.forge.json` to enable.
 
-## Multi-Developer Setup
-
-For a new developer joining the team:
-
-1. **Clone the repo** that uses forge-cc.
-2. **Install dependencies:** `npm install` (forge-cc should be in `devDependencies`).
-3. **Run `/forge:setup`** -- scaffolds `.forge.json`, `CLAUDE.md`, planning docs, and installs hooks automatically. Or set up manually:
-   - `npx forge verify` to confirm your environment.
-   - Add the PreToolUse hook to `.claude/settings.json` (see Enforcement section).
-   - Create `.forge.json` if auto-detected gates don't match.
-
-The gates run the same commands your CI does, so if `npx forge verify` passes locally, CI will pass too.
+---
 
 ## Concurrency & Session Isolation
 
-forge-cc supports multiple simultaneous sessions on the same repository using git worktrees. Each `/forge:go` or `/forge:spec` invocation runs in an isolated worktree — separate git index, separate working directory, separate state files.
+forge-cc supports multiple simultaneous sessions on the same repository using git worktrees.
 
-### How It Works
+**How it works:**
 
-1. **Worktree creation:** When a forge skill starts, it creates a git worktree in `../.forge-wt/<repo>/<session-id>/` with its own branch.
-2. **Session registry:** Active sessions are tracked in `.forge/sessions.json` with user identity, skill type, milestone, PID, and timestamps.
-3. **Isolation:** Each session has its own git index and file system. Two sessions staging files simultaneously cannot corrupt each other.
-4. **State merge:** On completion, session state (STATE.md, ROADMAP.md updates) merges back to the main repo intelligently — not last-write-wins.
-5. **Cleanup:** Successful sessions auto-cleanup. Crashed sessions are detected via PID and cleaned up with `npx forge cleanup`.
+1. Each forge skill creates a worktree in `../.forge-wt/<repo>/<session-id>/` with its own branch
+2. Active sessions are tracked in `.forge/sessions.json`
+3. Each session has its own git index -- parallel agents can't corrupt each other
+4. On completion, state merges back intelligently (not last-write-wins)
+5. Crashed sessions are detected via PID and cleaned up with `npx forge cleanup`
 
-### Session Visibility
+**Parallel milestones:** Independent milestones (no `dependsOn` conflicts) execute simultaneously, each producing their own branch and PR.
+
+**Platform notes:**
+- **Windows:** 8-char hex session IDs avoid the 260-character path limit. Atomic writes use retry-on-rename for Windows file locking.
+- **Git:** Requires git 2.5+ for worktree support.
+
+---
+
+## For New Team Members
+
+Joining a project that uses forge-cc:
 
 ```bash
-# See all active sessions
-npx forge status
+# 1. Clone and install
+git clone <repo-url> && cd <repo>
+npm install
 
-# Clean up stale sessions (process died, worktree left behind)
-npx forge cleanup
+# 2. Initialize forge (installs skills, hooks, scaffolding)
+npx forge setup
+
+# 3. Verify your environment works
+npx forge verify
+
+# 4. Start working
+# Use /forge:go to execute milestones, or just code normally --
+# the pre-commit hook ensures verification passes before any commit.
 ```
 
-### Parallel Milestones
+The gates run the same checks as CI, so if `npx forge verify` passes locally, CI will pass too.
 
-Milestones can declare dependencies using the `dependsOn` field in the PRD. Independent milestones can execute in parallel, each in their own worktree:
-
-- Milestones with no unmet dependencies start simultaneously
-- When a dependency completes, dependent milestones become unblocked
-- Each milestone produces its own branch and PR
-
-### Platform Notes
-
-- **Windows:** Short session IDs (8-char hex) avoid the 260-character path limit. Atomic writes use retry-on-rename for Windows file locking.
-- **Git version:** Requires git 2.5+ (2015) for worktree support.
+---
 
 ## Project Structure
 
@@ -322,47 +407,37 @@ Milestones can declare dependencies using the `dependsOn` field in the PRD. Inde
 forge-cc/
   src/
     cli.ts              # CLI entry point (npx forge)
-    server.ts           # MCP server entry point
+    server.ts           # MCP server (stdio transport)
     types.ts            # Core type definitions
-    gates/              # Verification gates (types, lint, tests, visual, runtime, prd)
+    gates/              # Verification gates + remediation templates
+    config/             # .forge.json schema + auto-detection
     linear/             # Linear API client + lifecycle management
     hooks/              # Pre-commit hook logic
-    config/             # .forge.json schema + auto-detection loader
     reporter/           # Human (markdown) and JSON output formatting
-    state/              # Session state reader/writer (STATE.md, ROADMAP.md)
+    state/              # Session state reader/writer
     spec/               # Spec interview engine + PRD generation
-    go/                 # Execution engine + verify loop + PR creation
-    setup/              # Setup templates for project scaffolding
-    worktree/           # Git worktree manager, session registry, state merge, parallel scheduler
+    go/                 # Execution engine + verify loop + auto-chain
+    setup/              # Project scaffolding templates
+    worktree/           # Git worktree manager + session registry + state merge
     utils/              # Platform utilities (atomic writes, path normalization)
   skills/               # Claude Code skill definitions
-  hooks/                # Installable hook files (PreToolUse, version-check)
-  tests/                # Test suite (vitest)
-  .forge.json           # Default configuration
+  hooks/                # Installable hook files
+  tests/                # Test suite (420 tests, vitest)
 ```
 
 ## Development
 
-Working on forge-cc itself:
-
 ```bash
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Run tests
-npm test
-
-# Watch mode (rebuild on changes)
-npm run dev
-
-# Run verification on forge-cc itself
-npm run verify
+npm install          # Install dependencies
+npm run build        # Build
+npm test             # Run tests (420 tests)
+npm run dev          # Watch mode
+npx forge verify     # Verify forge-cc itself
 ```
 
-**Tech stack:** TypeScript (ES2022, strict), Node.js, `@modelcontextprotocol/sdk`, Commander, Playwright, Zod, Vitest.
+**Tech stack:** TypeScript (ES2022, strict), Node.js 18+, MCP SDK, Commander, Playwright, Zod, Vitest
+
+---
 
 ## License
 
