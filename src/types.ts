@@ -68,3 +68,36 @@ export interface VerifyCache {
   gates: GateResult[];
   branch: string;
 }
+
+/** Viewport configuration for multi-viewport visual capture */
+export interface ViewportConfig {
+  name: string;
+  width: number;
+  height: number;
+}
+
+/** Serialized DOM node snapshot from page.evaluate() extraction */
+export interface DOMSnapshot {
+  tag: string;
+  id?: string;
+  className?: string;
+  visible: boolean;
+  rect?: { x: number; y: number; width: number; height: number };
+  children: DOMSnapshot[];
+}
+
+/** Result from multi-viewport visual capture with DOM extraction */
+export interface VisualCaptureResult {
+  screenshots: Array<{
+    page: string;
+    viewport: string;
+    path: string;
+  }>;
+  domSnapshots: Record<string, DOMSnapshot>;
+  metadata: {
+    viewports: ViewportConfig[];
+    pagePath: string;
+    capturedAt: string;
+    durationMs: number;
+  };
+}
