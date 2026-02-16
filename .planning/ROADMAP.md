@@ -33,7 +33,7 @@
 
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Multi-Viewport Visual Capture + DOM Extraction | Pending |
+| 1 | Multi-Viewport Visual Capture + DOM Extraction | Complete (2026-02-15) |
 | 2 | Before/After Comparison + Visual Reviewer | Pending |
 | 3 | Code Review Gate | Pending |
 | 4 | Gate Remediation Templates | Pending |
