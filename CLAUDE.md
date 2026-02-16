@@ -45,19 +45,17 @@ hooks/                # Installable hooks (pre-commit, version-check)
 
 | File | Purpose |
 |------|---------|
-| `.planning/STATE.md` | Current session state (<80 lines) |
-| `.planning/ROADMAP.md` | Milestone progress tracker |
+| `.planning/status/<slug>.json` | Per-PRD milestone status |
 | `tasks/lessons.md` | Lessons learned (max 10 active) |
 
 ## Session Protocol
-- **On start:** Read CLAUDE.md → .planning/STATE.md → .planning/ROADMAP.md → tasks/lessons.md
+- **On start:** Read CLAUDE.md → .planning/status/*.json → tasks/lessons.md
 - **When lost:** Re-read planning docs, don't guess from stale context
 
 ## Session Protocol END (Mandatory)
-1. `.planning/STATE.md` — replace, don't append
-2. `.planning/ROADMAP.md` — check off completed milestones
-3. `tasks/lessons.md` — add/refine lessons (max 10, promote when full)
-4. Commit doc updates to the feature branch
+1. `.planning/status/<slug>.json` — update milestone status
+2. `tasks/lessons.md` — add/refine lessons (max 10, promote when full)
+3. Commit doc updates to the feature branch
 
 ## Execution Rules
 - **Plan before building.** Read the PRD before touching code.

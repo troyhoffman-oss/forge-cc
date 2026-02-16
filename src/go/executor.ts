@@ -27,6 +27,8 @@ export interface ExecuteMilestoneOptions {
   prdPath: string;
   milestoneNumber: number;
   config: ForgeConfig;
+  /** PRD slug for per-PRD status tracking */
+  prdSlug?: string;
   /** Log prompts but don't run verification (for testing) */
   dryRun?: boolean;
 }
@@ -204,11 +206,12 @@ export async function buildMilestoneContext(
 ): Promise<MilestoneContext> {
   const { projectDir, prdPath, milestoneNumber } = options;
 
-  // Read session context (STATE.md, ROADMAP.md, milestone section)
+  // Read session context (milestone section from PRD)
   const sessionContext = await readSessionContext(
     projectDir,
     prdPath,
     milestoneNumber,
+    options.prdSlug ?? "unknown",
   );
 
   const milestoneSection = sessionContext.currentMilestoneSection;

@@ -10,27 +10,27 @@ Follow these steps exactly. The execution engine at `src/go/executor.ts` provide
 
 **This step has two parts. Complete BOTH before moving to Step 2. Do NOT read any other files, do NOT start pre-flight checks, do NOT read the PRD until both parts are done.**
 
-**Part A — Read state (only these 3 files, nothing else):**
+**Part A — Read state (only these files, nothing else):**
 
 ```
 Read these files in parallel:
 - CLAUDE.md
-- .planning/STATE.md
-- .planning/ROADMAP.md
+- .planning/status/*.json (scan for PRD status files)
 ```
 
-From STATE.md, extract:
-- **Current milestone number** (from `**Milestone:**` field)
-- **Branch** (from `**Branch:**` field)
-- **Active PRD path** (from `**Active PRD:**` field)
+From the status files, determine:
+- **Available PRDs** with pending milestones
+- If only one PRD: auto-select it
+- If multiple PRDs: present a picker using AskUserQuestion
+- **Current milestone number** — the lowest-numbered pending milestone for the selected PRD
+- **Branch** — from the status file's `branch` field
+- **Active PRD path** — `.planning/prds/<slug>.md`
 
-From ROADMAP.md, find the next milestone with status "Pending". If STATE.md says the current milestone is complete, advance to the next pending one.
+If no PRD status files exist:
 
-If no active PRD exists:
+> No PRD status files found. Run `/forge:spec` first to create a PRD with milestones.
 
-> No active PRD found. Run `/forge:spec` first to create a PRD with milestones.
-
-If all milestones are complete:
+If all milestones are complete across all PRDs:
 
 > All milestones complete! Create a PR with `gh pr create` or run `/forge:spec` to start a new project.
 
@@ -55,13 +55,13 @@ Otherwise: **your very next tool call MUST be AskUserQuestion.** No file reads, 
 
 Verify the execution environment is ready:
 
-1. **Branch check:** Confirm you are on the correct feature branch (from STATE.md). If on `main`/`master`, warn and abort:
+1. **Branch check:** Confirm you are on the correct feature branch (from the status file's `branch` field). If on `main`/`master`, warn and abort:
 
    > You're on the main branch. Switch to your feature branch first: `git checkout {branch}`
 
 2. **Milestone exists:** Read ONLY the current milestone section from the PRD (progressive disclosure — NOT the full PRD). Use the executor's `readCurrentMilestone()` approach — match `### Milestone N:` header and extract until the next milestone header.
 
-3. **Not already complete:** Check ROADMAP.md to confirm this milestone is not already marked complete. If it is, advance to the next pending milestone.
+3. **Not already complete:** Check the status file to confirm this milestone is not already marked complete. If it is, advance to the next pending milestone.
 
 4. **Clean state:** Run `git status` to check for uncommitted changes. If dirty, warn:
 
@@ -238,19 +238,15 @@ After ALL waves pass verification:
 
 ### Step 6 — Update State
 
-Update project state files:
+Update the PRD status file:
 
-1. **STATE.md:** Update the milestone progress table — mark the completed milestone's status as `Complete ({date})`. If there is a next milestone, update the `**Milestone:**` line to point to it. Update `**Last Session:**` to today's date.
+1. **Status JSON:** Update `.planning/status/<slug>.json` — mark the completed milestone's status as `complete` with today's date.
 
-2. **ROADMAP.md:** Update the milestone table row to `Complete ({date})`.
-
-3. **Session memory:** Write session state for the current branch using the writer module's pattern.
-
-4. Commit the state updates:
+2. Commit the status update:
 
    ```bash
-   git add .planning/STATE.md .planning/ROADMAP.md
-   git commit -m "docs: mark Milestone {N} complete, update session state"
+   git add .planning/status/<slug>.json
+   git commit -m "docs: mark Milestone {N} complete"
    git push origin {branch}
    ```
 
@@ -387,6 +383,6 @@ If Linear is not configured, skip silently.
 - **Interrupted execution:** If execution is interrupted mid-wave, the state files are NOT updated. Running `/forge:go` again will retry the same milestone from the beginning. Completed agents' work will be in the working tree — the new run's verification will detect what's already working.
 - **Empty milestone section:** If the PRD has a milestone header but no content, abort with:
   > Milestone {N} has no wave definitions. Update the PRD with agent assignments before running /forge:go.
-- **Already on correct milestone:** If STATE.md's current milestone matches the target, proceed normally (this is the expected case).
+- **Already on correct milestone:** If the status file's current milestone matches the target, proceed normally (this is the expected case).
 - **Linear auth fails:** Warn but continue execution. Linear sync is not blocking.
 - **Worktree conflict:** If the worktree directory already exists (e.g., from a crashed session), the engine attempts `npx forge cleanup` first. If that fails, it falls back to main directory execution.

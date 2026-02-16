@@ -2,8 +2,8 @@
  * Auto-Chain — Multi-Milestone Execution Orchestrator
  *
  * After a milestone completes, spawns a fresh agent with clean context for the
- * next milestone. Fresh agent reads CLAUDE.md + STATE.md + next milestone section
- * only. Loops until all milestones done or a failure stops the chain.
+ * next milestone. Fresh agent reads CLAUDE.md + next milestone section only.
+ * Loops until all milestones done or a failure stops the chain.
  *
  * This module is the data/logic layer. It does NOT spawn agents — that is
  * the skill file's job (via Claude Code's Task tool). Auto-chain prepares
@@ -13,15 +13,14 @@
 import { readFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
+import { readCurrentMilestone } from "../state/reader.js";
 import {
-  readStateFile,
-  readRoadmapProgress,
-  readCurrentMilestone,
-} from "../state/reader.js";
-import type { MilestoneProgress } from "../state/reader.js";
+  findNextPendingMilestone,
+  countPendingMilestones,
+  updateMilestoneStatus,
+} from "../state/prd-status.js";
 import {
   isLastMilestone,
-  updateMilestoneProgress,
   commitMilestoneWork,
 } from "../state/writer.js";
 import type { CommitResult } from "../state/writer.js";
@@ -52,13 +51,15 @@ export interface AutoChainOptions {
   branch: string;
   /** Project name (e.g., "forge-cc") */
   project: string;
+  /** PRD slug for per-PRD status tracking */
+  prdSlug: string;
   /** Relative PRD path for state docs */
   activePrd: string;
   /** Developer name for session memory */
   developer: string;
   /** Repository root (for worktree operations). Defaults to projectDir. */
   repoRoot?: string;
-  /** If not provided, detect from STATE.md */
+  /** If not provided, detect from per-PRD status */
   startMilestone?: number;
   /** Called when a milestone begins execution */
   onMilestoneStart?: (milestoneNumber: number, name: string) => void;
@@ -135,18 +136,17 @@ function extractQuickContext(claudeMd: string): string {
 /**
  * Build the fresh-context prompt for a milestone agent (Ralph Loop pattern).
  *
- * Reads CLAUDE.md (abbreviated to Quick Context), STATE.md content, and the
- * current milestone section from the PRD. The total is kept as small as
- * possible (~200-300 lines) while giving the agent enough context to work.
+ * Reads CLAUDE.md (abbreviated to Quick Context) and the current milestone
+ * section from the PRD. The total is kept as small as possible (~200-300
+ * lines) while giving the agent enough context to work.
  */
 export async function buildFreshSessionPrompt(
   projectDir: string,
   prdPath: string,
   milestoneNumber: number,
 ): Promise<string> {
-  const [claudeMd, stateInfo, milestoneSection] = await Promise.all([
+  const [claudeMd, milestoneSection] = await Promise.all([
     safeRead(join(projectDir, "CLAUDE.md")),
-    readStateFile(projectDir),
     readCurrentMilestone(prdPath, milestoneNumber),
   ]);
 
@@ -161,15 +161,7 @@ export async function buildFreshSessionPrompt(
     lines.push("");
   }
 
-  // 2. STATE.md — current position
-  if (stateInfo) {
-    lines.push("# Current State");
-    lines.push("");
-    lines.push(stateInfo.raw.trim());
-    lines.push("");
-  }
-
-  // 3. Current milestone section from PRD
+  // 2. Current milestone section from PRD
   if (milestoneSection) {
     lines.push("# Current Milestone");
     lines.push("");
@@ -184,7 +176,7 @@ export async function buildFreshSessionPrompt(
     lines.push("");
   }
 
-  // 4. Session instructions (minimal)
+  // 3. Session instructions (minimal)
   lines.push("# Session Instructions");
   lines.push("");
   lines.push(
@@ -194,68 +186,16 @@ export async function buildFreshSessionPrompt(
   lines.push("- Stage only files you create/modify (never `git add .`).");
   lines.push("- Do not commit — the orchestrator handles commits.");
   lines.push(
-    "- On completion, update `.planning/STATE.md` and `.planning/ROADMAP.md`.",
+    "- On completion, the orchestrator will update the status JSON automatically.",
   );
   lines.push("");
 
   return lines.join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// findNextPendingMilestone
-// ---------------------------------------------------------------------------
-
-/**
- * Find the next pending milestone number from the roadmap.
- *
- * Scans ROADMAP.md for milestones whose status does NOT start with "Complete".
- * Returns the lowest-numbered pending milestone, or null if all are done.
- */
-export async function findNextPendingMilestone(
-  projectDir: string,
-): Promise<MilestoneProgress | null> {
-  const roadmap = await readRoadmapProgress(projectDir);
-  if (!roadmap || roadmap.milestones.length === 0) {
-    return null;
-  }
-
-  // Sort by number ascending to get the lowest pending one
-  const sorted = [...roadmap.milestones].sort((a, b) => a.number - b.number);
-
-  for (const milestone of sorted) {
-    const statusLower = milestone.status.toLowerCase();
-    if (
-      !statusLower.startsWith("complete") &&
-      !statusLower.startsWith("done")
-    ) {
-      return milestone;
-    }
-  }
-
-  return null; // All milestones are complete
-}
-
-// ---------------------------------------------------------------------------
-// countPendingMilestones
-// ---------------------------------------------------------------------------
-
-/**
- * Count the number of pending (not complete/done) milestones in the roadmap.
- *
- * Used by `npx forge run` to determine if there are milestones to execute
- * and to detect stalls (pending count should decrease each iteration).
- */
-export async function countPendingMilestones(
-  projectDir: string,
-): Promise<number> {
-  const roadmap = await readRoadmapProgress(projectDir);
-  if (!roadmap) return 0;
-  return roadmap.milestones.filter(
-    (m) =>
-      !m.status.toLowerCase().startsWith("complete") &&
-      !m.status.toLowerCase().startsWith("done"),
-  ).length;
-}
+// Re-export findNextPendingMilestone and countPendingMilestones from prd-status
+// so that existing consumers (cli.ts, tests) can continue importing from auto-chain.
+export { findNextPendingMilestone, countPendingMilestones };
 
 // ---------------------------------------------------------------------------
 // runAutoChain
@@ -265,7 +205,7 @@ export async function countPendingMilestones(
  * Auto-chain orchestrator: manages multi-milestone execution with context resets.
  *
  * For each pending milestone:
- * 1. Determines the starting milestone (from options or STATE.md/ROADMAP.md)
+ * 1. Determines the starting milestone (from options or per-PRD status)
  * 2. Creates a git worktree for isolated execution
  * 3. Registers a session in the session registry
  * 4. Builds a fresh-context prompt for the milestone agent
@@ -290,6 +230,7 @@ export async function runAutoChain(
     config,
     branch,
     project,
+    prdSlug,
     activePrd,
     developer,
     onMilestoneStart,
@@ -304,8 +245,8 @@ export async function runAutoChain(
   if (options.startMilestone !== undefined) {
     currentMilestoneNumber = options.startMilestone;
   } else {
-    // Auto-detect from STATE.md and ROADMAP.md
-    const nextPending = await findNextPendingMilestone(projectDir);
+    // Auto-detect from per-PRD status
+    const nextPending = await findNextPendingMilestone(projectDir, prdSlug);
     if (!nextPending) {
       // All milestones are already complete
       const result: AutoChainResult = {
@@ -365,6 +306,7 @@ export async function runAutoChain(
           prdPath,
           milestoneNumber: currentMilestoneNumber,
           config,
+          prdSlug,
         });
         // Attach worktree path to context
         context.worktreePath = worktreePath;
@@ -405,7 +347,7 @@ export async function runAutoChain(
         milestoneNumber: currentMilestoneNumber,
         milestoneName: context.milestoneName,
         success: true, // Optimistic; caller updates via completeMilestone
-        isLast: await isLastMilestone(effectiveProjectDir, currentMilestoneNumber),
+        isLast: await isLastMilestone(effectiveProjectDir, prdSlug, currentMilestoneNumber),
         freshPrompt,
         worktreePath,
         errors: [],
@@ -428,7 +370,7 @@ export async function runAutoChain(
       }
 
       // Find the next pending milestone
-      const nextPending = await findNextPendingMilestone(effectiveProjectDir);
+      const nextPending = await findNextPendingMilestone(effectiveProjectDir, prdSlug);
       if (!nextPending) {
         // All milestones are complete
         const chainResult: AutoChainResult = {
@@ -465,7 +407,7 @@ export async function runAutoChain(
  * Called after a milestone's agent finishes execution.
  *
  * Handles:
- * 1. Updating milestone progress in STATE.md and ROADMAP.md
+ * 1. Updating milestone status in per-PRD status JSON
  * 2. Committing milestone work to git (in the worktree if one was used)
  * 3. Merging worktree branch into the feature branch (if worktree was used)
  * 4. Returning the commit SHA for the milestone result
@@ -475,6 +417,7 @@ export async function runAutoChain(
 export async function completeMilestone(options: {
   projectDir: string;
   project: string;
+  prdSlug: string;
   milestoneNumber: number;
   milestoneName: string;
   branch: string;
@@ -489,63 +432,25 @@ export async function completeMilestone(options: {
 }): Promise<{ commitResult: CommitResult; isLast: boolean }> {
   const {
     projectDir,
-    project,
+    prdSlug,
     milestoneNumber,
     milestoneName,
     branch,
-    activePrd,
-    developer,
     filesToStage,
     push,
     worktreePath,
     repoRoot,
   } = options;
 
-  // The effective directory for state doc updates and commits:
+  // The effective directory for status updates and commits:
   // if a worktree was used, commit there; otherwise use projectDir
   const commitDir = worktreePath ?? projectDir;
 
   // Check if this is the last milestone
-  const last = await isLastMilestone(commitDir, milestoneNumber);
+  const last = await isLastMilestone(commitDir, prdSlug, milestoneNumber);
 
-  // Find next milestone for state docs
-  const roadmap = await readRoadmapProgress(commitDir);
-  const milestoneTable = roadmap?.milestones.map((m) => ({
-    number: m.number,
-    name: m.name,
-    status:
-      m.number === milestoneNumber
-        ? `Complete (${new Date().toISOString().slice(0, 10)})`
-        : m.status,
-  })) ?? [];
-
-  // Find the next milestone (if any)
-  const nextMilestone = last
-    ? undefined
-    : roadmap?.milestones
-        .filter(
-          (m) =>
-            m.number > milestoneNumber &&
-            !m.status.toLowerCase().startsWith("complete"),
-        )
-        .sort((a, b) => a.number - b.number)[0];
-
-  const nextMilestoneInfo = nextMilestone
-    ? { number: nextMilestone.number, name: nextMilestone.name }
-    : undefined;
-
-  // Update state docs (STATE.md, ROADMAP.md, session memory)
-  await updateMilestoneProgress({
-    projectDir: commitDir,
-    project,
-    milestoneNumber,
-    milestoneName,
-    branch,
-    activePrd,
-    developer,
-    nextMilestone: nextMilestoneInfo,
-    milestoneTable,
-  });
+  // Update per-PRD status JSON
+  await updateMilestoneStatus(commitDir, prdSlug, milestoneNumber, "complete");
 
   // Commit milestone work (in the worktree if one was used)
   const commitResult = commitMilestoneWork({

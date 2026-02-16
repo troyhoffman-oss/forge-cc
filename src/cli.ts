@@ -28,6 +28,7 @@ import {
 import type { PipelineResult, VerifyCache } from "./types.js";
 import { loadRegistry, detectStaleSessions, deregisterSession } from "./worktree/session.js";
 import { countPendingMilestones } from "./go/auto-chain.js";
+import { discoverPRDs } from "./state/prd-status.js";
 import { getRepoRoot, cleanupStaleWorktrees } from "./worktree/manager.js";
 import { formatSessionsReport } from "./reporter/human.js";
 
@@ -93,7 +94,7 @@ program
 program
   .command("status")
   .description("Print current project state")
-  .action(() => {
+  .action(async () => {
     const projectDir = process.cwd();
 
     // Branch
@@ -145,6 +146,21 @@ program
     } catch {
       // Not a git repo or no session registry — skip silently
     }
+
+    // Per-PRD status
+    try {
+      const prds = await discoverPRDs(projectDir);
+      if (prds.length > 0) {
+        console.log("");
+        console.log("### PRDs");
+        for (const prd of prds) {
+          const milestones = Object.entries(prd.status.milestones);
+          const complete = milestones.filter(([, m]) => m.status === "complete").length;
+          const total = milestones.length;
+          console.log(`- **${prd.slug}** (${prd.status.branch}): ${complete}/${total} milestones complete`);
+        }
+      }
+    } catch { /* prd-status not available */ }
   });
 
 // ── Skill installation helper ──────────────────────────────────────
@@ -389,21 +405,20 @@ program
     "Maximum iterations before stopping (safety cap)",
     "20",
   )
+  .option("--prd <slug>", "Run milestones for a specific PRD")
   .action(async (opts) => {
     const projectDir = process.cwd();
     const maxIterations = parseInt(opts.maxIterations, 10);
 
-    // Pre-flight: check ROADMAP.md exists
-    const roadmapPath = join(projectDir, ".planning", "ROADMAP.md");
-    if (!existsSync(roadmapPath)) {
-      console.error(
-        "Error: No .planning/ROADMAP.md found. Run /forge:spec first to create a PRD with milestones.",
-      );
+    // Pre-flight: check for PRD status files
+    const prds = await discoverPRDs(projectDir);
+    if (prds.length === 0) {
+      console.error("Error: No PRD status files found in .planning/status/. Run /forge:spec first.");
       process.exit(1);
     }
 
     // Pre-flight: check pending milestones
-    let pending = await countPendingMilestones(projectDir);
+    let pending = await countPendingMilestones(projectDir, opts.prd);
     if (pending === 0) {
       console.log("All milestones complete! Nothing to run.");
       console.log(
@@ -452,7 +467,7 @@ program
       }
 
       // Check pending count (stall detection)
-      const newPending = await countPendingMilestones(projectDir);
+      const newPending = await countPendingMilestones(projectDir, opts.prd);
 
       if (newPending === 0) {
         console.log("\n---\n");

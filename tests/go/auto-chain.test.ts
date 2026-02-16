@@ -1,110 +1,107 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { countPendingMilestones, findNextPendingMilestone } from "../../src/go/auto-chain.js";
 
-// Mock the state reader module
-vi.mock("../../src/state/reader.js", () => ({
-  readStateFile: vi.fn(),
-  readRoadmapProgress: vi.fn(),
-  readCurrentMilestone: vi.fn(),
-}));
+// These are re-exports from prd-status.js — test with real filesystem
+describe("countPendingMilestones (via auto-chain re-export)", () => {
+  let tmpDir: string;
 
-import { readRoadmapProgress } from "../../src/state/reader.js";
-const mockReadRoadmap = vi.mocked(readRoadmapProgress);
-
-describe("countPendingMilestones", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "forge-autochain-"));
   });
 
-  it("returns 0 when no roadmap exists", async () => {
-    mockReadRoadmap.mockResolvedValue(null);
-    expect(await countPendingMilestones("/project")).toBe(0);
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("returns 0 when all milestones are complete", async () => {
-    mockReadRoadmap.mockResolvedValue({
-      milestones: [
-        { number: 1, name: "First", status: "Complete (2026-02-10)" },
-        { number: 2, name: "Second", status: "Done" },
-      ],
-      raw: "",
-    });
-    expect(await countPendingMilestones("/project")).toBe(0);
+  it("returns 0 when no status directory exists", async () => {
+    expect(await countPendingMilestones(tmpDir)).toBe(0);
   });
 
-  it("counts pending milestones correctly", async () => {
-    mockReadRoadmap.mockResolvedValue({
-      milestones: [
-        { number: 1, name: "First", status: "Complete (2026-02-10)" },
-        { number: 2, name: "Second", status: "Pending" },
-        { number: 3, name: "Third", status: "Pending" },
-      ],
-      raw: "",
-    });
-    expect(await countPendingMilestones("/project")).toBe(2);
+  it("counts pending milestones for a specific slug", async () => {
+    const statusDir = join(tmpDir, ".planning", "status");
+    await mkdir(statusDir, { recursive: true });
+    await writeFile(
+      join(statusDir, "test.json"),
+      JSON.stringify({
+        project: "Test",
+        slug: "test",
+        branch: "feat/test",
+        createdAt: "2026-01-01",
+        milestones: {
+          "1": { status: "complete", date: "2026-01-01" },
+          "2": { status: "pending" },
+          "3": { status: "pending" },
+        },
+      }),
+    );
+    expect(await countPendingMilestones(tmpDir, "test")).toBe(2);
   });
 
-  it("treats 'In Progress' as pending", async () => {
-    mockReadRoadmap.mockResolvedValue({
-      milestones: [
-        { number: 1, name: "First", status: "In Progress" },
-        { number: 2, name: "Second", status: "Pending" },
-      ],
-      raw: "",
-    });
-    expect(await countPendingMilestones("/project")).toBe(2);
+  it("counts across all PRDs when no slug given", async () => {
+    const statusDir = join(tmpDir, ".planning", "status");
+    await mkdir(statusDir, { recursive: true });
+    await writeFile(
+      join(statusDir, "a.json"),
+      JSON.stringify({
+        project: "A",
+        slug: "a",
+        branch: "feat/a",
+        createdAt: "2026-01-01",
+        milestones: { "1": { status: "pending" } },
+      }),
+    );
+    await writeFile(
+      join(statusDir, "b.json"),
+      JSON.stringify({
+        project: "B",
+        slug: "b",
+        branch: "feat/b",
+        createdAt: "2026-01-01",
+        milestones: { "1": { status: "pending" }, "2": { status: "pending" } },
+      }),
+    );
+    expect(await countPendingMilestones(tmpDir)).toBe(3);
   });
 });
 
-describe("findNextPendingMilestone", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("findNextPendingMilestone (via auto-chain re-export)", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "forge-autochain-"));
   });
 
-  it("returns null when no roadmap exists", async () => {
-    mockReadRoadmap.mockResolvedValue(null);
-    expect(await findNextPendingMilestone("/project")).toBeNull();
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("returns null when all milestones are complete", async () => {
-    mockReadRoadmap.mockResolvedValue({
-      milestones: [
-        { number: 1, name: "First", status: "Complete (2026-02-10)" },
-        { number: 2, name: "Second", status: "Done" },
-      ],
-      raw: "",
-    });
-    expect(await findNextPendingMilestone("/project")).toBeNull();
+  it("returns null when PRD does not exist", async () => {
+    expect(await findNextPendingMilestone(tmpDir, "missing")).toBeNull();
   });
 
   it("returns the first pending milestone", async () => {
-    mockReadRoadmap.mockResolvedValue({
-      milestones: [
-        { number: 1, name: "First", status: "Complete (2026-02-10)" },
-        { number: 2, name: "Second", status: "Pending" },
-        { number: 3, name: "Third", status: "Pending" },
-      ],
-      raw: "",
-    });
-    const result = await findNextPendingMilestone("/project");
-    expect(result).toEqual({ number: 2, name: "Second", status: "Pending" });
-  });
-
-  it("returns lowest-numbered pending milestone regardless of order", async () => {
-    mockReadRoadmap.mockResolvedValue({
-      milestones: [
-        { number: 3, name: "Third", status: "Pending" },
-        { number: 1, name: "First", status: "Complete (2026-02-10)" },
-        { number: 2, name: "Second", status: "In Progress" },
-      ],
-      raw: "",
-    });
-    const result = await findNextPendingMilestone("/project");
-    expect(result).toEqual({ number: 2, name: "Second", status: "In Progress" });
-  });
-
-  it("returns null for empty milestones array", async () => {
-    mockReadRoadmap.mockResolvedValue({ milestones: [], raw: "" });
-    expect(await findNextPendingMilestone("/project")).toBeNull();
+    const statusDir = join(tmpDir, ".planning", "status");
+    await mkdir(statusDir, { recursive: true });
+    await writeFile(
+      join(statusDir, "test.json"),
+      JSON.stringify({
+        project: "Test",
+        slug: "test",
+        branch: "feat/test",
+        createdAt: "2026-01-01",
+        milestones: {
+          "1": { status: "complete", date: "2026-01-01" },
+          "2": { status: "pending" },
+          "3": { status: "pending" },
+        },
+      }),
+    );
+    const result = await findNextPendingMilestone(tmpDir, "test");
+    expect(result).toEqual({ number: 2, status: { status: "pending" } });
   });
 });
+
+import { afterEach } from "vitest";
