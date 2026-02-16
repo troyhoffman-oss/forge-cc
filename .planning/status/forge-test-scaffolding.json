@@ -1,0 +1,11 @@
+{
+  "project": "Forge Test Scaffolding & Verification UX",
+  "slug": "forge-test-scaffolding",
+  "branch": "feat/forge-test-scaffolding",
+  "createdAt": "2026-02-16",
+  "milestones": {
+    "1": { "status": "pending" },
+    "2": { "status": "pending" },
+    "3": { "status": "pending" }
+  }
+}
