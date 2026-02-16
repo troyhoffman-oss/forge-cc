@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -27,6 +27,7 @@ import {
 } from "./setup/templates.js";
 import type { PipelineResult, VerifyCache } from "./types.js";
 import { loadRegistry, detectStaleSessions, deregisterSession } from "./worktree/session.js";
+import { countPendingMilestones } from "./go/auto-chain.js";
 import { getRepoRoot, cleanupStaleWorktrees } from "./worktree/manager.js";
 import { formatSessionsReport } from "./reporter/human.js";
 
@@ -373,6 +374,115 @@ program
     } else {
       console.log(`Cleaned up ${cleanedCount} session${cleanedCount === 1 ? "" : "s"}, ${errorCount} error${errorCount === 1 ? "" : "s"}.`);
     }
+  });
+
+// ── run command ────────────────────────────────────────────────────
+
+program
+  .command("run")
+  .description(
+    "Execute all remaining milestones autonomously in fresh Claude sessions (Ralph Loop pattern)",
+  )
+  .option(
+    "--max-iterations <n>",
+    "Maximum iterations before stopping (safety cap)",
+    "20",
+  )
+  .action(async (opts) => {
+    const projectDir = process.cwd();
+    const maxIterations = parseInt(opts.maxIterations, 10);
+
+    // Pre-flight: check ROADMAP.md exists
+    const roadmapPath = join(projectDir, ".planning", "ROADMAP.md");
+    if (!existsSync(roadmapPath)) {
+      console.error(
+        "Error: No .planning/ROADMAP.md found. Run /forge:spec first to create a PRD with milestones.",
+      );
+      process.exit(1);
+    }
+
+    // Pre-flight: check pending milestones
+    let pending = await countPendingMilestones(projectDir);
+    if (pending === 0) {
+      console.log("All milestones complete! Nothing to run.");
+      console.log(
+        'Create a PR with `gh pr create` or run `/forge:spec` to start a new project.',
+      );
+      process.exit(0);
+    }
+
+    // Banner
+    console.log("## Forge Auto-Chain (Ralph Loop)\n");
+    console.log(`**Milestones remaining:** ${pending}`);
+    console.log(`**Max iterations:** ${maxIterations}`);
+    console.log(`**Stop:** Ctrl+C\n`);
+    console.log(
+      "Each milestone runs in a fresh Claude session with full /forge:go pipeline.",
+    );
+    console.log("Output streams inline below.\n");
+    console.log("---\n");
+
+    const prompt = [
+      "You are executing one milestone of a forge auto-chain.",
+      'Use the Skill tool: skill="forge:go", args="--single"',
+      "After the skill completes, stop.",
+    ].join("\n");
+
+    for (let i = 0; i < maxIterations; i++) {
+      const iteration = i + 1;
+      console.log(`\n=== Iteration ${iteration} (${pending} milestones remaining) ===\n`);
+
+      const result = spawnSync(
+        "claude",
+        ["-p", prompt, "--dangerously-skip-permissions"],
+        {
+          stdio: "inherit",
+          cwd: projectDir,
+        },
+      );
+
+      // Check exit code
+      if (result.status !== 0) {
+        console.error(
+          `\nError: Claude session exited with code ${result.status ?? "unknown"}. Stopping.`,
+        );
+        console.log("Fix the issue, then run `npx forge run` again to resume.");
+        process.exit(1);
+      }
+
+      // Check pending count (stall detection)
+      const newPending = await countPendingMilestones(projectDir);
+
+      if (newPending === 0) {
+        console.log("\n---\n");
+        console.log("## All Milestones Complete!\n");
+        console.log(
+          `Completed in ${iteration} iteration${iteration === 1 ? "" : "s"}.`,
+        );
+        console.log(
+          'Create a PR with `gh pr create` or run `/forge:spec` to start a new project.',
+        );
+        process.exit(0);
+      }
+
+      if (newPending >= pending) {
+        console.error(
+          `\nStall detected: pending count did not decrease (was ${pending}, now ${newPending}). Stopping.`,
+        );
+        console.log("Fix the issue, then run `npx forge run` again to resume.");
+        process.exit(1);
+      }
+
+      pending = newPending;
+    }
+
+    console.error(
+      `\nReached max iterations (${maxIterations}). Stopping.`,
+    );
+    console.log(
+      `${pending} milestone${pending === 1 ? "" : "s"} remaining. Run \`npx forge run\` again to continue.`,
+    );
+    process.exit(1);
   });
 
 // ── helpers ────────────────────────────────────────────────────────

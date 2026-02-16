@@ -270,7 +270,7 @@ After sync, print the handoff prompt:
 PRD: `.planning/prds/{slug}.md`
 Linear: {project URL}
 
-**Next step:** Run `/forge:go` to start executing Milestone 1. The execution engine will:
+**Next step:** Run `/forge:go` for one milestone at a time, or exit and run `npx forge run` to execute all milestones autonomously. The execution engine will:
 - Read the PRD and milestone plan
 - Spawn agent teams for each issue
 - Verify each change with forge-mcp gates
