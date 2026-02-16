@@ -10,14 +10,14 @@ Run these commands to get version info:
 
 ```bash
 # Current installed version
-npm list -g forge-cc --json 2>/dev/null | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');const j=JSON.parse(d);console.log(j.dependencies?.['forge-cc']?.version||'not installed')"
+forge --version
 
 # Latest available version
 npm view forge-cc version
 ```
 
 Parse both versions. If the command fails, handle gracefully:
-- If forge-cc is not installed globally: print "forge-cc is not installed globally. Install with: `npm install -g forge-cc`"
+- If `forge` is not found: print "forge-cc is not installed globally. Install with: `npm install -g forge-cc`"
 - If npm view fails (offline): print "Could not reach npm registry. Check your internet connection."
 
 ### Step 2 — Compare and Report
@@ -42,31 +42,31 @@ If an update is available, run:
 npm install -g forge-cc@latest
 ```
 
+This does two things automatically:
+1. Installs the new version globally
+2. The `postinstall` hook runs `forge setup --skills-only`, which syncs all skills to `~/.claude/commands/forge/`
+
 Verify the update succeeded:
 
 ```bash
-npm list -g forge-cc --json 2>/dev/null | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');const j=JSON.parse(d);console.log(j.dependencies?.['forge-cc']?.version||'failed')"
+forge --version
 ```
 
-### Step 4 — Re-sync Skills
+If the version matches the latest, the update is complete. If it doesn't match, check if the user needs to restart their terminal or if there's a local `node_modules` shadowing the global install.
 
-After updating, copy the latest skills to `~/.claude/commands/forge/`:
+### Step 4 — Verify Skills Synced
+
+Confirm skills were updated by listing the target directory:
 
 ```bash
-mkdir -p ~/.claude/commands/forge
-
-SKILLS_DIR="$(dirname "$(which forge)")/../lib/node_modules/forge-cc/skills"
-if [ ! -d "$SKILLS_DIR" ]; then
-  SKILLS_DIR="node_modules/forge-cc/skills"
-fi
-
-for f in "$SKILLS_DIR"/forge-*.md; do
-  name=$(basename "$f" | sed 's/^forge-//')
-  cp "$f" ~/.claude/commands/forge/"$name"
-done
+ls ~/.claude/commands/forge/
 ```
 
-Print: "Synced skills to ~/.claude/commands/forge/"
+If the directory is empty or missing, the postinstall hook may have failed silently. Run the manual fallback:
+
+```bash
+forge setup --skills-only
+```
 
 ### Step 5 — Post-Update Check
 
@@ -83,6 +83,7 @@ Print final summary:
 
 **Previous:** v{old}
 **Current:** v{new}
+**Skills:** Synced to ~/.claude/commands/forge/
 
 {If forge project: "Consider running `/forge:setup` (Refresh) to update project files."}
 ```
