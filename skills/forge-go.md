@@ -6,9 +6,11 @@ Execute milestones from your PRD with wave-based agent teams, self-healing verif
 
 Follow these steps exactly. The execution engine at `src/go/executor.ts` provides the programmatic logic — this skill drives the agent orchestration.
 
-### Step 1 — Orient
+### Step 1 — Orient + Choose Mode
 
-Read project state files to determine current position:
+**This step has two parts. Complete BOTH before moving to Step 2. Do NOT read any other files, do NOT start pre-flight checks, do NOT read the PRD until both parts are done.**
+
+**Part A — Read state (only these 3 files, nothing else):**
 
 ```
 Read these files in parallel:
@@ -32,15 +34,12 @@ If all milestones are complete:
 
 > All milestones complete! Create a PR with `gh pr create` or run `/forge:spec` to start a new project.
 
-### Step 1.5 — Choose Execution Mode (MANDATORY)
+**Part B — Ask execution mode (MANDATORY — do this IMMEDIATELY after Part A):**
 
-**STOP. Do NOT proceed to Step 2 until this step is complete.**
+If `--auto` was passed as an argument, set mode to auto and skip the prompt.
 
-If `--auto` was passed as an argument, set mode to auto and skip the prompt below.
+Otherwise: **your very next tool call MUST be AskUserQuestion.** No file reads, no git commands, no exploration — ask the user first. Use exactly these parameters:
 
-Otherwise, you MUST use the AskUserQuestion tool RIGHT NOW to ask the user which mode they want. Do not skip this. Do not assume single milestone. Do not proceed without an answer.
-
-Use AskUserQuestion with exactly these parameters:
 - question: "How should this project be executed?"
 - header: "Mode"
 - options:
@@ -48,7 +47,7 @@ Use AskUserQuestion with exactly these parameters:
   - label: "Auto (all milestones)", description: "Chain all remaining milestones with fresh context between each. After each milestone, prints a continuation prompt for the next session."
 - multiSelect: false
 
-**Wait for the user's response before continuing.** Store their choice and apply it in Step 8 (Route Next).
+**Wait for the user's response before continuing.** Do not proceed to Step 2 until you have their answer. Store the choice for Step 8 (Route Next).
 
 ### Step 2 — Pre-flight Checks
 
