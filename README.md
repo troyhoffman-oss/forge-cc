@@ -25,23 +25,55 @@ AI coding agents write code fast, but speed without quality gates means you spen
 
 ---
 
+## Prerequisites
+
+| Dependency | Required? | Purpose |
+|------------|-----------|---------|
+| **Node.js 18+** | Required | Runtime for forge-cc and all gates |
+| **git** | Required | Version control, worktree isolation |
+| **GitHub CLI (`gh`)** | Recommended | PR creation, Linear integration, codex review gate |
+| **Playwright + Chromium** | Optional | `visual` and `runtime` gates (screenshot comparison, endpoint validation) |
+
+Run `npx forge doctor` to check your environment at any time.
+
+---
+
 ## Quick Start
 
 ```bash
 # Install globally
 npm install -g forge-cc
+```
 
-# Or as a dev dependency in your project
-npm install --save-dev forge-cc
+On install, you'll see a summary of what's ready:
 
+```
+  forge-cc v0.1.12 installed
+    ✓ Skills synced to ~/.claude/commands/forge/
+    ✗ Playwright (visual + runtime gates): not installed
+      → Run: npm install -g playwright && npx playwright install chromium
+
+  Get started: forge setup
+```
+
+```bash
 # Initialize your project
 npx forge setup
+
+# Check your environment
+npx forge doctor
 
 # Run verification
 npx forge verify
 
 # Check status
 npx forge status
+```
+
+Or install as a dev dependency:
+
+```bash
+npm install --save-dev forge-cc
 ```
 
 On first run with no `.forge.json`, forge auto-detects gates from your `package.json`:
@@ -107,7 +139,23 @@ Forge: Scanning codebase... found Next.js + Prisma + tRPC
 
 ### Step 3: Execute (`/forge:go`)
 
-Executes milestones using wave-based agent teams. Each wave runs parallel agents for independent work, with type-checking between waves. The verify loop catches errors and retries automatically.
+Executes milestones using a 3-tier agent team architecture:
+
+```
+┌─────────────────────────────────────────────┐
+│  Lead Agent (you / forge:go orchestrator)    │
+│  Plans waves, assigns work, manages state    │
+├─────────────────────────────────────────────┤
+│  Reviewer Agent (persistent, Opus)           │
+│  Reviews diff after each wave, files issues  │
+├─────────────────────────────────────────────┤
+│  Builder Agents (parallel, per-wave)         │
+│  Execute tasks, write code, run local checks │
+│  + optional Notetaker (3+ waves or 4+ agents)│
+└─────────────────────────────────────────────┘
+```
+
+Each milestone is broken into **waves** -- groups of independent tasks that run in parallel. Between waves, mechanical verification gates (types, lint, tests) catch errors, and a self-healing loop retries up to `maxIterations` times before stopping.
 
 ```
 You: /forge:go
@@ -115,6 +163,7 @@ You: /forge:go
 Forge: Executing Milestone 1: Database Schema
        Wave 1: [schema-agent] [migration-agent] -- parallel
        Verify: tsc --noEmit ... PASS
+       Reviewer: 1 finding → fix agent spawned → resolved
        Wave 2: [seed-agent] [test-agent] -- parallel
        Verify: types PASS | lint PASS | tests PASS
        Milestone 1 complete. Creating PR...
@@ -152,6 +201,7 @@ Gates are the core of forge-cc's quality enforcement. Each gate checks one aspec
 | `runtime` | HTTP endpoint validation (status codes, response shape) | Dev server config, endpoint list |
 | `prd` | Diff against PRD acceptance criteria | PRD file path, git history |
 | `review` | Code review against PRD criteria and CLAUDE.md rules | Git history |
+| `codex` | Post-PR review comment polling -- waits for Codex review comments on the PR and surfaces unresolved findings | `gh` CLI, open PR |
 
 ### Gate Remediation
 
@@ -197,6 +247,15 @@ Create a `.forge.json` in your project root:
 | `linearProject` | `string` | -- | Linear project name for lifecycle tracking |
 | `review.blocking` | `boolean` | `false` | When `true`, review findings fail the gate |
 
+### Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `FORGE_LINEAR_API_KEY` | API key for Linear integration (preferred) |
+| `LINEAR_API_KEY` | Alternative name for the Linear API key |
+
+Set either variable in your shell environment to enable Linear lifecycle management.
+
 ---
 
 ## CLI Reference
@@ -231,6 +290,33 @@ Initialize a new project with forge-cc scaffolding or reinstall skills.
 ```bash
 npx forge setup                # Full project initialization
 npx forge setup --skills-only  # Only install skills to ~/.claude/commands/forge/
+npx forge setup --with-visual  # Auto-install Playwright without prompting
+npx forge setup --skip-deps    # Skip optional dependency checks
+```
+
+### `forge doctor`
+
+Check environment health and optional dependency status. Reports what's installed, what's missing, and how to fix it.
+
+```bash
+npx forge doctor
+```
+
+Example output:
+
+```
+## Forge Environment
+
+  ✓ forge-cc v0.1.12
+  ✓ Node.js v22.13.1
+  ✓ git 2.47.1
+  ✓ gh CLI 2.67.0 (authenticated)
+  ✗ Playwright — not installed
+    → npm install -g playwright && npx playwright install chromium
+  ✗ Chromium browser — not installed
+    → npx playwright install chromium
+
+2 issues found. Run the commands above to fix.
 ```
 
 ### `forge cleanup`
@@ -248,6 +334,8 @@ Execute all remaining milestones autonomously in fresh Claude sessions.
 ```bash
 npx forge run                      # Run until all milestones complete
 npx forge run --max-iterations 10  # Safety cap on iterations
+npx forge run --prd <slug>         # Run milestones for a specific PRD
+npx forge run --all                # Run all PRDs with pending milestones
 ```
 
 ---
@@ -353,7 +441,7 @@ Backlog  ──>  Planned  ──>  In Progress  ──>  In Review  ──>  Do
  triage       spec/PRD       go/execute       PR created    PR merged
 ```
 
-Each skill transitions projects and issues to the appropriate status. Set `FORGE_LINEAR_API_KEY` (or `LINEAR_API_KEY`) in your environment and `linearProject` in `.forge.json` to enable.
+Set `FORGE_LINEAR_API_KEY` (or `LINEAR_API_KEY`) in your environment and `linearProject` in `.forge.json` to enable.
 
 ---
 
@@ -388,11 +476,15 @@ npm install
 
 # 2. Initialize forge (installs skills, hooks, scaffolding)
 npx forge setup
+# Add --with-visual if the project uses visual or runtime gates
 
-# 3. Verify your environment works
+# 3. Check your environment
+npx forge doctor
+
+# 4. Verify your environment works
 npx forge verify
 
-# 4. Start working
+# 5. Start working
 # Use /forge:go to execute milestones, or just code normally --
 # the pre-commit hook ensures verification passes before any commit.
 ```
@@ -422,7 +514,7 @@ forge-cc/
     utils/              # Platform utilities (atomic writes, path normalization)
   skills/               # Claude Code skill definitions
   hooks/                # Installable hook files
-  tests/                # Test suite (420 tests, vitest)
+  tests/                # Test suite (515+ tests, vitest)
 ```
 
 ## Development
@@ -430,7 +522,7 @@ forge-cc/
 ```bash
 npm install          # Install dependencies
 npm run build        # Build
-npm test             # Run tests (420 tests)
+npm test             # Run tests (515+ tests)
 npm run dev          # Watch mode
 npx forge verify     # Verify forge-cc itself
 ```
