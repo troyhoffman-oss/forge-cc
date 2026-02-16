@@ -42,6 +42,7 @@ vi.mock("../../src/go/executor.js", () => ({
 vi.mock("../../src/worktree/manager.js", () => ({
   createWorktree: vi.fn(),
   removeWorktree: vi.fn(),
+  deleteBranch: vi.fn(),
   getRepoRoot: vi.fn(),
 }));
 

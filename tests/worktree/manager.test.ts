@@ -36,6 +36,8 @@ import {
   listWorktrees,
   removeWorktree,
   isWorktreeValid,
+  deleteBranch,
+  cleanupMergedBranches,
 } from "../../src/worktree/manager.js";
 import { generateSessionId } from "../../src/utils/platform.js";
 
@@ -444,5 +446,192 @@ describe("isWorktreeValid", () => {
     });
 
     expect(isWorktreeValid(worktreePath)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteBranch
+// ---------------------------------------------------------------------------
+
+describe("deleteBranch", () => {
+  const repoRoot = resolve("/projects/my-app");
+
+  it("refuses to delete main", () => {
+    expect(deleteBranch(repoRoot, "main")).toBe(false);
+    expect(mockedExecSync).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete master", () => {
+    expect(deleteBranch(repoRoot, "master")).toBe(false);
+    expect(mockedExecSync).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete empty branch name", () => {
+    expect(deleteBranch(repoRoot, "")).toBe(false);
+    expect(mockedExecSync).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete the currently checked-out branch", () => {
+    mockedExecSync.mockReturnValue("feat/my-feature");
+    expect(deleteBranch(repoRoot, "feat/my-feature")).toBe(false);
+    // Only rev-parse called, no branch -d
+    expect(mockedExecSync).toHaveBeenCalledTimes(1);
+  });
+
+  it("deletes a merged branch with safe -d by default", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("rev-parse --abbrev-ref")) {
+        return "main";
+      }
+      // branch -d succeeds
+      return "";
+    });
+
+    expect(deleteBranch(repoRoot, "feat/old-feature")).toBe(true);
+    const calls = mockedExecSync.mock.calls.map((c) => c[0] as string);
+    expect(calls.some((c) => c.includes("branch -d"))).toBe(true);
+    // Should NOT use force -D by default
+    expect(calls.some((c) => c.includes("branch -D"))).toBe(false);
+  });
+
+  it("uses force -D when force option is true", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("rev-parse --abbrev-ref")) {
+        return "main";
+      }
+      return "";
+    });
+
+    expect(deleteBranch(repoRoot, "forge/troy/m1", { force: true })).toBe(true);
+    const calls = mockedExecSync.mock.calls.map((c) => c[0] as string);
+    expect(calls.some((c) => c.includes("branch -D"))).toBe(true);
+  });
+
+  it("returns false when git branch -d fails (unmerged branch)", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("rev-parse --abbrev-ref")) {
+        return "main";
+      }
+      throw new Error("branch not fully merged");
+    });
+
+    expect(deleteBranch(repoRoot, "feat/unmerged")).toBe(false);
+  });
+
+  it("returns false when rev-parse fails", () => {
+    mockedExecSync.mockImplementation(() => {
+      throw new Error("not a git repo");
+    });
+
+    expect(deleteBranch(repoRoot, "feat/something")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cleanupMergedBranches
+// ---------------------------------------------------------------------------
+
+describe("cleanupMergedBranches", () => {
+  const repoRoot = resolve("/projects/my-app");
+
+  it("finds and deletes branches with gone remote tracking", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("fetch --prune")) {
+        return "";
+      }
+      if (cmdStr.includes("branch -vv")) {
+        return [
+          "* main             abc1234 [origin/main] latest commit",
+          "  feat/auth        def5678 [origin/feat/auth: gone] auth feature",
+          "  feat/dashboard   ghi9012 [origin/feat/dashboard: gone] dashboard",
+          "  feat/active      jkl3456 [origin/feat/active] still active",
+        ].join("\n");
+      }
+      if (cmdStr.includes("rev-parse --abbrev-ref")) {
+        return "main";
+      }
+      // branch -D
+      return "";
+    });
+
+    const result = cleanupMergedBranches(repoRoot);
+    expect(result.deleted).toContain("feat/auth");
+    expect(result.deleted).toContain("feat/dashboard");
+    expect(result.deleted).toHaveLength(2);
+  });
+
+  it("does not delete protected branches even if gone", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("fetch --prune")) {
+        return "";
+      }
+      if (cmdStr.includes("branch -vv")) {
+        // Hypothetical edge case
+        return "  main abc1234 [origin/main: gone] msg";
+      }
+      return "";
+    });
+
+    const result = cleanupMergedBranches(repoRoot);
+    expect(result.deleted).toHaveLength(0);
+  });
+
+  it("returns empty result when no branches have gone remotes", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("fetch --prune")) {
+        return "";
+      }
+      if (cmdStr.includes("branch -vv")) {
+        return [
+          "* main   abc1234 [origin/main] latest commit",
+          "  feat/x def5678 [origin/feat/x] active",
+        ].join("\n");
+      }
+      return "";
+    });
+
+    const result = cleanupMergedBranches(repoRoot);
+    expect(result.deleted).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("tolerates fetch --prune failure", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("fetch --prune")) {
+        throw new Error("network error");
+      }
+      if (cmdStr.includes("branch -vv")) {
+        return "  feat/old abc123 [origin/feat/old: gone] msg";
+      }
+      if (cmdStr.includes("rev-parse --abbrev-ref")) {
+        return "main";
+      }
+      return "";
+    });
+
+    const result = cleanupMergedBranches(repoRoot);
+    expect(result.deleted).toContain("feat/old");
+  });
+
+  it("returns empty result when branch -vv fails", () => {
+    mockedExecSync.mockImplementation((cmd) => {
+      const cmdStr = typeof cmd === "string" ? cmd : "";
+      if (cmdStr.includes("fetch --prune")) {
+        return "";
+      }
+      // branch -vv fails
+      throw new Error("git error");
+    });
+
+    const result = cleanupMergedBranches(repoRoot);
+    expect(result.deleted).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
   });
 });

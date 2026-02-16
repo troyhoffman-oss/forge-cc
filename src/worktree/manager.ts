@@ -247,6 +247,113 @@ export function isWorktreeValid(worktreePath: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Branch deletion
+// ---------------------------------------------------------------------------
+
+const PROTECTED_BRANCHES = new Set(["main", "master"]);
+
+/**
+ * Delete a local branch by name.
+ *
+ * Safety: refuses to delete `main`, `master`, or the currently checked-out branch.
+ *
+ * By default uses `git branch -d` (safe delete) which only removes branches that
+ * are fully merged into HEAD. Pass `force: true` to use `git branch -D` for
+ * worktree branches that were merged via the worktree merge flow but may not
+ * appear merged from HEAD's perspective.
+ *
+ * Non-fatal: returns boolean success, never throws.
+ */
+export function deleteBranch(
+  repoRoot: string,
+  branch: string,
+  options?: { force?: boolean },
+): boolean {
+  if (!branch || PROTECTED_BRANCHES.has(branch)) {
+    return false;
+  }
+
+  // Don't delete the currently checked-out branch
+  try {
+    const current = git("rev-parse --abbrev-ref HEAD", repoRoot);
+    if (current === branch) {
+      return false;
+    }
+  } catch {
+    // Can't determine current branch — bail out safely
+    return false;
+  }
+
+  const flag = options?.force ? "-D" : "-d";
+  try {
+    git(`branch ${flag} ${shellQuote(branch)}`, repoRoot);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Merged branch cleanup
+// ---------------------------------------------------------------------------
+
+export interface BranchCleanupResult {
+  deleted: string[];
+  errors: Array<{ branch: string; error: string }>;
+}
+
+/**
+ * Find and delete local branches whose remote tracking branch is gone
+ * (i.e., the PR was merged and GitHub auto-deleted the remote).
+ *
+ * Logic:
+ * 1. `git fetch --prune` to update remote tracking state
+ * 2. `git branch -vv` to list local branches with tracking status
+ * 3. Find branches where tracking shows `[origin/...: gone]`
+ * 4. Delete each with `deleteBranch()`
+ */
+export function cleanupMergedBranches(repoRoot: string): BranchCleanupResult {
+  const result: BranchCleanupResult = { deleted: [], errors: [] };
+
+  // Prune remote tracking refs
+  try {
+    git("fetch --prune", repoRoot);
+  } catch {
+    // Non-fatal: proceed with current state
+  }
+
+  // List branches with tracking info
+  let branchOutput: string;
+  try {
+    branchOutput = git("branch -vv", repoRoot);
+  } catch {
+    return result;
+  }
+
+  if (!branchOutput) return result;
+
+  // Parse lines like:
+  //   feat/auth        abc1234 [origin/feat/auth: gone] commit message
+  //   * main           def5678 [origin/main] commit message
+  const gonePattern = /^\s*\*?\s*(\S+)\s+\S+\s+\[.+:\s*gone\]/;
+
+  for (const line of branchOutput.split("\n")) {
+    const match = line.match(gonePattern);
+    if (!match) continue;
+
+    const branch = match[1];
+    const deleted = deleteBranch(repoRoot, branch);
+    if (deleted) {
+      result.deleted.push(branch);
+    } else if (!PROTECTED_BRANCHES.has(branch)) {
+      result.errors.push({ branch, error: "delete failed" });
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 
@@ -271,6 +378,8 @@ export function cleanupStaleWorktrees(
       if (existsSync(session.worktreePath)) {
         removeWorktree(repoRoot, session.worktreePath);
       }
+      // Delete the worktree branch — force-delete since it was merged via worktree flow
+      deleteBranch(repoRoot, session.branch, { force: true });
       // Whether it existed or not, record as successfully removed
       result.removed.push({
         sessionId: session.id,

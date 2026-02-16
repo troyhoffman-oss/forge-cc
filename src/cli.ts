@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { runPipeline } from "./gates/index.js";
 import { loadConfig } from "./config/loader.js";
@@ -30,7 +31,7 @@ import { loadRegistry, detectStaleSessions, deregisterSession } from "./worktree
 import { countPendingMilestones } from "./go/auto-chain.js";
 import { discoverPRDs } from "./state/prd-status.js";
 import { PRDQueue } from "./go/prd-queue.js";
-import { getRepoRoot, cleanupStaleWorktrees } from "./worktree/manager.js";
+import { getRepoRoot, cleanupStaleWorktrees, cleanupMergedBranches } from "./worktree/manager.js";
 import { formatSessionsReport } from "./reporter/human.js";
 
 const __filename_cli = fileURLToPath(import.meta.url);
@@ -201,7 +202,9 @@ program
   .command("setup")
   .description("Initialize forge project and install skills")
   .option("--skills-only", "Only install skills to ~/.claude/commands/forge/")
-  .action((opts) => {
+  .option("--with-visual", "Auto-install Playwright without prompting")
+  .option("--skip-deps", "Skip optional dependency checks")
+  .action(async (opts) => {
     // Always install skills
     const installed = installSkills();
     console.log(`Installed ${installed.length} skills to ~/.claude/commands/forge/`);
@@ -211,6 +214,55 @@ program
 
     if (opts.skillsOnly) {
       return;
+    }
+
+    // Optional dependency check
+    if (!opts.skipDeps) {
+      const checks = await checkEnvironment();
+      const playwrightCheck = checks.find((c) => c.name === "Playwright");
+      const playwrightMissing = playwrightCheck?.status !== "ok";
+
+      console.log("\n## Environment\n");
+      for (const check of checks) {
+        if (check.status === "ok") {
+          const ver = check.version ? ` ${check.version}` : "";
+          const extra = check.detail ? ` (${check.detail})` : "";
+          console.log(`  \u2713 ${check.name}${ver}${extra}`);
+        } else {
+          const msg = check.message ? ` \u2014 ${check.message}` : "";
+          console.log(`  \u2717 ${check.name}${msg}`);
+          if (check.fix) {
+            console.log(`    \u2192 ${check.fix}`);
+          }
+        }
+      }
+      console.log("");
+
+      if (playwrightMissing) {
+        let shouldInstall = false;
+
+        if (opts.withVisual) {
+          shouldInstall = true;
+        } else if (process.stdout.isTTY) {
+          shouldInstall = await askYesNo(
+            "Playwright enables visual regression + runtime testing. Install now? (Y/n): ",
+          );
+        }
+
+        if (shouldInstall) {
+          console.log("\nInstalling Playwright + Chromium...\n");
+          try {
+            execSync("npm install -g playwright && npx playwright install chromium", {
+              stdio: "inherit",
+            });
+            console.log("\nPlaywright installed successfully.");
+          } catch {
+            console.error(
+              "\nPlaywright installation failed. Run manually:\n  npm install -g playwright && npx playwright install chromium",
+            );
+          }
+        }
+      }
     }
 
     // Check if project already initialized
@@ -370,33 +422,82 @@ program
     const staleSessions = registry.sessions.filter((s) => s.status === "stale");
 
     if (staleSessions.length === 0) {
-      console.log("No stale sessions found. Nothing to clean up.");
-      return;
-    }
-
-    console.log(`Found ${staleSessions.length} stale session${staleSessions.length === 1 ? "" : "s"}.\n`);
-
-    // Remove worktrees
-    const result = cleanupStaleWorktrees(repoRoot, staleSessions);
-
-    // Deregister successfully removed sessions and print results
-    for (const removed of result.removed) {
-      deregisterSession(repoRoot, removed.sessionId);
-      console.log(`- Removed: ${removed.sessionId} (${removed.branch}) — worktree deleted`);
-    }
-
-    for (const err of result.errors) {
-      console.log(`- Error: ${err.sessionId} — ${err.error}`);
-    }
-
-    // Summary
-    const cleanedCount = result.removed.length;
-    const errorCount = result.errors.length;
-    console.log("");
-    if (errorCount === 0) {
-      console.log(`Cleaned up ${cleanedCount} session${cleanedCount === 1 ? "" : "s"}.`);
+      console.log("No stale sessions found.");
     } else {
-      console.log(`Cleaned up ${cleanedCount} session${cleanedCount === 1 ? "" : "s"}, ${errorCount} error${errorCount === 1 ? "" : "s"}.`);
+      console.log(`Found ${staleSessions.length} stale session${staleSessions.length === 1 ? "" : "s"}.\n`);
+
+      // Remove worktrees
+      const result = cleanupStaleWorktrees(repoRoot, staleSessions);
+
+      // Deregister successfully removed sessions and print results
+      for (const removed of result.removed) {
+        deregisterSession(repoRoot, removed.sessionId);
+        console.log(`- Removed: ${removed.sessionId} (${removed.branch}) — worktree deleted`);
+      }
+
+      for (const err of result.errors) {
+        console.log(`- Error: ${err.sessionId} — ${err.error}`);
+      }
+
+      // Summary
+      const cleanedCount = result.removed.length;
+      const errorCount = result.errors.length;
+      console.log("");
+      if (errorCount === 0) {
+        console.log(`Cleaned up ${cleanedCount} session${cleanedCount === 1 ? "" : "s"}.`);
+      } else {
+        console.log(`Cleaned up ${cleanedCount} session${cleanedCount === 1 ? "" : "s"}, ${errorCount} error${errorCount === 1 ? "" : "s"}.`);
+      }
+    }
+
+    // Clean up branches whose remote tracking branch is gone (PR merged)
+    const branchResult = cleanupMergedBranches(repoRoot);
+    if (branchResult.deleted.length > 0) {
+      console.log(`\nDeleted ${branchResult.deleted.length} merged branch${branchResult.deleted.length === 1 ? "" : "es"}:`);
+      for (const branch of branchResult.deleted) {
+        console.log(`  - ${branch}`);
+      }
+    }
+    if (branchResult.errors.length > 0) {
+      for (const err of branchResult.errors) {
+        console.log(`  - Error deleting ${err.branch}: ${err.error}`);
+      }
+    }
+  });
+
+// ── doctor command ─────────────────────────────────────────────────
+
+program
+  .command("doctor")
+  .description("Check environment health and optional dependency status")
+  .action(async () => {
+    const checks = await checkEnvironment();
+
+    console.log("## Forge Environment\n");
+    for (const check of checks) {
+      if (check.status === "ok") {
+        const ver = check.version ? ` ${check.version}` : "";
+        const extra = check.detail ? ` (${check.detail})` : "";
+        console.log(`  \u2713 ${check.name}${ver}${extra}`);
+      } else {
+        const msg = check.message ? ` \u2014 ${check.message}` : "";
+        console.log(`  \u2717 ${check.name}${msg}`);
+        if (check.fix) {
+          console.log(`    \u2192 ${check.fix}`);
+        }
+      }
+    }
+
+    const issues = checks.filter((c) => c.status !== "ok");
+    console.log("");
+    if (issues.length === 0) {
+      console.log("All checks passed.");
+      process.exit(0);
+    } else {
+      console.log(
+        `${issues.length} issue${issues.length === 1 ? "" : "s"} found. Run the commands above to fix.`,
+      );
+      process.exit(1);
     }
   });
 
@@ -650,6 +751,125 @@ function writeVerifyCache(projectDir: string, result: PipelineResult): void {
   };
 
   writeFileSync(cachePath, JSON.stringify(cache, null, 2));
+}
+
+// ── environment check helpers ──────────────────────────────────────
+
+interface EnvCheck {
+  name: string;
+  status: "ok" | "missing" | "error";
+  version?: string;
+  detail?: string;
+  message?: string;
+  fix?: string;
+}
+
+async function checkEnvironment(): Promise<EnvCheck[]> {
+  const checks: EnvCheck[] = [];
+
+  // forge-cc
+  checks.push({ name: "forge-cc", status: "ok", version: `v${cliPkgVersion}` });
+
+  // Node.js
+  checks.push({ name: "Node.js", status: "ok", version: process.version });
+
+  // git
+  try {
+    const gitOut = execSync("git --version", { encoding: "utf-8", stdio: "pipe" }).trim();
+    checks.push({ name: "git", status: "ok", version: gitOut.replace("git version ", "") });
+  } catch {
+    checks.push({
+      name: "git",
+      status: "missing",
+      message: "not installed",
+      fix: "Install git: https://git-scm.com/",
+    });
+  }
+
+  // gh CLI + auth
+  try {
+    const ghOut = execSync("gh --version", { encoding: "utf-8", stdio: "pipe" }).trim().split("\n")[0];
+    const ghVersion = ghOut.replace(/^gh version\s+/, "").split(" ")[0];
+
+    let authenticated = false;
+    try {
+      execSync("gh auth status", { encoding: "utf-8", stdio: "pipe" });
+      authenticated = true;
+    } catch {
+      // not authenticated
+    }
+
+    if (authenticated) {
+      checks.push({ name: "gh CLI", status: "ok", version: ghVersion, detail: "authenticated" });
+    } else {
+      checks.push({ name: "gh CLI", status: "ok", version: ghVersion });
+      checks.push({
+        name: "gh auth",
+        status: "error",
+        message: "not authenticated",
+        fix: "gh auth login",
+      });
+    }
+  } catch {
+    checks.push({
+      name: "gh CLI",
+      status: "missing",
+      message: "not installed",
+      fix: "Install gh: https://cli.github.com/",
+    });
+  }
+
+  // Playwright
+  let playwrightAvailable = false;
+  try {
+    await import("playwright");
+    playwrightAvailable = true;
+    checks.push({ name: "Playwright", status: "ok" });
+  } catch {
+    checks.push({
+      name: "Playwright",
+      status: "missing",
+      message: "not installed",
+      fix: "npm install -g playwright && npx playwright install chromium",
+    });
+  }
+
+  // Chromium browser
+  if (playwrightAvailable) {
+    try {
+      const { chromium } = await import("playwright");
+      const browser = await chromium.launch();
+      await browser.close();
+      checks.push({ name: "Chromium browser", status: "ok" });
+    } catch {
+      checks.push({
+        name: "Chromium browser",
+        status: "missing",
+        message: "not installed",
+        fix: "npx playwright install chromium",
+      });
+    }
+  } else {
+    checks.push({
+      name: "Chromium browser",
+      status: "missing",
+      message: "not installed",
+      fix: "npx playwright install chromium",
+    });
+  }
+
+  return checks;
+}
+
+function askYesNo(question: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
+      const trimmed = answer.trim().toLowerCase();
+      resolve(trimmed === "" || trimmed === "y" || trimmed === "yes");
+    });
+  });
 }
 
 function formatReport(result: PipelineResult): string {

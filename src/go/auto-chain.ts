@@ -29,6 +29,7 @@ import type { ForgeConfig } from "../types.js";
 import {
   createWorktree,
   removeWorktree,
+  deleteBranch,
   getRepoRoot,
 } from "../worktree/manager.js";
 import {
@@ -397,6 +398,8 @@ export async function runAutoChain(
     } catch {
       // Non-fatal: best-effort cleanup
     }
+    // Delete the worktree branch — force-delete since it was merged via worktree flow
+    deleteBranch(repoRoot, worktreeBranch, { force: true });
   }
 }
 

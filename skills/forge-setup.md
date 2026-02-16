@@ -118,7 +118,35 @@ done
 
 Print: "Installed forge skills to ~/.claude/commands/forge/"
 
-### Step 7 — Install Hooks
+### Step 7 — Environment Health Check
+
+Run `forge doctor` to check for missing optional dependencies:
+
+```bash
+forge doctor
+```
+
+Review the output. If Playwright or Chromium is missing, ask the user:
+
+<AskUserQuestion>
+question: "Playwright enables visual regression + runtime testing but is not installed. Install now?"
+options:
+  - "Yes — run npm install -g playwright && npx playwright install chromium"
+  - "No — skip for now (visual and runtime gates will be unavailable)"
+</AskUserQuestion>
+
+If yes, run the install commands:
+
+```bash
+npm install -g playwright && npx playwright install chromium
+```
+
+If the install succeeds, confirm: "Playwright + Chromium installed successfully."
+If it fails, print the error and continue — this is not a blocker for setup.
+
+If `forge doctor` shows all checks passing, print: "Environment checks passed." and continue.
+
+### Step 8 — Install Hooks
 
 Check if the user has a `.claude/settings.json` or `.claude/settings.local.json` in the project:
 
@@ -151,7 +179,7 @@ If a settings file already exists, inform the user:
 > Settings file already exists. To add the version-check hook manually, add this to your hooks config:
 > `"command": "node node_modules/forge-cc/hooks/version-check.js"`
 
-### Step 8 — Summary
+### Step 9 — Summary
 
 Print a summary of everything that was created or updated:
 
