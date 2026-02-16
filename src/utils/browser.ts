@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import type { Browser, BrowserContext } from "playwright";
 import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
 
@@ -7,6 +7,16 @@ let devServerProcess: ChildProcess | null = null;
 
 export async function getBrowser(): Promise<Browser> {
   if (!browserInstance || !browserInstance.isConnected()) {
+    let chromium;
+    try {
+      const pw = await import("playwright");
+      chromium = pw.chromium;
+    } catch {
+      throw new Error(
+        "Playwright is not installed. Run `npm install playwright` to enable visual gates.",
+      );
+    }
+
     try {
       browserInstance = await chromium.launch({ headless: true });
     } catch (err) {

@@ -33,12 +33,18 @@ import { PRDQueue } from "./go/prd-queue.js";
 import { getRepoRoot, cleanupStaleWorktrees } from "./worktree/manager.js";
 import { formatSessionsReport } from "./reporter/human.js";
 
+const __filename_cli = fileURLToPath(import.meta.url);
+const __dirname_cli = dirname(__filename_cli);
+const cliPkgVersion = JSON.parse(
+  readFileSync(join(__dirname_cli, "..", "package.json"), "utf-8"),
+).version as string;
+
 const program = new Command();
 
 program
   .name("forge")
   .description("forge-cc — verification + workflow CLI for Claude Code agents")
-  .version("0.1.7");
+  .version(cliPkgVersion);
 
 program
   .command("verify")
