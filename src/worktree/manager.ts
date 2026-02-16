@@ -84,7 +84,13 @@ export function createWorktree(
   const sessionId = generateSessionId();
   const baseDir = getWorktreeBaseDir(repoRoot);
   const worktreePath = join(baseDir, sessionId);
-  const branch = options?.branchName ?? `forge/${userName}/${slug}`;
+  // Sanitize userName for use in branch refs — git rejects spaces and
+  // most special characters in branch names.
+  const safeName = userName
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._/-]/g, "");
+  const branch = options?.branchName ?? `forge/${safeName}/${slug}`;
 
   // Build the git worktree add command.
   // Try creating with a new branch first (-b). If the branch already exists

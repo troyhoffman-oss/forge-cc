@@ -670,7 +670,15 @@ export function completeSpecSession(
       // No changes to commit — that's fine, the worktree may be empty
     }
 
-    // 2. Merge the worktree branch into the target branch
+    // 2. Checkout the target branch, then merge the worktree branch into it
+    execSync(
+      `git checkout ${targetBranch}`,
+      {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        stdio: "pipe",
+      },
+    );
     execSync(
       `git merge --no-edit ${session.worktreeBranch}`,
       {

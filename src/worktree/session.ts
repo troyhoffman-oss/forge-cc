@@ -1,5 +1,12 @@
 import { join } from "node:path";
 import {
+  openSync,
+  closeSync,
+  unlinkSync,
+  mkdirSync,
+  existsSync,
+} from "node:fs";
+import {
   readJsonFileSync,
   writeJsonFileSync,
   generateSessionId,
@@ -31,6 +38,81 @@ export function getRegistryPath(repoRoot: string): string {
   return join(repoRoot, ".forge", "sessions.json");
 }
 
+// ---------------------------------------------------------------------------
+// File-based lock for registry writes
+// ---------------------------------------------------------------------------
+
+const LOCK_RETRIES = 10;
+const LOCK_RETRY_MS = 100;
+
+function getLockPath(repoRoot: string): string {
+  return join(repoRoot, ".forge", "sessions.lock");
+}
+
+/**
+ * Acquire an exclusive lock file. Retries with backoff on contention.
+ * Uses O_CREAT|O_EXCL which atomically fails if the file exists.
+ */
+function acquireLock(repoRoot: string): void {
+  const lockPath = getLockPath(repoRoot);
+  const dir = join(repoRoot, ".forge");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  for (let attempt = 0; attempt < LOCK_RETRIES; attempt++) {
+    try {
+      // O_CREAT | O_EXCL | O_WRONLY — fails if file already exists
+      const fd = openSync(lockPath, "wx");
+      closeSync(fd);
+      return;
+    } catch {
+      if (attempt === LOCK_RETRIES - 1) {
+        // Last attempt — force-remove stale lock and try once more
+        try {
+          unlinkSync(lockPath);
+          const fd = openSync(lockPath, "wx");
+          closeSync(fd);
+          return;
+        } catch {
+          throw new Error(
+            `Failed to acquire session registry lock at ${lockPath} after ${LOCK_RETRIES} attempts`,
+          );
+        }
+      }
+      // Busy-wait (sync context)
+      const waitUntil = Date.now() + LOCK_RETRY_MS;
+      while (Date.now() < waitUntil) {
+        // spin
+      }
+    }
+  }
+}
+
+/**
+ * Release the lock file.
+ */
+function releaseLock(repoRoot: string): void {
+  try {
+    unlinkSync(getLockPath(repoRoot));
+  } catch {
+    // Lock already removed — non-fatal
+  }
+}
+
+/**
+ * Execute a callback while holding the registry lock.
+ * Ensures read-modify-write operations are serialized.
+ */
+function withRegistryLock<T>(repoRoot: string, fn: () => T): T {
+  acquireLock(repoRoot);
+  try {
+    return fn();
+  } finally {
+    releaseLock(repoRoot);
+  }
+}
+
 /**
  * Load the session registry. Returns empty registry if file doesn't exist.
  */
@@ -54,6 +136,7 @@ export function saveRegistry(
 
 /**
  * Register a new session. Returns the created session.
+ * Uses file-based locking to prevent lost updates from concurrent writes.
  */
 export function registerSession(
   repoRoot: string,
@@ -65,54 +148,62 @@ export function registerSession(
     worktreePath: string;
   },
 ): Session {
-  const registry = loadRegistry(repoRoot);
+  return withRegistryLock(repoRoot, () => {
+    const registry = loadRegistry(repoRoot);
 
-  const session: Session = {
-    id: generateSessionId(),
-    user: params.user.name,
-    email: params.user.email,
-    skill: params.skill,
-    milestone: params.milestone,
-    branch: params.branch,
-    worktreePath: params.worktreePath,
-    startedAt: new Date().toISOString(),
-    pid: process.pid,
-    status: "active",
-  };
+    const session: Session = {
+      id: generateSessionId(),
+      user: params.user.name,
+      email: params.user.email,
+      skill: params.skill,
+      milestone: params.milestone,
+      branch: params.branch,
+      worktreePath: params.worktreePath,
+      startedAt: new Date().toISOString(),
+      pid: process.pid,
+      status: "active",
+    };
 
-  registry.sessions.push(session);
-  saveRegistry(repoRoot, registry);
+    registry.sessions.push(session);
+    saveRegistry(repoRoot, registry);
 
-  return session;
+    return session;
+  });
 }
 
 /**
  * Deregister (remove) a session by ID.
+ * Uses file-based locking to prevent lost updates.
  */
 export function deregisterSession(
   repoRoot: string,
   sessionId: string,
 ): void {
-  const registry = loadRegistry(repoRoot);
-  registry.sessions = registry.sessions.filter((s) => s.id !== sessionId);
-  saveRegistry(repoRoot, registry);
+  withRegistryLock(repoRoot, () => {
+    const registry = loadRegistry(repoRoot);
+    registry.sessions = registry.sessions.filter((s) => s.id !== sessionId);
+    saveRegistry(repoRoot, registry);
+  });
 }
 
 /**
  * Update a session's status.
+ * Uses file-based locking to prevent lost updates.
  */
 export function updateSessionStatus(
   repoRoot: string,
   sessionId: string,
   status: Session["status"],
 ): void {
-  const registry = loadRegistry(repoRoot);
-  const session = registry.sessions.find((s) => s.id === sessionId);
+  withRegistryLock(repoRoot, () => {
+    const registry = loadRegistry(repoRoot);
+    const session = registry.sessions.find((s) => s.id === sessionId);
 
-  if (session) {
-    session.status = status;
-    saveRegistry(repoRoot, registry);
-  }
+    if (session) {
+      session.status = status;
+      saveRegistry(repoRoot, registry);
+    }
+  });
 }
 
 /**
@@ -130,23 +221,26 @@ function isPidAlive(pid: number): boolean {
 /**
  * Find and mark stale sessions.
  * A session is stale if its PID is no longer running.
+ * Uses file-based locking to prevent lost updates.
  */
 export function detectStaleSessions(repoRoot: string): Session[] {
-  const registry = loadRegistry(repoRoot);
-  const newlyStale: Session[] = [];
+  return withRegistryLock(repoRoot, () => {
+    const registry = loadRegistry(repoRoot);
+    const newlyStale: Session[] = [];
 
-  for (const session of registry.sessions) {
-    if (session.status === "active" && !isPidAlive(session.pid)) {
-      session.status = "stale";
-      newlyStale.push(session);
+    for (const session of registry.sessions) {
+      if (session.status === "active" && !isPidAlive(session.pid)) {
+        session.status = "stale";
+        newlyStale.push(session);
+      }
     }
-  }
 
-  if (newlyStale.length > 0) {
-    saveRegistry(repoRoot, registry);
-  }
+    if (newlyStale.length > 0) {
+      saveRegistry(repoRoot, registry);
+    }
 
-  return newlyStale;
+    return newlyStale;
+  });
 }
 
 /**
