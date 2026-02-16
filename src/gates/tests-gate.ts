@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import type { GateError, GateResult } from "../types.js";
+import { buildTestRemediation } from "./remediation.js";
 
 /**
  * Common test failure patterns with file/line info:
@@ -123,6 +124,11 @@ export async function verifyTests(projectDir: string): Promise<GateResult> {
 
     if (errors.length === 0) {
       errors.push({ message: "Test runner exited with non-zero status" });
+    }
+
+    // Enrich errors with remediation hints
+    for (const error of errors) {
+      error.remediation = buildTestRemediation(error);
     }
 
     return {

@@ -232,7 +232,8 @@ export function formatErrorsForAgent(result: PipelineResult): string {
       lines.push(`**Error:** ${err.message}`);
 
       if (err.remediation) {
-        lines.push(`**Suggested fix:** ${err.remediation}`);
+        lines.push("");
+        lines.push(`> **Remediation:** ${err.remediation}`);
       }
 
       lines.push("");

@@ -52,16 +52,18 @@ describe("verifyLint", () => {
     expect(result.gate).toBe("lint");
     expect(result.passed).toBe(false);
     expect(result.errors).toHaveLength(2);
-    expect(result.errors[0]).toEqual({
+    expect(result.errors[0]).toEqual(expect.objectContaining({
       file: "src/app.ts",
       line: 10,
       message: "error lint/suspicious/noDoubleEquals",
-    });
-    expect(result.errors[1]).toEqual({
+    }));
+    expect(result.errors[0].remediation).toBeDefined();
+    expect(result.errors[1]).toEqual(expect.objectContaining({
       file: "src/utils.ts",
       line: 22,
       message: "error lint/style/useConst",
-    });
+    }));
+    expect(result.errors[1].remediation).toBeDefined();
   });
 
   it("parses error lines with separator markers", async () => {

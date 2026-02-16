@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import type { GateError, GateResult } from "../types.js";
+import { buildLintRemediation } from "./remediation.js";
 
 /**
  * Biome diagnostics often look like:
@@ -64,6 +65,11 @@ export async function verifyLint(projectDir: string): Promise<GateResult> {
 
     if (cappedErrors.length === 0) {
       cappedErrors.push({ message: "biome check exited with non-zero status but no errors were parsed" });
+    }
+
+    // Enrich errors with remediation hints
+    for (const error of cappedErrors) {
+      error.remediation = buildLintRemediation(error);
     }
 
     return {
