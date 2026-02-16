@@ -1,6 +1,6 @@
 # /forge:go — Execute Milestones with Wave-Based Agent Teams
 
-Execute the next milestone from your PRD with wave-based agent teams, self-healing verification, and automatic state management. Run one milestone at a time (default) or chain all remaining milestones with `--auto`.
+Execute milestones from your PRD with wave-based agent teams, self-healing verification, and automatic state management.
 
 ## Instructions
 
@@ -31,6 +31,24 @@ If no active PRD exists:
 If all milestones are complete:
 
 > All milestones complete! Create a PR with `gh pr create` or run `/forge:spec` to start a new project.
+
+### Step 1.5 — Choose Execution Mode
+
+**Unless `--auto` was passed as an argument**, prompt the user to choose their execution mode using AskUserQuestion:
+
+```
+Question: "How should this project be executed?"
+Header: "Mode"
+Options:
+  1. Label: "Single milestone"
+     Description: "Execute the next milestone, then stop. Good for reviewing progress between milestones or when context is tight."
+  2. Label: "Auto (all milestones)"
+     Description: "Chain all remaining milestones with fresh context between each. Prints continuation instructions after each milestone completes."
+```
+
+If `--auto` was passed as an argument, skip this prompt and proceed in auto mode.
+
+Store the user's choice and apply it in Step 8 (Route Next).
 
 ### Step 2 — Pre-flight Checks
 
@@ -284,9 +302,9 @@ Then print:
 The PR is ready for review.
 ```
 
-### Auto Mode (`--auto`)
+### Auto Mode
 
-When invoked with `--auto` (e.g., `/forge:go --auto`), chain all remaining milestones with context resets between each.
+When the user selects "Auto (all milestones)" in Step 1.5 or invokes with `--auto` (e.g., `/forge:go --auto`), chain all remaining milestones with context resets between each.
 
 After each milestone completes (Step 5-7):
 
