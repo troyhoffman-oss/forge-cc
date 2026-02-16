@@ -45,6 +45,10 @@ hooks/                # Installable hooks (pre-commit, version-check)
 | `.planning/ROADMAP.md` | Milestone progress tracker |
 | `tasks/lessons.md` | Lessons learned (max 10 active) |
 
+## Session Protocol
+- **On start:** Read CLAUDE.md → .planning/STATE.md → .planning/ROADMAP.md → tasks/lessons.md
+- **When lost:** Re-read planning docs, don't guess from stale context
+
 ## Session Protocol END (Mandatory)
 1. `.planning/STATE.md` — replace, don't append
 2. `.planning/ROADMAP.md` — check off completed milestones
@@ -53,14 +57,9 @@ hooks/                # Installable hooks (pre-commit, version-check)
 
 ## Execution Rules
 - **Plan before building.** Read the PRD before touching code.
-- **Delegate immediately.** 3+ files or 3+ steps → spawn agent team.
 - **Verify everything.** Run `npx tsc --noEmit` after changes land.
 - **All changes via PR.** Never commit directly to main.
 - **Branch naming:** `feat/short-description` or `fix/short-description`
-
-## Critical Rules
-- forge-cc has NO dependency on Flow — must work standalone
-- Leave code better than you found it
 
 ## Learned Rules
 - **[agent staging]** Restage all files at wave boundaries — parallel agents can disrupt each other's git index
