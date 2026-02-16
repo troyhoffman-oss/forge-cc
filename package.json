@@ -1,6 +1,6 @@
 {
   "name": "forge-cc",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Pre-PR verification harness for Claude Code agents — gate runner + CLI + MCP server",
   "type": "module",
   "license": "MIT",
@@ -32,6 +32,7 @@
   },
   "files": [
     "dist/",
+    "scripts/",
     "skills/",
     "hooks/",
     ".forge.json",
@@ -45,6 +46,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "node dist/cli.js verify",
+    "postinstall": "node scripts/postinstall.mjs",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
