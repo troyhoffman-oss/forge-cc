@@ -571,7 +571,7 @@ program
             "claude",
             [prompt, "--dangerously-skip-permissions"],
             {
-              stdio: "inherit",
+              stdio: ["pipe", "inherit", "inherit"],
               cwd: projectDir,
             },
           );
@@ -666,7 +666,7 @@ program
         "claude",
         [prompt, "--dangerously-skip-permissions"],
         {
-          stdio: "inherit",
+          stdio: ["pipe", "inherit", "inherit"],
           cwd: projectDir,
         },
       );
