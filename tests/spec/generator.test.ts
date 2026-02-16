@@ -89,6 +89,112 @@ describe("generatePRD", () => {
   });
 });
 
+describe("generatePRD — testCriteria and test gate auto-inclusion", () => {
+  it("auto-includes 'npx forge verify --gate tests' in verification commands", () => {
+    const md = generatePRD(mockPRD);
+
+    // The mockPRD has verificationCommands: ["npm test"] but NOT the test gate
+    expect(md).toContain("npx forge verify --gate tests");
+  });
+
+  it("does not duplicate the test gate command if already present", () => {
+    const prdWithTestGate: PRDData = {
+      ...mockPRD,
+      milestones: [{
+        ...mockPRD.milestones[0],
+        verificationCommands: ["npm test", "npx forge verify --gate tests"],
+      }],
+    };
+
+    const md = generatePRD(prdWithTestGate);
+
+    // Count occurrences of the test gate command
+    const matches = md.match(/npx forge verify --gate tests/g);
+    expect(matches).toHaveLength(1);
+  });
+
+  it("renders 'Test Requirements' section with default testCriteria", () => {
+    // When testCriteria is not specified, the Zod schema provides defaults
+    const validatedPRD = validatePRD(mockPRD);
+    const md = generatePRD(validatedPRD);
+
+    expect(md).toContain("**Test Requirements:**");
+    expect(md).toContain("- All new source files must have corresponding test files");
+    expect(md).toContain("- Run `npx forge verify --gate tests` to validate test coverage");
+  });
+
+  it("renders custom testCriteria correctly", () => {
+    const prdWithCustomCriteria: PRDData = {
+      ...mockPRD,
+      milestones: [{
+        ...mockPRD.milestones[0],
+        testCriteria: [
+          "Unit tests for all API endpoints",
+          "Integration tests for auth flow",
+        ],
+      }],
+    };
+
+    const md = generatePRD(prdWithCustomCriteria);
+
+    expect(md).toContain("**Test Requirements:**");
+    expect(md).toContain("- Unit tests for all API endpoints");
+    expect(md).toContain("- Integration tests for auth flow");
+  });
+
+  it("omits 'Test Requirements' section when testCriteria is empty", () => {
+    const prdWithEmptyCriteria: PRDData = {
+      ...mockPRD,
+      milestones: [{
+        ...mockPRD.milestones[0],
+        testCriteria: [],
+      }],
+    };
+
+    const md = generatePRD(prdWithEmptyCriteria);
+
+    expect(md).not.toContain("**Test Requirements:**");
+  });
+});
+
+describe("validatePRD — testCriteria defaults", () => {
+  it("accepts milestone without explicit testCriteria and applies defaults", () => {
+    // mockPRD does not include testCriteria on its milestone
+    const result = validatePRD(mockPRD);
+
+    expect(result.milestones[0].testCriteria).toEqual([
+      "All new source files must have corresponding test files",
+      "Run `npx forge verify --gate tests` to validate test coverage",
+    ]);
+  });
+
+  it("accepts milestone with explicit empty testCriteria", () => {
+    const prdWithEmpty = {
+      ...mockPRD,
+      milestones: [{
+        ...mockPRD.milestones[0],
+        testCriteria: [],
+      }],
+    };
+
+    const result = validatePRD(prdWithEmpty);
+    expect(result.milestones[0].testCriteria).toEqual([]);
+  });
+
+  it("accepts milestone with custom testCriteria", () => {
+    const prdWithCustom = {
+      ...mockPRD,
+      milestones: [{
+        ...mockPRD.milestones[0],
+        testCriteria: ["Custom criterion"],
+      }],
+    };
+
+    const result = validatePRD(prdWithCustom);
+    expect(result.milestones[0].testCriteria).toEqual(["Custom criterion"]);
+  });
+});
+
 describe("generateDraftPRD", () => {
   it("handles partial data with defaults", () => {
     const md = generateDraftPRD({ project: "draft-test", overview: "Some overview" });

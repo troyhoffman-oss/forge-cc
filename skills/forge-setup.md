@@ -69,6 +69,66 @@ question: "Tech stack? (e.g., TypeScript, React, Node.js)"
 question: "One-line project description?"
 </AskUserQuestion>
 
+### Step 3.5 — Interactive Test Planning
+
+**Skip this step if "tests" was NOT selected in Step 3.**
+
+Run the test analysis engine on the project:
+
+```typescript
+import { analyzeForTestPlanning } from 'forge-cc/src/test-scaffold/analyze';
+const analysis = await analyzeForTestPlanning(projectDir);
+```
+
+Present findings to the user:
+
+```
+## Test Analysis
+
+**Framework detected:** {e.g., "Next.js App Router with Vitest"}
+**Coverage summary:** Found {N} source files, {M} test files
+```
+
+For each category with untested files, ask:
+
+<AskUserQuestion>
+question: "Scaffold tests for {category description}? ({N} untested files)"
+options:
+  - "Yes — scaffold test stubs for these files"
+  - "No — skip this category"
+</AskUserQuestion>
+
+If the test runner was NOT already detected from `package.json`, ask:
+
+<AskUserQuestion>
+question: "Which test runner?"
+options:
+  - "Vitest (Recommended)"
+  - "Jest"
+</AskUserQuestion>
+
+Ask about structural tests:
+
+<AskUserQuestion>
+question: "Include structural tests? (circular import detection, file naming conventions)"
+options:
+  - "Yes (Recommended)"
+  - "No"
+</AskUserQuestion>
+
+Print a summary of what will be scaffolded:
+
+```
+## Test Scaffold Plan
+
+- Config file: {vitest.config.ts / jest.config.ts}
+- Package.json updates: test script, devDependencies
+- Test stubs: {count} across {categories}
+- Structural tests: {Yes / No}
+```
+
+Store the scaffold plan for execution in Step 4. The testing config will be persisted to `.forge.json`.
+
 ### Step 4 — Create or Update Files
 
 Use the template functions from `forge-cc/src/setup/templates.ts` to generate file contents. The templates are:
@@ -85,6 +145,13 @@ Use the template functions from `forge-cc/src/setup/templates.ts` to generate fi
 **Refresh mode:** Only overwrite `.forge.json` and the structural parts of `CLAUDE.md` (everything except `## Learned Rules`). Do NOT touch `STATE.md`, `ROADMAP.md`, or `lessons.md`.
 
 Write the actual files using the Write tool. Do not just print them.
+
+**If a test scaffold plan exists from Step 3.5**, also execute it now:
+- Write the test runner config file (`vitest.config.ts` or `jest.config.ts`)
+- Write test stub files for each selected category
+- Write structural test files if selected
+- Update `package.json` with test script and devDependencies
+- Persist the `testing` section to `.forge.json`
 
 ### Step 5 — Patch Global Config
 
@@ -199,6 +266,10 @@ Print a summary of everything that was created or updated:
 - tasks/lessons.md ✓
 - .gitignore (forge lines) ✓
 - .claude/settings.local.json ✓ (version-check hook)
+
+### Test Planning
+{If tests gate enabled: "Test planning: {N} test stubs scaffolded, {runner} configured, structural tests {included/skipped}"}
+{If tests gate not enabled: "Test planning: skipped (tests gate not enabled)"}
 
 ### Next Steps
 1. Review the generated `CLAUDE.md` and customize the Code Map section

@@ -1,21 +1,27 @@
 // ── Setup Templates ─────────────────────────────────────────────────
 // String template functions used by /forge:setup to scaffold project files.
 
+import type { TestingConfig } from "../types.js";
+
 export interface SetupContext {
   projectName: string;
   techStack: string;
   description: string;
   gates: string[];
   date: string;
+  testing?: TestingConfig;
 }
 
 // ── .forge.json ─────────────────────────────────────────────────────
 
 export function forgeConfigTemplate(ctx: SetupContext): string {
-  const config = {
+  const config: Record<string, unknown> = {
     gates: ctx.gates,
     maxIterations: 5,
   };
+  if (ctx.testing) {
+    config.testing = ctx.testing;
+  }
   return JSON.stringify(config, null, 2) + "\n";
 }
 
