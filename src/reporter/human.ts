@@ -1,4 +1,5 @@
 import type { PipelineResult } from "../types.js";
+import type { Session } from "../worktree/session.js";
 
 export function formatHumanReport(result: PipelineResult): string {
   const lines: string[] = [];
@@ -71,4 +72,47 @@ export function formatHumanReport(result: PipelineResult): string {
 
 function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
+ * Format a human-readable sessions report as a markdown table.
+ */
+export function formatSessionsReport(sessions: Session[]): string {
+  if (sessions.length === 0) {
+    return "No active sessions.";
+  }
+
+  const lines: string[] = [];
+  lines.push("### Active Sessions");
+  lines.push(
+    "| Session | User | Skill | Milestone | Branch | Status | Duration | Worktree |",
+  );
+  lines.push(
+    "|---------|------|-------|-----------|--------|--------|----------|----------|",
+  );
+
+  for (const s of sessions) {
+    const shortId = s.id.slice(0, 8);
+    const milestone = s.milestone ?? "\u2014";
+    const elapsed = Date.now() - new Date(s.startedAt).getTime();
+    const duration = formatSessionDuration(elapsed);
+    const statusLabel =
+      s.status === "stale" ? "stale \u26A0" : s.status;
+
+    lines.push(
+      `| ${shortId} | ${s.user} | ${s.skill} | ${milestone} | ${s.branch} | ${statusLabel} | ${duration} | ${s.worktreePath} |`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function formatSessionDuration(ms: number): string {
+  const totalMinutes = Math.round(ms / 60_000);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}min`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h${minutes > 0 ? ` ${minutes}min` : ""}`;
 }

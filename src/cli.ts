@@ -26,6 +26,9 @@ import {
   type SetupContext,
 } from "./setup/templates.js";
 import type { PipelineResult, VerifyCache } from "./types.js";
+import { loadRegistry, detectStaleSessions, deregisterSession } from "./worktree/session.js";
+import { getRepoRoot, cleanupStaleWorktrees } from "./worktree/manager.js";
+import { formatSessionsReport } from "./reporter/human.js";
 
 const program = new Command();
 
@@ -126,6 +129,19 @@ program
       console.log(`**Config:** .forge.json (gates: ${config.gates?.join(", ") ?? "default"})`);
     } else {
       console.log(`**Config:** auto-detected (no .forge.json)`);
+    }
+
+    // Sessions
+    try {
+      const repoRoot = getRepoRoot(projectDir);
+      detectStaleSessions(repoRoot);
+      const registry = loadRegistry(repoRoot);
+      if (registry.sessions.length > 0) {
+        console.log("");
+        console.log(formatSessionsReport(registry.sessions));
+      }
+    } catch {
+      // Not a git repo or no session registry — skip silently
     }
   });
 
@@ -301,6 +317,61 @@ program
       console.log(
         `\nConsider running \`/forge:setup\` (Refresh) to update project files.`,
       );
+    }
+  });
+
+// ── cleanup command ────────────────────────────────────────────────
+
+program
+  .command("cleanup")
+  .description("Remove stale worktrees, deregister dead sessions, reclaim disk space")
+  .action(() => {
+    let repoRoot: string;
+    try {
+      repoRoot = getRepoRoot(process.cwd());
+    } catch {
+      console.error("Error: not a git repository. Run this from inside a git project.");
+      process.exit(1);
+      return; // unreachable but helps TypeScript narrow
+    }
+
+    console.log("## Forge Cleanup\n");
+
+    // Detect and mark stale sessions (mutates registry)
+    detectStaleSessions(repoRoot);
+
+    // Load registry and filter for stale sessions
+    const registry = loadRegistry(repoRoot);
+    const staleSessions = registry.sessions.filter((s) => s.status === "stale");
+
+    if (staleSessions.length === 0) {
+      console.log("No stale sessions found. Nothing to clean up.");
+      return;
+    }
+
+    console.log(`Found ${staleSessions.length} stale session${staleSessions.length === 1 ? "" : "s"}.\n`);
+
+    // Remove worktrees
+    const result = cleanupStaleWorktrees(repoRoot, staleSessions);
+
+    // Deregister successfully removed sessions and print results
+    for (const removed of result.removed) {
+      deregisterSession(repoRoot, removed.sessionId);
+      console.log(`- Removed: ${removed.sessionId} (${removed.branch}) — worktree deleted`);
+    }
+
+    for (const err of result.errors) {
+      console.log(`- Error: ${err.sessionId} — ${err.error}`);
+    }
+
+    // Summary
+    const cleanedCount = result.removed.length;
+    const errorCount = result.errors.length;
+    console.log("");
+    if (errorCount === 0) {
+      console.log(`Cleaned up ${cleanedCount} session${cleanedCount === 1 ? "" : "s"}.`);
+    } else {
+      console.log(`Cleaned up ${cleanedCount} session${cleanedCount === 1 ? "" : "s"}, ${errorCount} error${errorCount === 1 ? "" : "s"}.`);
     }
   });
 

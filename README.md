@@ -93,13 +93,23 @@ Results are cached to `.forge/last-verify.json` for freshness checking by hooks.
 
 ### `forge status`
 
-Print current project state: branch, last verification result, config source.
+Print current project state: branch, last verification result, config source, and active sessions.
 
 ```bash
 npx forge status
 ```
 
-Output includes which gates passed/failed, how long ago verification ran, and whether config is from `.forge.json` or auto-detected.
+Output includes which gates passed/failed, how long ago verification ran, config source, and a table of active forge sessions (if any) showing user, skill, milestone, branch, duration, and worktree path. Stale sessions are flagged with a warning symbol.
+
+### `forge cleanup`
+
+Remove stale worktrees, deregister dead sessions, and reclaim disk space. Idempotent — safe to run multiple times.
+
+```bash
+npx forge cleanup
+```
+
+Output shows which stale sessions were removed and their worktree paths. If no stale sessions exist, prints a clean message.
 
 ## Verification Gates
 
@@ -271,6 +281,41 @@ For a new developer joining the team:
 
 The gates run the same commands your CI does, so if `npx forge verify` passes locally, CI will pass too.
 
+## Concurrency & Session Isolation
+
+forge-cc supports multiple simultaneous sessions on the same repository using git worktrees. Each `/forge:go` or `/forge:spec` invocation runs in an isolated worktree — separate git index, separate working directory, separate state files.
+
+### How It Works
+
+1. **Worktree creation:** When a forge skill starts, it creates a git worktree in `../.forge-wt/<repo>/<session-id>/` with its own branch.
+2. **Session registry:** Active sessions are tracked in `.forge/sessions.json` with user identity, skill type, milestone, PID, and timestamps.
+3. **Isolation:** Each session has its own git index and file system. Two sessions staging files simultaneously cannot corrupt each other.
+4. **State merge:** On completion, session state (STATE.md, ROADMAP.md updates) merges back to the main repo intelligently — not last-write-wins.
+5. **Cleanup:** Successful sessions auto-cleanup. Crashed sessions are detected via PID and cleaned up with `npx forge cleanup`.
+
+### Session Visibility
+
+```bash
+# See all active sessions
+npx forge status
+
+# Clean up stale sessions (process died, worktree left behind)
+npx forge cleanup
+```
+
+### Parallel Milestones
+
+Milestones can declare dependencies using the `dependsOn` field in the PRD. Independent milestones can execute in parallel, each in their own worktree:
+
+- Milestones with no unmet dependencies start simultaneously
+- When a dependency completes, dependent milestones become unblocked
+- Each milestone produces its own branch and PR
+
+### Platform Notes
+
+- **Windows:** Short session IDs (8-char hex) avoid the 260-character path limit. Atomic writes use retry-on-rename for Windows file locking.
+- **Git version:** Requires git 2.5+ (2015) for worktree support.
+
 ## Project Structure
 
 ```
@@ -288,7 +333,9 @@ forge-cc/
     spec/               # Spec interview engine + PRD generation
     go/                 # Execution engine + verify loop + PR creation
     setup/              # Setup templates for project scaffolding
-  skills/               # Claude Code skill definitions (/forge:triage, /forge:spec, /forge:go, /forge:setup, /forge:update)
+    worktree/           # Git worktree manager, session registry, state merge, parallel scheduler
+    utils/              # Platform utilities (atomic writes, path normalization)
+  skills/               # Claude Code skill definitions
   hooks/                # Installable hook files (PreToolUse, version-check)
   tests/                # Test suite (vitest)
   .forge.json           # Default configuration

@@ -13,6 +13,7 @@ Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, work
 | Run verification | `npx forge verify` |
 | Run specific gates | `npx forge verify --gate types,lint` |
 | Check status | `npx forge status` |
+| Clean stale sessions | `npx forge cleanup` |
 | Build | `npm run build` |
 | Test | `npm test` |
 | Type check | `npx tsc --noEmit` |
@@ -21,18 +22,20 @@ Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, work
 
 ```
 src/
-  cli.ts              # CLI entry — npx forge commands
+  cli.ts              # CLI entry — npx forge commands (verify, status, setup, update, cleanup)
   server.ts           # MCP server (stdio transport)
   types.ts            # Core types
   gates/              # Verification gates (types, lint, tests, visual, runtime, prd)
   config/             # .forge.json schema + loader
   linear/             # Linear lifecycle (client, projects, milestones, issues)
   hooks/              # Pre-commit enforcement
-  reporter/           # Output formatting (human, json)
+  reporter/           # Output formatting (human, json, sessions)
   state/              # Session state (reader, writer)
   spec/               # /forge:spec engine (scanner, interview, generator, templates)
   go/                 # /forge:go engine (executor, verify-loop, auto-chain, finalize)
   setup/              # /forge:setup templates
+  worktree/           # Git worktree manager, session registry, state merge, parallel scheduler
+  utils/              # Platform utilities (atomic writes, path normalization, shell quoting)
 skills/               # Skill files (triage, spec, go, setup, update)
 hooks/                # Installable hooks (pre-commit, version-check)
 ```

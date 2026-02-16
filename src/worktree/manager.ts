@@ -6,6 +6,7 @@ import {
   normalizePath,
   shellQuote,
 } from "../utils/platform.js";
+import type { Session } from "./session.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -237,4 +238,44 @@ export function isWorktreeValid(worktreePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup
+// ---------------------------------------------------------------------------
+
+export interface CleanupResult {
+  removed: Array<{ sessionId: string; worktreePath: string; branch: string }>;
+  errors: Array<{ sessionId: string; error: string }>;
+}
+
+/**
+ * Remove worktrees associated with stale sessions.
+ * Idempotent — if a worktree is already gone, it counts as success.
+ */
+export function cleanupStaleWorktrees(
+  repoRoot: string,
+  staleSessions: Session[],
+): CleanupResult {
+  const result: CleanupResult = { removed: [], errors: [] };
+
+  for (const session of staleSessions) {
+    try {
+      // If the worktree directory still exists, remove it via git
+      if (existsSync(session.worktreePath)) {
+        removeWorktree(repoRoot, session.worktreePath);
+      }
+      // Whether it existed or not, record as successfully removed
+      result.removed.push({
+        sessionId: session.id,
+        worktreePath: session.worktreePath,
+        branch: session.branch,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      result.errors.push({ sessionId: session.id, error: message });
+    }
+  }
+
+  return result;
 }
