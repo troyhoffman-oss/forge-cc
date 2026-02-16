@@ -87,6 +87,20 @@ Conduct an adaptive interview using the interview engine logic from `src/spec/in
 
 Each milestone MUST be completable in one main agent context window. If a milestone requires more than ~4 agents across 2-3 waves, split it. This is non-negotiable — large milestones cause context overflow and execution failures. When interviewing about milestones, actively recommend splitting any milestone that looks too large.
 
+**Milestone Dependencies (dependsOn):**
+
+During the milestones phase of the interview, ask about milestone dependencies using AskUserQuestion. For each milestone after the first, ask:
+
+- question: "Does Milestone {N} depend on any previous milestones?"
+- options:
+  - "No dependencies — can start immediately"
+  - "Depends on Milestone {N-1} (sequential)"
+  - "Depends on specific milestones (I'll specify)"
+
+If milestones have explicit dependencies, include `**dependsOn:** 1, 2` in the milestone section of the PRD. If no dependencies are specified, omit the field (backward compatible — treated as sequential).
+
+Independent milestones enable parallel execution via `/forge:go`, which creates separate worktrees for each parallel milestone.
+
 **Interview Rules:**
 
 - **NEVER present questions as numbered text — always use AskUserQuestion with 2-4 options per question.** Every interview question MUST be delivered via Claude Code's AskUserQuestion tool with structured multiple-choice options. Do not print numbered lists of questions for the user to answer in free text.
@@ -172,6 +186,8 @@ The PRD should follow this structure:
 - [ ] Issue title — brief description
 
 ### Milestone 2: {Name}
+**dependsOn:** 1
+**Goal:** {What this delivers}
 ...
 ```
 
@@ -260,6 +276,8 @@ Linear: {project URL}
 - Verify each change with forge-mcp gates
 - Open PRs and transition issues automatically
 ```
+
+**Note:** `/forge:go` now uses git worktrees for session isolation. Multiple users can run `/forge:go` on different milestones simultaneously without conflicts.
 
 ## Edge Cases
 

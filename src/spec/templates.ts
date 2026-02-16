@@ -34,6 +34,7 @@ export const MilestoneSchema = z.object({
   waves: z.array(MilestoneWaveSchema),
   verificationCommands: z.array(z.string()),
   maxContextWindowFit: z.boolean().default(true),
+  dependsOn: z.array(z.number()).default([]),
 });
 
 export const PRDSchema = z.object({

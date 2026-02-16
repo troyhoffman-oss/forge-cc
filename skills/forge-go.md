@@ -84,6 +84,21 @@ Print the pre-flight summary:
 Ready to execute Milestone 4.
 ```
 
+### Step 2.5 — Session Isolation (Automatic)
+
+The execution engine automatically creates a git worktree for isolated execution. This happens transparently — you don't need to manage it manually.
+
+**What happens behind the scenes:**
+1. A worktree is created at `../.forge-wt/<repo>/<session-id>/` based on the feature branch
+2. A session is registered in `.forge/sessions.json`
+3. All wave execution happens inside the worktree directory
+4. After completion, changes are merged back to the feature branch
+5. The worktree and session are cleaned up
+
+**Why:** Multiple users or terminals can run `/forge:go` simultaneously without corrupting each other's work. Each session gets an isolated copy of the codebase.
+
+**If worktree creation fails:** The engine falls back to running in the main working directory (original behavior). A warning is printed but execution continues.
+
 ### Step 3 — Execute Waves
 
 Parse the milestone section from the PRD. Each milestone contains waves with agent definitions:
@@ -331,6 +346,23 @@ After each milestone completes (Step 5-7):
 
 This prevents context rot — each milestone starts with clean context reading CLAUDE.md + STATE.md + current milestone section only (~20% of context window).
 
+### Parallel Milestones (dependsOn)
+
+When milestones specify `dependsOn` fields in the PRD, the scheduler can identify which milestones are independent and run them in parallel:
+
+- Milestones with no `dependsOn` (or `dependsOn: []`) can run in the first wave
+- Milestones that depend on completed milestones become ready as dependencies finish
+- The scheduler builds a DAG and groups milestones into execution waves
+
+Example PRD milestone with dependencies:
+```
+### Milestone 3: Integration Layer
+**dependsOn:** 1, 2
+**Goal:** Combine components from M1 and M2...
+```
+
+If no `dependsOn` fields are present, milestones execute sequentially (backward compatible).
+
 ### Step 9 — Linear Issue Start (On Milestone Begin)
 
 At the START of milestone execution (between Step 2 and Step 3), if Linear is configured:
@@ -353,3 +385,4 @@ If Linear is not configured, skip silently.
   > Milestone {N} has no wave definitions. Update the PRD with agent assignments before running /forge:go.
 - **Already on correct milestone:** If STATE.md's current milestone matches the target, proceed normally (this is the expected case).
 - **Linear auth fails:** Warn but continue execution. Linear sync is not blocking.
+- **Worktree conflict:** If the worktree directory already exists (e.g., from a crashed session), the engine attempts `npx forge cleanup` first. If that fails, it falls back to main directory execution.

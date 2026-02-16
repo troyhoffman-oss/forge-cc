@@ -78,6 +78,8 @@ export interface MilestoneContext {
   sessionContext: SessionContext;
   lessons: string;
   claudeMd: string;
+  /** Path to the worktree used for isolated execution (if any) */
+  worktreePath?: string;
 }
 
 // ---------------------------------------------------------------------------

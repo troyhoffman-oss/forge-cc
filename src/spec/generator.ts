@@ -1,5 +1,5 @@
 import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { validatePRD } from "./templates.js";
 import type { PRDData, Milestone, UserStory } from "./templates.js";
 
@@ -103,8 +103,11 @@ function renderMilestone(milestone: Milestone): string {
     `### Milestone ${milestone.number}: ${milestone.name}`,
     `**Assigned To:** ${milestone.assignedTo}`,
     `**Goal:** ${milestone.goal}`,
-    "",
   ];
+  if (milestone.dependsOn && milestone.dependsOn.length > 0) {
+    lines.push(`**dependsOn:** ${milestone.dependsOn.join(", ")}`);
+  }
+  lines.push("");
 
   for (const wave of milestone.waves) {
     const agentCount = wave.agents.length;
@@ -248,4 +251,36 @@ export function writePRDToFile(data: PRDData, outputPath: string): void {
   const markdown = generatePRD(validated);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, markdown, "utf-8");
+}
+
+// ── Worktree PRD Writing ─────────────────────────────────────────────
+
+export interface WorktreePRDResult {
+  /** Absolute path where the PRD was written in the worktree. */
+  prdPath: string;
+  /** Relative path from the worktree root (used for merging back). */
+  relativePath: string;
+}
+
+/**
+ * Write a PRD to a worktree directory.
+ *
+ * Validates and generates the PRD markdown, then writes it to
+ * `<worktreePath>/<relativePrdPath>`. Returns both the absolute path
+ * and the relative path so callers can locate the file or merge it
+ * back to the main working tree.
+ *
+ * @param data           - The PRD data to generate and write.
+ * @param worktreePath   - Absolute path to the worktree root.
+ * @param relativePrdPath - Path relative to the worktree root where
+ *                          the PRD should be written (e.g. "tasks/prd.md").
+ */
+export function writePRDToWorktree(
+  data: PRDData,
+  worktreePath: string,
+  relativePrdPath: string,
+): WorktreePRDResult {
+  const prdPath = join(worktreePath, relativePrdPath);
+  writePRDToFile(data, prdPath);
+  return { prdPath, relativePath: relativePrdPath };
 }

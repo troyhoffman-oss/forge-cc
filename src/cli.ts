@@ -100,8 +100,12 @@ program
     console.log(`## Forge Status`);
     console.log(`**Branch:** ${branch}`);
 
-    // Last verify
-    const cachePath = join(projectDir, ".forge", "last-verify.json");
+    // Last verify — try per-branch first, fall back to old path
+    const perBranchCachePath = getVerifyCachePath(projectDir, branch);
+    const legacyCachePath = join(projectDir, ".forge", "last-verify.json");
+    const cachePath = existsSync(perBranchCachePath)
+      ? perBranchCachePath
+      : legacyCachePath;
     if (existsSync(cachePath)) {
       const cache: VerifyCache = JSON.parse(readFileSync(cachePath, "utf-8"));
       const status = cache.passed ? "PASSED" : "FAILED";
@@ -302,14 +306,31 @@ program
 
 // ── helpers ────────────────────────────────────────────────────────
 
-function writeVerifyCache(projectDir: string, result: PipelineResult): void {
-  const forgeDir = join(projectDir, ".forge");
-  mkdirSync(forgeDir, { recursive: true });
+/**
+ * Get the verify cache path for the current branch.
+ * Returns: .forge/verify-cache/<branch-slug>.json
+ */
+function getVerifyCachePath(projectDir: string, branch?: string): string {
+  let branchName = branch;
+  if (!branchName) {
+    try {
+      branchName = execSync("git branch --show-current", { encoding: "utf-8" }).trim();
+    } catch {
+      branchName = "unknown";
+    }
+  }
+  const slug = branchName.replace(/\//g, "-").toLowerCase();
+  return join(projectDir, ".forge", "verify-cache", `${slug}.json`);
+}
 
+function writeVerifyCache(projectDir: string, result: PipelineResult): void {
   let branch = "unknown";
   try {
     branch = execSync("git branch --show-current", { encoding: "utf-8" }).trim();
   } catch { /* not a git repo */ }
+
+  const cachePath = getVerifyCachePath(projectDir, branch);
+  mkdirSync(dirname(cachePath), { recursive: true });
 
   const cache: VerifyCache = {
     passed: result.passed,
@@ -318,7 +339,7 @@ function writeVerifyCache(projectDir: string, result: PipelineResult): void {
     branch,
   };
 
-  writeFileSync(join(forgeDir, "last-verify.json"), JSON.stringify(cache, null, 2));
+  writeFileSync(cachePath, JSON.stringify(cache, null, 2));
 }
 
 function formatReport(result: PipelineResult): string {
