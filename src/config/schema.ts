@@ -6,6 +6,10 @@ export const devServerSchema = z.object({
   readyPattern: z.string().optional(),
 });
 
+export const reviewConfigSchema = z.object({
+  blocking: z.boolean().default(false),
+});
+
 export const forgeConfigSchema = z.object({
   gates: z.array(z.string()).default(["types", "lint", "tests"]),
   maxIterations: z.number().int().positive().default(5),
@@ -13,6 +17,7 @@ export const forgeConfigSchema = z.object({
   devServer: devServerSchema.optional(),
   prdPath: z.string().optional(),
   linearProject: z.string().optional(),
+  review: reviewConfigSchema.optional(),
 });
 
 export type ForgeConfigInput = z.input<typeof forgeConfigSchema>;

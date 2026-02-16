@@ -50,16 +50,18 @@ describe("verifyTypes", () => {
     expect(result.gate).toBe("types");
     expect(result.passed).toBe(false);
     expect(result.errors).toHaveLength(2);
-    expect(result.errors[0]).toEqual({
+    expect(result.errors[0]).toEqual(expect.objectContaining({
       file: "src/foo.ts",
       line: 10,
       message: "error TS2322: Type 'string' is not assignable to type 'number'.",
-    });
-    expect(result.errors[1]).toEqual({
+    }));
+    expect(result.errors[0].remediation).toBeDefined();
+    expect(result.errors[1]).toEqual(expect.objectContaining({
       file: "src/bar.ts",
       line: 42,
       message: "error TS2304: Cannot find name 'baz'.",
-    });
+    }));
+    expect(result.errors[1].remediation).toBeDefined();
   });
 
   it("captures warnings separately from errors", async () => {
@@ -99,8 +101,9 @@ describe("verifyTypes", () => {
 
     expect(result.passed).toBe(false);
     expect(result.errors).toHaveLength(1);
-    // Non-matching TS error lines get pushed as message-only
-    expect(result.errors[0]).toEqual({ message: "error TS6053: File not found" });
+    // Non-matching TS error lines get pushed as message-only (with remediation added)
+    expect(result.errors[0]).toEqual(expect.objectContaining({ message: "error TS6053: File not found" }));
+    expect(result.errors[0].remediation).toBeDefined();
   });
 
   it("returns fallback error when no TS errors are parsed from output", async () => {

@@ -30,7 +30,7 @@ function makeInput(overrides: Partial<PipelineInput> = {}): PipelineInput {
 // --- Gate Registry ---
 
 describe("Pipeline / Gate registry", () => {
-  it("has all six expected gates registered", () => {
+  it("has all seven expected gates registered", () => {
     const gateNames = Object.keys(gateRegistry);
 
     expect(gateNames).toContain("types");
@@ -39,7 +39,8 @@ describe("Pipeline / Gate registry", () => {
     expect(gateNames).toContain("visual");
     expect(gateNames).toContain("runtime");
     expect(gateNames).toContain("prd");
-    expect(gateNames).toHaveLength(6);
+    expect(gateNames).toContain("review");
+    expect(gateNames).toHaveLength(7);
   });
 
   it("all registry values are functions", () => {

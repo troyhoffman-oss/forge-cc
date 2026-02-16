@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import type { GateError, GateResult } from "../types.js";
+import { buildTypeRemediation } from "./remediation.js";
 
 /** Regex to parse tsc error lines: src/foo.ts(10,5): error TS2322: ... */
 const TSC_ERROR_RE = /^(.+?)\((\d+),\d+\):\s*(.+)$/;
@@ -51,6 +52,11 @@ export async function verifyTypes(projectDir: string): Promise<GateResult> {
 
     if (errors.length === 0) {
       errors.push({ message: "tsc exited with non-zero status but no TS errors were parsed" });
+    }
+
+    // Enrich errors with remediation hints
+    for (const error of errors) {
+      error.remediation = buildTypeRemediation(error);
     }
 
     return {
