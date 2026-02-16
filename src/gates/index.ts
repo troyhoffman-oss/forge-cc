@@ -112,6 +112,6 @@ async function runGateSafe(name: string, fn: () => Promise<GateResult>): Promise
 export { verifyTypes } from "./types-gate.js";
 export { verifyLint } from "./lint-gate.js";
 export { verifyTests } from "./tests-gate.js";
-export { verifyVisual } from "./visual-gate.js";
+export { verifyVisual, captureBeforeSnapshots, clearBeforeSnapshots } from "./visual-gate.js";
 export { verifyRuntime } from "./runtime-gate.js";
 export { verifyPrd } from "./prd-gate.js";
