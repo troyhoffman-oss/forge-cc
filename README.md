@@ -375,6 +375,29 @@ forge-cc supports multiple simultaneous sessions on the same repository using gi
 - **Windows:** 8-char hex session IDs avoid the 260-character path limit. Atomic writes use retry-on-rename for Windows file locking.
 - **Git:** Requires git 2.5+ for worktree support.
 
+### Branch & Worktree Cleanup
+
+Forge creates branches and worktrees automatically during `/forge:go`. You never need to create or delete them yourself -- forge handles the full lifecycle:
+
+1. **When a milestone finishes**, forge deletes the worktree and its branch automatically.
+2. **When a PR is merged**, GitHub deletes the remote branch. Running `forge cleanup` then deletes the matching local branch.
+3. **When a session crashes**, `forge cleanup` removes the stale worktree and its branch.
+
+To clean everything up at once:
+
+```bash
+npx forge cleanup
+```
+
+This does three things:
+- Removes worktrees from crashed/stale sessions
+- Deregisters dead sessions from the registry
+- Deletes local branches whose remote branch is gone (i.e., the PR was merged)
+
+**Protected branches** (`main`, `master`) are never deleted. The currently checked-out branch is also never deleted.
+
+**TL;DR:** Just run `npx forge cleanup` periodically and branches take care of themselves. You should never need to manually delete a forge branch.
+
 ---
 
 ## For New Team Members
