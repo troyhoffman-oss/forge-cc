@@ -7,7 +7,7 @@
 | forge-cc (build) | Complete | 5 |
 | setup/update skills | Complete (v0.1.4) | — |
 | forge-concurrency | Complete | 3 |
-| forge-harness-upgrade | In Progress | 4 |
+| forge-harness-upgrade | Complete | 4 |
 
 ---
 
@@ -36,4 +36,4 @@
 | 1 | Multi-Viewport Visual Capture + DOM Extraction | Complete (2026-02-15) |
 | 2 | Before/After Comparison + Visual Reviewer | Complete (2026-02-15) |
 | 3 | Code Review Gate | Complete (2026-02-15) |
-| 4 | Gate Remediation Templates | Pending |
+| 4 | Gate Remediation Templates | Complete (2026-02-15) |
