@@ -61,6 +61,16 @@ export interface PipelineResult {
   report: string;
 }
 
+/** Testing configuration from .forge.json */
+export interface TestingConfig {
+  enforce: boolean;
+  runner: "vitest" | "jest" | "none";
+  testDir: string;
+  sourceDir: string;
+  structural: boolean;
+  categories: string[];
+}
+
 /** Configuration from .forge.json */
 export interface ForgeConfig {
   gates: string[];
@@ -76,6 +86,7 @@ export interface ForgeConfig {
   review?: {
     blocking: boolean;
   };
+  testing?: TestingConfig;
 }
 
 /** Verification cache written to .forge/last-verify.json */

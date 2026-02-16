@@ -172,4 +172,138 @@ describe("loadConfig", () => {
     expect(config).toBeDefined();
     expect(Array.isArray(config.gates)).toBe(true);
   });
+
+  // -----------------------------------------------------------------------
+  // Testing config section
+  // -----------------------------------------------------------------------
+
+  describe("testing config", () => {
+    it("parses testing config from .forge.json", () => {
+      const forgeConfig = {
+        gates: ["types", "tests"],
+        testing: {
+          enforce: true,
+          runner: "vitest",
+          testDir: "tests",
+          sourceDir: "src",
+          structural: true,
+          categories: ["utils", "api-routes"],
+        },
+      };
+
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(forgeConfig));
+
+      const config = loadConfig("/fake/project");
+
+      expect(config.testing).toBeDefined();
+      expect(config.testing!.enforce).toBe(true);
+      expect(config.testing!.runner).toBe("vitest");
+      expect(config.testing!.testDir).toBe("tests");
+      expect(config.testing!.sourceDir).toBe("src");
+      expect(config.testing!.structural).toBe(true);
+      expect(config.testing!.categories).toEqual(["utils", "api-routes"]);
+    });
+
+    it("applies Zod defaults for missing testing fields", () => {
+      const forgeConfig = {
+        gates: ["types"],
+        testing: {
+          // Only provide enforce; everything else should get defaults
+          enforce: false,
+        },
+      };
+
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(forgeConfig));
+
+      const config = loadConfig("/fake/project");
+
+      expect(config.testing).toBeDefined();
+      expect(config.testing!.enforce).toBe(false);
+      expect(config.testing!.runner).toBe("vitest"); // default
+      expect(config.testing!.testDir).toBe("tests"); // default
+      expect(config.testing!.sourceDir).toBe("src"); // default
+      expect(config.testing!.structural).toBe(true); // default
+      expect(config.testing!.categories).toEqual([]); // default
+    });
+
+    it("auto-detects testing config with vitest in devDependencies", () => {
+      const pkg = {
+        dependencies: {},
+        devDependencies: {
+          typescript: "^5.0.0",
+          vitest: "^1.0.0",
+        },
+        scripts: {
+          test: "vitest run",
+        },
+      };
+
+      // .forge.json does not exist; "tests" dir exists for detectTestDir
+      mockExistsSync.mockImplementation((p: any) => {
+        const pathStr = String(p).replace(/\\/g, "/");
+        if (pathStr.endsWith(".forge.json")) return false;
+        if (pathStr.endsWith("/tests")) return true;
+        return false;
+      });
+      mockReadFileSync.mockReturnValue(JSON.stringify(pkg));
+
+      const config = loadConfig("/fake/project");
+
+      expect(config.testing).toBeDefined();
+      expect(config.testing!.runner).toBe("vitest");
+      expect(config.testing!.enforce).toBe(false); // auto-detect defaults to false
+      expect(config.testing!.testDir).toBe("tests");
+    });
+
+    it("auto-detects testing config with jest in devDependencies", () => {
+      const pkg = {
+        dependencies: {},
+        devDependencies: {
+          typescript: "^5.0.0",
+          jest: "^29.0.0",
+        },
+        scripts: {
+          test: "jest",
+        },
+      };
+
+      mockExistsSync.mockImplementation((p: any) => {
+        const pathStr = String(p).replace(/\\/g, "/");
+        if (pathStr.endsWith(".forge.json")) return false;
+        // __tests__ dir exists instead of tests
+        if (pathStr.endsWith("/__tests__")) return true;
+        return false;
+      });
+      mockReadFileSync.mockReturnValue(JSON.stringify(pkg));
+
+      const config = loadConfig("/fake/project");
+
+      expect(config.testing).toBeDefined();
+      expect(config.testing!.runner).toBe("jest");
+      expect(config.testing!.testDir).toBe("__tests__");
+    });
+
+    it("returns no testing config when no test runner detected", () => {
+      const pkg = {
+        dependencies: {},
+        devDependencies: {
+          typescript: "^5.0.0",
+        },
+        scripts: {},
+      };
+
+      mockExistsSync.mockImplementation((p: any) => {
+        const pathStr = String(p).replace(/\\/g, "/");
+        if (pathStr.endsWith(".forge.json")) return false;
+        return false;
+      });
+      mockReadFileSync.mockReturnValue(JSON.stringify(pkg));
+
+      const config = loadConfig("/fake/project");
+
+      expect(config.testing).toBeUndefined();
+    });
+  });
 });

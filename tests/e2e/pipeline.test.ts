@@ -12,11 +12,38 @@ vi.mock("../../src/utils/browser.js", () => ({
   stopDevServer: vi.fn(),
 }));
 
+vi.mock("../../src/gates/test-analysis.js", () => ({
+  analyzeTestCoverage: vi.fn(),
+}));
+
+vi.mock("../../src/config/loader.js", () => ({
+  loadConfig: vi.fn(),
+}));
+
 import { execSync } from "node:child_process";
 import { gateRegistry, runPipeline } from "../../src/gates/index.js";
 import type { PipelineInput } from "../../src/types.js";
+import { analyzeTestCoverage } from "../../src/gates/test-analysis.js";
+import { loadConfig } from "../../src/config/loader.js";
 
 const mockExecSync = vi.mocked(execSync);
+const mockAnalyzeTestCoverage = vi.mocked(analyzeTestCoverage);
+const mockLoadConfig = vi.mocked(loadConfig);
+
+// --- Setup defaults for test-analysis and config mocks ---
+
+beforeEach(() => {
+  mockAnalyzeTestCoverage.mockResolvedValue({
+    framework: { testRunner: "vitest", appFramework: "plain-ts", detectedPatterns: [] },
+    coverage: { sourceFiles: 5, testFiles: 3, ratio: 0.6, untestedFiles: [] },
+    categories: [],
+  });
+  mockLoadConfig.mockReturnValue({
+    gates: ["types", "lint", "tests"],
+    maxIterations: 5,
+    verifyFreshness: 600_000,
+  });
+});
 
 // --- Helpers ---
 

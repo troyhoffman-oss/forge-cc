@@ -10,6 +10,15 @@ export const reviewConfigSchema = z.object({
   blocking: z.boolean().default(false),
 });
 
+export const testingConfigSchema = z.object({
+  enforce: z.boolean().default(true),
+  runner: z.enum(["vitest", "jest", "none"]).default("vitest"),
+  testDir: z.string().default("tests"),
+  sourceDir: z.string().default("src"),
+  structural: z.boolean().default(true),
+  categories: z.array(z.string()).default([]),
+});
+
 export const forgeConfigSchema = z.object({
   gates: z.array(z.string()).default(["types", "lint", "tests"]),
   maxIterations: z.number().int().positive().default(5),
@@ -18,6 +27,7 @@ export const forgeConfigSchema = z.object({
   prdPath: z.string().optional(),
   linearProject: z.string().optional(),
   review: reviewConfigSchema.optional(),
+  testing: testingConfigSchema.optional(),
 });
 
 export type ForgeConfigInput = z.input<typeof forgeConfigSchema>;

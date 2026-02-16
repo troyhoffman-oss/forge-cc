@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { forgeConfigSchema } from "./schema.js";
-import type { ForgeConfig } from "../types.js";
+import type { ForgeConfig, TestingConfig } from "../types.js";
 
 export function loadConfig(projectDir: string): ForgeConfig {
   const configPath = join(projectDir, ".forge.json");
@@ -20,14 +20,38 @@ export function loadConfig(projectDir: string): ForgeConfig {
   return autoDetectConfig(projectDir);
 }
 
+function detectTestDir(projectDir: string): string {
+  for (const dir of ["tests", "__tests__", "test"]) {
+    if (existsSync(join(projectDir, dir))) {
+      return dir;
+    }
+  }
+  return "tests";
+}
+
+function detectTestingConfig(projectDir: string, allDeps: Record<string, string>): TestingConfig | undefined {
+  const runner = allDeps.vitest ? "vitest" : allDeps.jest ? "jest" : null;
+  if (!runner) return undefined;
+
+  return {
+    enforce: false,
+    runner,
+    testDir: detectTestDir(projectDir),
+    sourceDir: "src",
+    structural: true,
+    categories: [],
+  };
+}
+
 function autoDetectConfig(projectDir: string): ForgeConfig {
   const gates: string[] = [];
+  let testing: TestingConfig | undefined;
 
   try {
     const pkgPath = join(projectDir, "package.json");
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 
-    const allDeps = {
+    const allDeps: Record<string, string> = {
       ...pkg.dependencies,
       ...pkg.devDependencies,
     };
@@ -35,6 +59,8 @@ function autoDetectConfig(projectDir: string): ForgeConfig {
     if (allDeps.typescript) gates.push("types");
     if (allDeps["@biomejs/biome"] || allDeps.biome) gates.push("lint");
     if (pkg.scripts?.test) gates.push("tests");
+
+    testing = detectTestingConfig(projectDir, allDeps);
   } catch {
     // No package.json or invalid — use defaults
     gates.push("types", "lint", "tests");
@@ -44,5 +70,5 @@ function autoDetectConfig(projectDir: string): ForgeConfig {
     gates.push("types", "lint", "tests");
   }
 
-  return forgeConfigSchema.parse({ gates });
+  return forgeConfigSchema.parse({ gates, testing });
 }
