@@ -6,6 +6,7 @@ import {
   buildTestRemediation,
   buildVisualRemediation,
   buildReviewRemediation,
+  buildTestCoverageRemediation,
 } from "../../src/gates/remediation.js";
 import { formatErrorsForAgent } from "../../src/go/verify-loop.js";
 
@@ -234,6 +235,56 @@ describe("buildReviewRemediation", () => {
   });
 });
 
+describe("buildTestCoverageRemediation", () => {
+  it("returns enforcement remediation for missing test file with file context", () => {
+    const error: GateError = {
+      file: "src/new-feature.ts",
+      message: "Missing test file for changed source: src/new-feature.ts",
+    };
+    const result = buildTestCoverageRemediation(error);
+    expect(result).toContain("src/new-feature.ts");
+    expect(result).toMatch(/create a test file/i);
+    expect(result).toContain("/forge:setup");
+  });
+
+  it("returns baseline remediation for 'no tests found' message", () => {
+    const error: GateError = {
+      message: "No tests found. 5 source files across 2 categories have no test coverage.",
+    };
+    const result = buildTestCoverageRemediation(error);
+    expect(result).toMatch(/no tests exist/i);
+    expect(result).toContain("/forge:setup");
+  });
+
+  it("returns thin coverage remediation for 'thin coverage' message", () => {
+    const error: GateError = {
+      message: "Thin coverage: ratio 0.1 (1 test file for 10 source files)",
+    };
+    const result = buildTestCoverageRemediation(error);
+    expect(result).toMatch(/coverage is very low/i);
+    expect(result).toMatch(/critical paths/i);
+  });
+
+  it("returns generic fallback for unrecognized coverage error", () => {
+    const error: GateError = {
+      message: "Some other coverage-related problem",
+    };
+    const result = buildTestCoverageRemediation(error);
+    expect(result.length).toBeGreaterThan(0);
+    expect(result).toContain("/forge:setup");
+  });
+
+  it("includes file location prefix when file is provided", () => {
+    const error: GateError = {
+      file: "src/utils.ts",
+      line: 1,
+      message: "Missing test file for changed source: src/utils.ts",
+    };
+    const result = buildTestCoverageRemediation(error);
+    expect(result).toContain("src/utils.ts:1");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Part 2: formatErrorsForAgent renders remediation
 // ---------------------------------------------------------------------------
@@ -376,12 +427,24 @@ vi.mock("node:child_process", () => ({
   execSync: vi.fn(),
 }));
 
+vi.mock("../../src/gates/test-analysis.js", () => ({
+  analyzeTestCoverage: vi.fn(),
+}));
+
+vi.mock("../../src/config/loader.js", () => ({
+  loadConfig: vi.fn(),
+}));
+
 import { execSync } from "node:child_process";
 import { verifyTypes } from "../../src/gates/types-gate.js";
 import { verifyLint } from "../../src/gates/lint-gate.js";
 import { verifyTests } from "../../src/gates/tests-gate.js";
+import { analyzeTestCoverage } from "../../src/gates/test-analysis.js";
+import { loadConfig } from "../../src/config/loader.js";
 
 const mockExecSync = vi.mocked(execSync);
+const mockAnalyzeTestCoverage = vi.mocked(analyzeTestCoverage);
+const mockLoadConfig = vi.mocked(loadConfig);
 
 describe("Gate enrichment: verifyTypes populates remediation", () => {
   beforeEach(() => {
@@ -514,6 +577,17 @@ describe("Gate enrichment: verifyLint populates remediation", () => {
 describe("Gate enrichment: verifyTests populates remediation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Provide defaults so verifyTests' new dependencies work
+    mockAnalyzeTestCoverage.mockResolvedValue({
+      framework: { testRunner: "vitest", appFramework: "plain-ts", detectedPatterns: [] },
+      coverage: { sourceFiles: 5, testFiles: 3, ratio: 0.6, untestedFiles: [] },
+      categories: [],
+    });
+    mockLoadConfig.mockReturnValue({
+      gates: ["types", "lint", "tests"],
+      maxIterations: 5,
+      verifyFreshness: 600_000,
+    });
   });
 
   it("enriches test failure errors with remediation field", async () => {

@@ -35,6 +35,10 @@ export const MilestoneSchema = z.object({
   verificationCommands: z.array(z.string()),
   maxContextWindowFit: z.boolean().default(true),
   dependsOn: z.array(z.number()).default([]),
+  testCriteria: z.array(z.string()).default([
+    "All new source files must have corresponding test files",
+    "Run `npx forge verify --gate tests` to validate test coverage",
+  ]),
 });
 
 export const PRDSchema = z.object({

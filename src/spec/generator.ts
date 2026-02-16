@@ -125,13 +125,27 @@ function renderMilestone(milestone: Milestone): string {
     lines.push("");
   }
 
-  if (milestone.verificationCommands.length > 0) {
+  // Auto-include test gate in verification commands if not already present
+  const testGateCmd = "npx forge verify --gate tests";
+  const verificationCommands = milestone.verificationCommands.includes(testGateCmd)
+    ? milestone.verificationCommands
+    : [...milestone.verificationCommands, testGateCmd];
+
+  if (verificationCommands.length > 0) {
     lines.push("**Verification:**");
     lines.push("```bash");
-    for (const cmd of milestone.verificationCommands) {
+    for (const cmd of verificationCommands) {
       lines.push(cmd);
     }
     lines.push("```");
+  }
+
+  if (milestone.testCriteria && milestone.testCriteria.length > 0) {
+    lines.push("");
+    lines.push("**Test Requirements:**");
+    for (const criterion of milestone.testCriteria) {
+      lines.push(`- ${criterion}`);
+    }
   }
 
   return lines.join("\n");

@@ -447,6 +447,39 @@ export function buildReviewRemediation(error: GateError): string {
 }
 
 // ---------------------------------------------------------------------------
+// Test Coverage Remediation
+// ---------------------------------------------------------------------------
+
+/**
+ * Build actionable remediation text for a test coverage error.
+ *
+ * Handles missing test files (enforcement mode) and zero-coverage baseline
+ * failures. Returns file-specific instructions when a source file is
+ * identified, or a general scaffolding instruction otherwise.
+ */
+export function buildTestCoverageRemediation(error: GateError): string {
+  const location = formatLocation(error);
+
+  // Missing test file for a specific source file (enforcement mode)
+  if (error.file && /missing.*test|no.*test.*file/i.test(error.message)) {
+    return `${location}Create a test file for this source file to satisfy enforcement. Run \`/forge:setup\` to scaffold tests automatically.`;
+  }
+
+  // Zero coverage / baseline failure
+  if (/no tests found|zero.*coverage/i.test(error.message)) {
+    return `${location}No tests exist in this project. Run \`/forge:setup\` to scaffold a test suite with the correct runner and directory structure.`;
+  }
+
+  // Thin coverage warning
+  if (/thin.*coverage|low.*ratio/i.test(error.message)) {
+    return `${location}Test coverage is very low. Prioritize adding tests for critical paths (API routes, business logic) first.`;
+  }
+
+  // Generic coverage remediation
+  return `${location}Add test coverage for the identified file. Run \`/forge:setup\` to scaffold tests.`;
+}
+
+// ---------------------------------------------------------------------------
 // Shared Utilities
 // ---------------------------------------------------------------------------
 
