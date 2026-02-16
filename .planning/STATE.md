@@ -1,31 +1,29 @@
 # forge-cc — Project State
 
 ## Current Position
-- **Version:** 0.1.5
-- **Project:** Forge Concurrency Model
-- **Milestone:** All milestones complete
-- **Branch:** feat/forge-concurrency
-- **Active PRD:** `.planning/prds/forge-concurrency.md`
+- **Version:** 0.1.8
+- **Project:** Forge Harness Engineering Upgrade
+- **Milestone:** 1 — Multi-Viewport Visual Capture + DOM Extraction
+- **Branch:** feat/forge-harness
+- **Active PRD:** `.planning/prds/forge-harness-upgrade.md`
 - **Last Session:** 2026-02-15
 
 ## Milestone Progress
 | Milestone | Name | Status |
 |-----------|------|--------|
-| 1 | Worktree Manager + Session Registry | Complete (2026-02-15) |
-| 2 | Skill Integration | Complete (2026-02-15) |
-| 3 | Status Command + Cleanup UX | Complete (2026-02-15) |
+| 1 | Multi-Viewport Visual Capture + DOM Extraction | Pending |
+| 2 | Before/After Comparison + Visual Reviewer | Pending |
+| 3 | Code Review Gate | Pending |
+| 4 | Gate Remediation Templates | Pending |
 
-## Key Decisions
-- Git worktrees for automatic session isolation (not branch-based, not file-locking)
-- Worktrees for /forge:go AND /forge:spec
-- Hidden sibling directory: `../.forge-wt/<repo>/<8-char-id>/` (short paths for Windows)
-- Separate PRs always — no shared branches
-- Per-session STATE.md, merged on completion
-- Identity from git config user.name/email
-- Per-branch verify cache (replaces single last-verify.json)
-- Windows-safe platform utils (atomic writes with retry, path normalization)
-- Parallel milestone execution via `dependsOn` field + DAG scheduler
-- No Linear project for this work — local PRD only
+## Dependencies
+- M2 depends on M1
+- M3 is independent (can run parallel with M1)
+- M4 is independent (can run parallel with M1)
 
-## Next Actions
-1. Create PR for feat/forge-concurrency -> main
+## Key Context
+- Adding 3 features: enhanced visual gate, code review gate, gate remediation templates
+- All new code plugs into existing gate registry and verify loop
+- No new npm dependencies
+- PRD designed for auto-loop execution (small milestones, 2-3 agents each)
+- Baseline: 349 tests passing, clean build
