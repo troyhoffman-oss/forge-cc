@@ -86,6 +86,17 @@ Print the pre-flight summary:
 Ready to execute Milestone 4.
 ```
 
+**Visual baseline (if visual gate enabled):**
+
+If `.forge.json` includes `visual` in gates or specifies a `devServerUrl`, capture before screenshots:
+
+1. Start the dev server (from `.forge.json` devServerUrl or `npm run dev`)
+2. Run `npx forge verify --gate visual --before-only` (or manually call the screenshot capture)
+3. Screenshots save to `.forge/screenshots/before/`
+4. Stop the dev server
+
+This establishes the visual baseline for regression detection. Skip if no visual gate is configured.
+
 ### Step 2.5 — Session Isolation (Automatic)
 
 The execution engine automatically creates a git worktree for isolated execution. This happens transparently — you don't need to manage it manually.
@@ -207,20 +218,31 @@ If verification **passes**: proceed to reviewer.
 
 #### 3f. Reviewer Consensus Protocol
 
+**MANDATORY: Do NOT proceed to the next wave or Step 5 until the reviewer has completed its review. This is the real quality gate — not tests.**
+
 After mechanical gates pass, engage the reviewer agent:
 
 1. **Send diff to reviewer:** Use SendMessage to send the wave's git diff to the reviewer agent, along with:
-   - The PRD milestone section (goals and acceptance criteria)
+   - The PRD milestone section including:
+     - The **Goal** line (what this milestone delivers)
+     - All `- [ ]` checklist items from the milestone (these are the acceptance criteria)
+     - The **User Stories** section from the PRD (for context on what users expect)
+   - The full git diff for the wave
    - CLAUDE.md rules and architecture decisions
    - The list of files changed and their ownership
+   - If the visual gate ran, include the screenshot file paths:
+     - Before: `.forge/screenshots/before/*.png` (if captured in Step 2)
+     - After: `.forge/screenshots/after/*.png`
+     - Tell the reviewer: "Use the Read tool to view these screenshots. Compare the rendered UI against the PRD's acceptance criteria and user stories. Check for: layout correctness, missing UI elements, visual regressions from the before state, responsive behavior across viewports (desktop 1280x800, tablet 768x1024, mobile 390x844)."
 
 2. **Reviewer analyzes diff:** The reviewer examines the changes for:
-   - PRD alignment — does the code achieve what the milestone specifies?
-   - Architecture adherence — does the code follow CLAUDE.md patterns?
-   - Logic errors — not mechanical (tsc catches those), but semantic issues
-   - Cross-agent integration — do the pieces from different builders fit together?
+   - Does the code achieve the milestone's **Goal** line?
+   - Does it handle the acceptance criteria from the PRD? (Check each `- [ ]` item)
+   - Are there logic errors, missing error handling, or dead code paths?
+   - Would `npx forge verify` catch this, or is this a semantic issue only a reviewer would find?
+   - **If screenshots provided:** Does the rendered UI match the PRD's described behavior? Are there visual issues (broken layouts, missing elements, incorrect spacing) across any viewport?
 
-3. **Reviewer sends findings:** The reviewer sends structured findings via SendMessage to the relevant builder(s):
+3. **Reviewer sends findings:** The reviewer sends structured findings to the orchestrator (you). **Print each finding to the terminal** so the user sees them:
    ```
    Finding: {description}
    Severity: error | warning
@@ -228,23 +250,12 @@ After mechanical gates pass, engage the reviewer agent:
    Line: {number}
    ```
 
-4. **Builder responds:** The builder can:
-   - **Agree** — finding is queued for fix agent
-   - **Disagree: {reason}** — builder explains why the finding is incorrect
-   - **Alternative: {proposal}** — builder proposes a different approach
-
-5. **Round 2 (if disagreement):** The reviewer re-evaluates the builder's reasoning. Either:
-   - Accepts the builder's position (finding dropped)
-   - Maintains the finding (escalates to executive)
-
-6. **Escalation (deadlock after 2 rounds):** The executive (you) reviews both positions and makes the final call.
-
-7. **Fix agreed findings:** Spawn a fix agent to address all agreed-upon findings. The fix agent receives:
+4. **Fix findings:** Spawn a fix agent to address all findings. The fix agent receives:
    - The specific findings to fix
    - The files to modify
-   - "Fix ONLY the agreed findings. Do not refactor or add features."
+   - "Fix ONLY the listed findings. Do not refactor or add features."
 
-8. **Re-verify:** Restage files and re-run mechanical gates after fixes.
+5. **Re-verify:** Restage files and re-run mechanical gates after fixes.
 
 If no findings (or all findings resolved): print wave completion summary and proceed to the next wave.
 
@@ -254,6 +265,7 @@ If no findings (or all findings resolved): print wave completion summary and pro
 - agent-1: OK (created file1.ts, file2.ts)
 - agent-2: OK (modified file3.ts)
 - Mechanical verification: PASSED
+- Visual gate: PASSED (3 viewports captured) | SKIPPED (not configured)
 - Reviewer: {N} findings, {M} resolved, 0 outstanding
 
 Proceeding to Wave {N+1}...
