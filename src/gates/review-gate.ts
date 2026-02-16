@@ -136,7 +136,9 @@ function getDiffContent(projectDir: string, baseBranch?: string): string | null 
         encoding: "utf-8",
         timeout: 30_000,
       });
-      if (diff.trim()) return diff;
+      // If the command succeeded, trust the result even if empty —
+      // an empty diff means no changes vs the base branch.
+      return diff.trim() ? diff : null;
     } catch {
       // Fall through to other strategies
     }

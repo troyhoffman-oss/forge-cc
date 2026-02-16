@@ -49,6 +49,7 @@ export interface PipelineInput {
   devServerCommand?: string;
   devServerPort?: number;
   baseBranch?: string;
+  reviewBlocking?: boolean;
 }
 
 /** Result from the full verification pipeline */

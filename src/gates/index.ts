@@ -25,6 +25,7 @@ export const gateRegistry: Record<string, (input: PipelineInput) => Promise<Gate
   review: (input) => verifyReview(input.projectDir, {
     prdPath: input.prdPath,
     baseBranch: input.baseBranch,
+    blocking: input.reviewBlocking,
   }),
 };
 

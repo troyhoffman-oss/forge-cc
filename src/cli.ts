@@ -59,6 +59,7 @@ program
         maxIterations: config.maxIterations,
         devServerCommand: config.devServer?.command,
         devServerPort: config.devServer?.port,
+        reviewBlocking: config.review?.blocking,
       });
 
       // Generate report if pipeline didn't produce one

@@ -193,6 +193,10 @@ export async function verifyVisual(
           if (beforeResult) {
             const findings = reviewVisual(beforeResult, afterResult);
             reviewerErrors.push(...findings);
+          } else {
+            warnings.push(
+              `No baseline snapshot for ${pagePath} — before/after comparison skipped. Call captureBeforeSnapshots() before verifyVisual() to enable.`,
+            );
           }
         } catch (err: unknown) {
           const message =
