@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -103,5 +103,3 @@ describe("findNextPendingMilestone (via auto-chain re-export)", () => {
     expect(result).toEqual({ number: 2, status: { status: "pending" } });
   });
 });
-
-import { afterEach } from "vitest";

@@ -274,6 +274,7 @@ export async function runAutoChain(
     user,
     skill: "go",
     milestone: `M${currentMilestoneNumber}`,
+    prdSlug,
     branch: worktreeBranch,
     worktreePath,
   });

@@ -19,6 +19,8 @@ export interface Session {
   email: string;
   skill: "go" | "spec";
   milestone?: string;
+  /** PRD slug this session is executing (for multi-PRD queue tracking) */
+  prdSlug?: string;
   branch: string;
   worktreePath: string;
   startedAt: string; // ISO timestamp
@@ -144,6 +146,7 @@ export function registerSession(
     user: UserIdentity;
     skill: "go" | "spec";
     milestone?: string;
+    prdSlug?: string;
     branch: string;
     worktreePath: string;
   },
@@ -157,6 +160,7 @@ export function registerSession(
       email: params.user.email,
       skill: params.skill,
       milestone: params.milestone,
+      prdSlug: params.prdSlug,
       branch: params.branch,
       worktreePath: params.worktreePath,
       startedAt: new Date().toISOString(),
