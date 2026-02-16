@@ -17,13 +17,16 @@
 ## Key Decisions
 - Git worktrees for automatic session isolation (not branch-based, not file-locking)
 - Worktrees for /forge:go AND /forge:spec
-- Hidden sibling directory: `../.forge-worktrees/<repo>/<session-id>/`
+- Hidden sibling directory: `../.forge-wt/<repo>/<8-char-id>/` (short paths for Windows)
 - Separate PRs always — no shared branches
 - Per-session STATE.md, merged on completion
 - Identity from git config user.name/email
 - Per-branch verify cache (replaces single last-verify.json)
+- Windows-safe platform utils (atomic writes with retry, path normalization)
+- Parallel milestone execution via `dependsOn` field + DAG scheduler
 - No Linear project for this work — local PRD only
-- M1 Wave 0 enforces spec system rules (AskUserQuestion, milestone sizing) before building concurrency
+- M1 Wave 0 enforces spec system rules (AskUserQuestion, milestone sizing)
+- Dogfooding: every session records friction/findings
 
 ## Next Actions
 1. Create branch `feat/forge-concurrency`

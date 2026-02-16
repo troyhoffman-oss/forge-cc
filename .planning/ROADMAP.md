@@ -34,7 +34,7 @@
 | Milestone | Name | Status |
 |-----------|------|--------|
 | 1 | Worktree Manager + Session Registry (includes Wave 0: spec system rules) | Pending |
-| 2 | Skill Integration — wire worktrees into /forge:go, /forge:spec, per-branch cache | Pending |
+| 2 | Skill Integration + Parallel Milestones — wire worktrees, parallel scheduler, per-branch cache | Pending |
 | 3 | Status Command + Cleanup UX — npx forge status, npx forge cleanup, e2e tests | Pending |
 
 ---

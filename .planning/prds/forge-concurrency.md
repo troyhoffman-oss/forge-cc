@@ -71,6 +71,9 @@ src/
     session.ts        # Session registry (read/write .forge/sessions.json)
     state-merge.ts    # Merge per-session STATE.md/ROADMAP.md back to main
     identity.ts       # Get user identity from git config
+    parallel.ts       # Milestone dependency analysis, parallel execution scheduler
+  utils/
+    platform.ts       # Windows-safe atomic writes, path shortening, shell quoting
 ```
 
 ### Worktree Lifecycle
@@ -125,19 +128,63 @@ function getCurrentUser(): { name: string; email: string } {
 }
 ```
 
+### Windows Platform Support
+
+forge-cc runs on Windows (Troy's primary machine). Platform-specific concerns handled structurally, not patched ad-hoc:
+
+**`src/utils/platform.ts`:**
+- **Atomic writes:** `writeFileSync` to temp file + `renameSync`. On Windows, rename can fail if another process has the file open — retry loop with exponential backoff (3 attempts, 50/100/200ms).
+- **Short session IDs:** UUID → 8-char hex hash to avoid Windows 260-char path limit. Worktree paths: `../.forge-wt/<repo>/<8-char-id>/` (shortened from `.forge-worktrees`).
+- **Shell quoting:** Git commands via `execSync` use platform-appropriate quoting. Use `child_process` options `{ shell: true }` consistently.
+- **Path normalization:** All internal paths use `path.join()` / `path.resolve()`. Never hardcode `/` or `\`.
+
+All worktree, session, and state modules import from `platform.ts` for I/O operations — no direct `fs.writeFileSync` or `fs.renameSync` calls elsewhere.
+
+### Parallel Milestone Execution
+
+When milestones are independent (no code dependencies between them), they can run in separate worktrees simultaneously. This is the core productivity multiplier.
+
+**Milestone dependency model:**
+```typescript
+// Added to MilestoneSchema in templates.ts
+dependsOn: z.array(z.number()).default([])  // Milestone numbers this depends on
+```
+
+**How it works:**
+1. `/forge:go --auto` reads the full PRD and builds a dependency DAG from milestone `dependsOn` fields
+2. Milestones with no unmet dependencies can start in parallel — each in its own worktree
+3. When M1 completes, its branch is merged into the worktrees of milestones that depend on it (M2, M3)
+4. Dependent milestones become unblocked and start automatically
+5. Each milestone still gets its own branch and PR
+
+**Example:** If a project has M1 (foundation), M2 (feature A, depends on M1), M3 (feature B, depends on M1), M4 (integration, depends on M2+M3):
+- Phase 1: M1 runs alone
+- Phase 2: M2 + M3 run in parallel (both depend only on M1)
+- Phase 3: M4 runs alone (depends on M2+M3)
+
+**Scheduler (`src/worktree/parallel.ts`):**
+- `analyzeDependencies(milestones)` → DAG with parallel groups
+- `getReadyMilestones(dag, completedSet)` → milestones whose dependencies are all met
+- `mergeParentBranch(worktreePath, parentBranch)` → cherry-pick/merge parent milestone's work into dependent worktree
+
+**Default behavior:** If `dependsOn` is empty for all milestones (existing PRDs), they run sequentially as today. Parallel execution is opt-in via the dependency field. Zero breaking changes.
+
 ### Dependencies
 
 - No new npm dependencies. Git worktree commands are available in git 2.5+ (2015). `child_process.execSync` for git commands.
-- Atomic file writes use `fs.writeFileSync` to a temp file + `fs.renameSync` (POSIX atomic rename).
+- Atomic file writes use platform-safe retry pattern (see Windows Platform Support).
+- `dependsOn` field is optional with empty default — backward compatible with existing PRDs.
 
 ## Scope
 
 ### In Scope
+- Windows-safe platform utilities (atomic writes, short IDs, path normalization)
 - Worktree manager (create, list, delete, cleanup)
 - Session registry with atomic writes
 - Identity from git config
 - `/forge:go` integration — runs in worktree, merges state on completion
 - `/forge:spec` integration — runs in worktree for PRD writes
+- Parallel milestone execution — `dependsOn` field, DAG analysis, multi-worktree auto-chain
 - `npx forge status` showing all active sessions
 - Per-branch verify cache
 - Automatic cleanup on success, manual cleanup command for crashes
@@ -166,11 +213,12 @@ function getCurrentUser(): { name: string; email: string } {
 | interview-rules | Rewrite forge-spec.md interview instructions (Step 3) to REQUIRE AskUserQuestion tool with multiple-choice options for every interview question. Remove all text-based numbered question patterns. Add explicit rule: "NEVER present questions as numbered text — always use AskUserQuestion with 2-4 options per question." Update interview.ts JSDoc to document that question objects are rendered via AskUserQuestion, not printed as text. | `skills/forge-spec.md`, `src/spec/interview.ts` |
 | milestone-sizing | Add milestone sizing constraint as a hard rule. In templates.ts: add `maxContextWindowFit` field to MilestoneSchema (boolean, default true) and add JSDoc stating milestones MUST fit in one agent context window. In forge-spec.md: add rule to Step 3 milestones section and Step 4 generation — "Each milestone MUST be completable in one main agent context window. If a milestone requires more than ~4 agents across 2-3 waves, split it." In forge-go.md: add pre-flight warning in Step 2 if milestone has >3 waves or >6 agents. | `src/spec/templates.ts`, `skills/forge-spec.md`, `skills/forge-go.md` |
 
-**Wave 1 — Core modules (2 agents):**
+**Wave 1 — Platform utils + core modules (3 agents):**
 | Agent | Task | Files |
 |-------|------|-------|
-| worktree-manager | Git worktree create/list/delete, path conventions, error handling | `src/worktree/manager.ts` |
-| session-registry | Session CRUD with atomic writes, stale detection, identity helper | `src/worktree/session.ts`, `src/worktree/identity.ts` |
+| platform-utils | Windows-safe atomic writes (retry loop), short session ID generation (8-char hex), path normalization helpers, shell quoting. All other modules import from here for I/O. | `src/utils/platform.ts`, `tests/utils/platform.test.ts` |
+| worktree-manager | Git worktree create/list/delete, path conventions (`../.forge-wt/<repo>/<id>/`), error handling. Import atomic writes from platform.ts. | `src/worktree/manager.ts` |
+| session-registry | Session CRUD with atomic writes (via platform.ts), stale detection by PID, identity helper from git config. | `src/worktree/session.ts`, `src/worktree/identity.ts` |
 
 **Wave 2 — State merge + tests (2 agents):**
 | Agent | Task | Files |
@@ -198,11 +246,17 @@ function getCurrentUser(): { name: string; email: string } {
 | go-integration | Update executor, verify-loop, finalize, and auto-chain to use worktree manager. Ensure all paths run inside worktree directory. | `src/go/executor.ts`, `src/go/verify-loop.ts`, `src/go/finalize.ts`, `src/go/auto-chain.ts` |
 | spec-integration | Update spec workflow to create worktree for PRD writes. Ensure scanner, interview, generator use worktree as cwd. | `src/spec/scanner.ts`, `src/spec/generator.ts`, `src/spec/linear-sync.ts` |
 
-**Wave 2 — Verify cache + skill docs (2 agents):**
+**Wave 2 — Parallel scheduler + verify cache (2 agents):**
 | Agent | Task | Files |
 |-------|------|-------|
+| parallel-scheduler | Build milestone dependency analyzer and parallel execution scheduler. Parse `dependsOn` from PRD milestones, build DAG, determine which milestones can run simultaneously, merge parent branches into dependent worktrees. Update auto-chain to use scheduler for parallel dispatch. | `src/worktree/parallel.ts`, `src/go/auto-chain.ts`, `tests/worktree/parallel.test.ts` |
 | verify-cache | Change cache from single file to per-branch directory. Update CLI, pre-commit hook, and status command. | `src/cli.ts`, `src/hooks/pre-commit.ts`, `hooks/pre-commit-verify.js`, `src/types.ts` |
-| skill-docs | Update forge-go.md and forge-spec.md skill instructions to reflect worktree workflow | `skills/forge-go.md`, `skills/forge-spec.md` |
+
+**Wave 3 — Skill docs + milestone schema (2 agents):**
+| Agent | Task | Files |
+|-------|------|-------|
+| skill-docs | Update forge-go.md and forge-spec.md skill instructions to reflect worktree workflow and parallel milestone support. Add `dependsOn` guidance to spec interview milestones section. | `skills/forge-go.md`, `skills/forge-spec.md` |
+| milestone-schema | Add `dependsOn` field to MilestoneSchema in templates.ts. Default to empty array (backward compatible). Update generator to include `dependsOn` in PRD output when dependencies are specified during interview. | `src/spec/templates.ts`, `src/spec/generator.ts` |
 
 **Verification:**
 - `npx tsc --noEmit` passes
@@ -210,6 +264,8 @@ function getCurrentUser(): { name: string; email: string } {
 - `/forge:spec` creates a worktree for PRD generation
 - Verify cache is per-branch — two branches have independent caches
 - Pre-commit hook reads correct branch's cache
+- Parallel scheduler correctly identifies independent milestones from a test DAG
+- `dependsOn: []` (default) produces identical behavior to current sequential execution
 
 ---
 
