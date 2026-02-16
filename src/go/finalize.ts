@@ -8,7 +8,13 @@
  */
 
 import { execSync } from "node:child_process";
-import type { PipelineResult } from "../types.js";
+import type { PipelineResult, GateResult, CodexComment } from "../types.js";
+import {
+  pollForCodexComments,
+  runCodexGate,
+  getUnresolvedComments,
+  fetchPRComments,
+} from "../gates/codex-gate.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +43,190 @@ export interface PRError {
   title: string;
   created: false;
   error: string;
+}
+
+// ---------------------------------------------------------------------------
+// Codex gate integration types
+// ---------------------------------------------------------------------------
+
+export interface FinalizeWithCodexOptions extends CreatePROptions {
+  /** GitHub owner/org for the repo */
+  owner: string;
+  /** GitHub repo name */
+  repo: string;
+  /** Codex gate poll interval in milliseconds (default: 60_000) */
+  codexPollIntervalMs?: number;
+  /** Maximum number of poll cycles (default: 8) */
+  codexMaxPolls?: number;
+  /** Called for each unresolved PR comment; return true if fix was pushed */
+  onFixComment?: (comment: CodexComment) => Promise<boolean>;
+}
+
+export interface FinalizeResult {
+  pr: PRResult | PRError;
+  codexGate?: GateResult;
+  allCommentsResolved: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// extractRepoInfo
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the owner and repo name from the current Git remote using `gh`.
+ * Returns `null` if `gh` is unavailable or the command fails.
+ */
+export function extractRepoInfo(
+  projectDir: string,
+): { owner: string; repo: string } | null {
+  try {
+    const raw = execSync("gh repo view --json owner,name", {
+      cwd: projectDir,
+      encoding: "utf-8",
+      timeout: 15_000,
+    }).trim();
+
+    const parsed = JSON.parse(raw) as { owner: { login: string }; name: string };
+    return { owner: parsed.owner.login, repo: parsed.name };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// pollAndResolvePRComments
+// ---------------------------------------------------------------------------
+
+/**
+ * Poll for Codex review comments on a PR and attempt to resolve them
+ * using the provided `onFixComment` callback. Returns the list of
+ * comments that remain unresolved after the fix cycle.
+ */
+export async function pollAndResolvePRComments(options: {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  projectDir?: string;
+  pollIntervalMs?: number;
+  maxPolls?: number;
+  onFixComment?: (comment: CodexComment) => Promise<boolean>;
+}): Promise<{ unresolved: CodexComment[]; gateResult: GateResult }> {
+  const {
+    owner,
+    repo,
+    prNumber,
+    projectDir,
+    pollIntervalMs,
+    maxPolls,
+    onFixComment,
+  } = options;
+
+  // First pass: poll for comments
+  const gateResult = await runCodexGate({
+    owner,
+    repo,
+    prNumber,
+    pollIntervalMs,
+    maxPolls,
+    projectDir,
+  });
+
+  // If no errors (gate passed), everything is clean
+  if (gateResult.passed) {
+    return { unresolved: [], gateResult };
+  }
+
+  // If we have no fix callback, just return the unresolved state
+  if (!onFixComment) {
+    const comments = fetchPRComments({ owner, repo, prNumber, projectDir });
+    const unresolved = getUnresolvedComments(comments);
+    return { unresolved, gateResult };
+  }
+
+  // Attempt to fix each unresolved comment, tracking addressed IDs
+  const comments = fetchPRComments({ owner, repo, prNumber, projectDir });
+  const addressedIds = new Set<number>();
+
+  for (const comment of comments) {
+    await onFixComment(comment);
+    addressedIds.add(comment.id);
+  }
+
+  // After fixes, do one more poll cycle to check for any NEW comments
+  // from a re-review (exclude already-addressed IDs so the loop converges)
+  const recheckComments = await pollForCodexComments({
+    owner,
+    repo,
+    prNumber,
+    pollIntervalMs: pollIntervalMs ?? 60_000,
+    maxPolls: 1,
+    projectDir,
+    knownIds: addressedIds,
+  });
+
+  const stillUnresolved = recheckComments;
+
+  // Build a final gate result reflecting the post-fix state
+  const finalGateResult: GateResult = {
+    gate: "codex",
+    passed: stillUnresolved.length === 0,
+    errors: stillUnresolved.map((c) => ({
+      file: c.path,
+      line: c.line,
+      message: c.body,
+      remediation: "Address the Codex review comment",
+    })),
+    warnings:
+      stillUnresolved.length === 0
+        ? ["All Codex comments resolved after fix cycle"]
+        : [],
+    duration_ms: gateResult.duration_ms,
+  };
+
+  return { unresolved: stillUnresolved, gateResult: finalGateResult };
+}
+
+// ---------------------------------------------------------------------------
+// finalizeWithCodexGate
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a PR and run the Codex review gate. The milestone only marks
+ * complete when 0 unresolved PR comments remain. If the Codex gate
+ * times out with no comments, the milestone still completes (gate is
+ * optional).
+ */
+export async function finalizeWithCodexGate(
+  options: FinalizeWithCodexOptions,
+): Promise<FinalizeResult> {
+  // Step 1: Create the PR
+  const pr = createPullRequest(options);
+
+  // If PR creation failed, return early
+  if (!pr.created) {
+    return { pr, allCommentsResolved: false };
+  }
+
+  // Step 2: Run the Codex review gate with pollAndResolve
+  const { unresolved, gateResult } = await pollAndResolvePRComments({
+    owner: options.owner,
+    repo: options.repo,
+    prNumber: pr.number,
+    projectDir: options.projectDir,
+    pollIntervalMs: options.codexPollIntervalMs,
+    maxPolls: options.codexMaxPolls,
+    onFixComment: options.onFixComment,
+  });
+
+  // Codex gate is optional: if it passed (no comments found / timed out),
+  // the milestone still completes
+  const allCommentsResolved = unresolved.length === 0;
+
+  return {
+    pr,
+    codexGate: gateResult,
+    allCommentsResolved,
+  };
 }
 
 // ---------------------------------------------------------------------------

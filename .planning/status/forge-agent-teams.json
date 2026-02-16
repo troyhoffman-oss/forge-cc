@@ -1,0 +1,11 @@
+{
+  "project": "Agent Team Execution & Multi-PRD Queue",
+  "slug": "forge-agent-teams",
+  "branch": "feat/agent-teams",
+  "createdAt": "2026-02-16",
+  "milestones": {
+    "1": { "status": "complete", "date": "2026-02-16" },
+    "2": { "status": "complete", "date": "2026-02-16" },
+    "3": { "status": "complete", "date": "2026-02-16" }
+  }
+}

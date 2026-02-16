@@ -13,8 +13,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readCurrentMilestone, readSessionContext } from "../state/reader.js";
 import type { SessionContext } from "../state/reader.js";
+import { readPRDStatus } from "../state/prd-status.js";
 import { runPipeline } from "../gates/index.js";
 import { formatHumanReport } from "../reporter/human.js";
+import { createTeamConfig, shouldIncludeNotetaker } from "../team/lifecycle.js";
+import type { TeamConfig } from "../team/types.js";
 import type { ForgeConfig, PipelineInput, PipelineResult } from "../types.js";
 import type { Milestone, MilestoneWave } from "../spec/templates.js";
 
@@ -27,6 +30,8 @@ export interface ExecuteMilestoneOptions {
   prdPath: string;
   milestoneNumber: number;
   config: ForgeConfig;
+  /** PRD slug for per-PRD status tracking */
+  prdSlug?: string;
   /** Log prompts but don't run verification (for testing) */
   dryRun?: boolean;
 }
@@ -80,6 +85,8 @@ export interface MilestoneContext {
   claudeMd: string;
   /** Path to the worktree used for isolated execution (if any) */
   worktreePath?: string;
+  /** Team configuration for agent team lifecycle (M2 integration) */
+  teamConfig?: TeamConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +123,7 @@ function parseMilestoneSection(section: string): {
   goal: string;
   waves: MilestoneWave[];
   verificationCommands: string[];
+  maxAgentsPerWave: number;
 } {
   // Extract milestone name
   const nameMatch = section.match(
@@ -188,7 +196,13 @@ function parseMilestoneSection(section: string): {
     }
   }
 
-  return { name, goal, waves, verificationCommands };
+  // Compute max agents across all waves for team sizing
+  const maxAgentsPerWave = waves.reduce(
+    (max, w) => Math.max(max, w.agents.length),
+    0,
+  );
+
+  return { name, goal, waves, verificationCommands, maxAgentsPerWave };
 }
 
 // ---------------------------------------------------------------------------
@@ -204,11 +218,12 @@ export async function buildMilestoneContext(
 ): Promise<MilestoneContext> {
   const { projectDir, prdPath, milestoneNumber } = options;
 
-  // Read session context (STATE.md, ROADMAP.md, milestone section)
+  // Read session context (milestone section from PRD)
   const sessionContext = await readSessionContext(
     projectDir,
     prdPath,
     milestoneNumber,
+    options.prdSlug ?? "unknown",
   );
 
   const milestoneSection = sessionContext.currentMilestoneSection;
@@ -221,11 +236,27 @@ export async function buildMilestoneContext(
   // Parse the milestone section into structured data
   const parsed = parseMilestoneSection(milestoneSection);
 
-  // Read supporting files
-  const [lessons, claudeMd] = await Promise.all([
+  const prdSlug = options.prdSlug ?? "unknown";
+
+  // Read supporting files and PRD status in parallel
+  const [lessons, claudeMd, _prdStatus] = await Promise.all([
     safeRead(join(projectDir, "tasks", "lessons.md")),
     safeRead(join(projectDir, "CLAUDE.md")),
+    readPRDStatus(projectDir, prdSlug),
   ]);
+
+  // Build team config based on wave structure
+  const builderCount = parsed.maxAgentsPerWave;
+  const includeNotetaker = shouldIncludeNotetaker(
+    parsed.waves.length,
+    parsed.maxAgentsPerWave,
+  );
+  const teamConfig = createTeamConfig({
+    prdSlug,
+    milestoneNumber,
+    builderCount,
+    includeNotetaker,
+  });
 
   return {
     milestoneNumber,
@@ -237,6 +268,7 @@ export async function buildMilestoneContext(
     sessionContext,
     lessons,
     claudeMd,
+    teamConfig,
   };
 }
 
@@ -315,6 +347,48 @@ export function buildAgentPrompt(
       lines.push(rulesMatch[1].trim());
       lines.push("");
     }
+  }
+
+  // Team Communication (M2 integration)
+  if (context.teamConfig) {
+    const teamName = context.teamConfig.teamName;
+    lines.push("## Team Communication");
+    lines.push("");
+    lines.push(`You are part of team **${teamName}**.`);
+    lines.push("");
+    lines.push("Use the **SendMessage** tool to communicate with teammates:");
+    lines.push(
+      '- Send a direct message: `{ "type": "message", "recipient": "<name>", "content": "...", "summary": "..." }`',
+    );
+    lines.push(
+      "- Only use broadcast for critical blocking issues that affect all teammates.",
+    );
+    lines.push(
+      "- When your task is complete, send a message to the executive summarizing what you did.",
+    );
+    lines.push(
+      "- If you encounter a blocker, message the executive immediately rather than guessing.",
+    );
+    lines.push("");
+
+    lines.push("## Subagent Spawning");
+    lines.push("");
+    lines.push(
+      "You may spawn subagents for research or exploration using the **Task** tool:",
+    );
+    lines.push(
+      '- Use `subagent_type: "Explore"` for read-only research tasks (searching code, reading files).',
+    );
+    lines.push(
+      '- Use `subagent_type: "general-purpose"` for tasks that require file edits or shell commands.',
+    );
+    lines.push(
+      "- Always provide a clear, self-contained prompt — subagents do not share your conversation context.",
+    );
+    lines.push(
+      "- Prefer subagents for tasks like: finding usage patterns, reading large files, running diagnostic commands.",
+    );
+    lines.push("");
   }
 
   // Verification

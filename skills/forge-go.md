@@ -1,6 +1,6 @@
 # /forge:go — Execute Milestones with Wave-Based Agent Teams
 
-Execute milestones from your PRD with wave-based agent teams, self-healing verification, and automatic state management.
+Execute milestones from your PRD with real agent teams (TeamCreate/SendMessage), consensus-based review, self-healing verification, and automatic state management.
 
 ## Instructions
 
@@ -10,27 +10,27 @@ Follow these steps exactly. The execution engine at `src/go/executor.ts` provide
 
 **This step has two parts. Complete BOTH before moving to Step 2. Do NOT read any other files, do NOT start pre-flight checks, do NOT read the PRD until both parts are done.**
 
-**Part A — Read state (only these 3 files, nothing else):**
+**Part A — Read state (only these files, nothing else):**
 
 ```
 Read these files in parallel:
 - CLAUDE.md
-- .planning/STATE.md
-- .planning/ROADMAP.md
+- .planning/status/*.json (scan for PRD status files)
 ```
 
-From STATE.md, extract:
-- **Current milestone number** (from `**Milestone:**` field)
-- **Branch** (from `**Branch:**` field)
-- **Active PRD path** (from `**Active PRD:**` field)
+From the status files, determine:
+- **Available PRDs** with pending milestones
+- If only one PRD: auto-select it
+- If multiple PRDs: present a picker using AskUserQuestion with each PRD as an option showing its name, branch, and pending milestone count
+- **Current milestone number** — the lowest-numbered pending milestone for the selected PRD
+- **Branch** — from the status file's `branch` field
+- **Active PRD path** — `.planning/prds/<slug>.md`
 
-From ROADMAP.md, find the next milestone with status "Pending". If STATE.md says the current milestone is complete, advance to the next pending one.
+If no PRD status files exist:
 
-If no active PRD exists:
+> No PRD status files found. Run `/forge:spec` first to create a PRD with milestones.
 
-> No active PRD found. Run `/forge:spec` first to create a PRD with milestones.
-
-If all milestones are complete:
+If all milestones are complete across all PRDs:
 
 > All milestones complete! Create a PR with `gh pr create` or run `/forge:spec` to start a new project.
 
@@ -55,13 +55,13 @@ Otherwise: **your very next tool call MUST be AskUserQuestion.** No file reads, 
 
 Verify the execution environment is ready:
 
-1. **Branch check:** Confirm you are on the correct feature branch (from STATE.md). If on `main`/`master`, warn and abort:
+1. **Branch check:** Confirm you are on the correct feature branch (from the status file's `branch` field). If on `main`/`master`, warn and abort:
 
    > You're on the main branch. Switch to your feature branch first: `git checkout {branch}`
 
 2. **Milestone exists:** Read ONLY the current milestone section from the PRD (progressive disclosure — NOT the full PRD). Use the executor's `readCurrentMilestone()` approach — match `### Milestone N:` header and extract until the next milestone header.
 
-3. **Not already complete:** Check ROADMAP.md to confirm this milestone is not already marked complete. If it is, advance to the next pending milestone.
+3. **Not already complete:** Check the status file to confirm this milestone is not already marked complete. If it is, advance to the next pending milestone.
 
 4. **Clean state:** Run `git status` to check for uncommitted changes. If dirty, warn:
 
@@ -101,7 +101,34 @@ The execution engine automatically creates a git worktree for isolated execution
 
 **If worktree creation fails:** The engine falls back to running in the main working directory (original behavior). A warning is printed but execution continues.
 
-### Step 3 — Execute Waves
+### Step 3 — Create Agent Team + Execute Waves
+
+#### 3a. Create the Agent Team
+
+Use TeamCreate to establish the milestone's agent team:
+
+```
+TeamCreate:
+  team_name: "{slug}-m{N}"
+  description: "Milestone {N}: {milestone name}"
+```
+
+The team follows a **3-tier hierarchy:**
+
+```
+Executive (you — the /forge:go orchestrator)
+├── Builder Agent 1 (Opus, full-capability)
+│   ├── Research Subagent (Explore — read-only, for codebase research)
+│   └── Implementation Subagent (general-purpose — for grunt work)
+├── Builder Agent 2 (Opus, full-capability)
+├── ...Builder Agent N
+├── Reviewer Agent (Opus, persistent team member — reviews after each wave)
+└── Notetaker Agent (Opus, optional — spawned when 3+ waves or 4+ agents per wave)
+```
+
+**Notetaker decision:** Spawn a notetaker agent when the milestone has 3+ waves OR any single wave has 4+ agents. The notetaker tracks decisions, file ownership, and cross-agent dependencies via SendMessage updates.
+
+#### 3b. Parse Waves from PRD
 
 Parse the milestone section from the PRD. Each milestone contains waves with agent definitions:
 
@@ -112,37 +139,45 @@ Parse the milestone section from the PRD. Each milestone contains waves with age
    - Modifies: file3
 ```
 
+#### 3c. Execute Each Wave
+
 For each wave, in order:
 
-#### 3a. Build Agent Prompts
+**Build Agent Prompts:**
 
 For each agent in the wave, construct a prompt that includes:
 
 1. **Agent identity:** "You are **{agent-name}** working on Milestone {N}: {name}."
-2. **Milestone goal:** The `**Goal:**` line from the milestone section.
-3. **Agent task:** The specific task description from the wave definition.
-4. **Files to create/modify:** The explicit file list from the agent's definition.
-5. **Existing code context:** Read the actual contents of files the agent depends on (imports, types, utilities). **Inline the actual code** — never reference files by path alone. This is critical for agents that run in isolated contexts.
-6. **Lessons:** Read `tasks/lessons.md` and include all active lessons.
-7. **Rules:**
-   - Use ES module imports with `.js` extension in import paths
-   - Stage only your files (never `git add .` or `git add -A`)
-   - Run `npx tsc --noEmit` after creating files to verify compilation
-   - Do NOT commit — the orchestrator handles commits
+2. **Team context:** "You are part of team `{slug}-m{N}`. Use SendMessage to communicate with the executive and other builders."
+3. **Milestone goal:** The `**Goal:**` line from the milestone section.
+4. **Agent task:** The specific task description from the wave definition.
+5. **Files to create/modify:** The explicit file list from the agent's definition.
+6. **Existing code context:** Read the actual contents of files the agent depends on (imports, types, utilities). **Inline the actual code** — never reference files by path alone. This is critical for agents that run in isolated contexts.
+7. **Subagent guidance:** "You may spawn subagents for research (Explore type — read-only) or implementation grunt work (general-purpose type). Use subagents for tasks that don't require team coordination."
+8. **Conflict avoidance:** "Do NOT modify files outside your assignment. If you discover a need to change a file owned by another agent, send a message to the executive describing the conflict instead of making the change."
+9. **Lessons:** Read `tasks/lessons.md` and include all active lessons.
+10. **Rules:**
+    - Use ES module imports with `.js` extension in import paths
+    - Stage only your files (never `git add .` or `git add -A`)
+    - Run `npx tsc --noEmit` after creating files to verify compilation
+    - Do NOT commit — the orchestrator handles commits
+    - Send a message to the executive when your work is complete
 
-#### 3b. Spawn Agents in Parallel
+**Spawn Builder Agents in Parallel:**
 
-Use the Task tool to spawn all agents in the current wave simultaneously:
+Spawn all builder agents for the current wave as team members:
 
 ```
 For each agent in the wave, use the Task tool with:
+- team_name: "{slug}-m{N}"
+- name: "{agent-name}"
 - The constructed prompt as the task description
-- subagent_type appropriate for the work (typically a full-capability agent)
+- subagent_type: full-capability agent (Opus — builders need SendMessage + subagent spawning)
 ```
 
-Wait for ALL agents in the wave to complete before moving to the next step.
+Wait for ALL builder agents in the wave to report completion via SendMessage before moving to the next step.
 
-#### 3c. Restage Files at Wave Boundary
+#### 3d. Restage Files at Wave Boundary
 
 **IMPORTANT:** Parallel agents can disrupt each other's git index. After all agents in a wave complete, restage all files:
 
@@ -152,9 +187,9 @@ git add {all files from this wave's agents}
 
 This is a learned lesson — always restage at wave boundaries.
 
-#### 3d. Run Verification
+#### 3e. Run Mechanical Verification
 
-After each wave completes, run forge verification:
+After each wave completes, run mechanical verification gates:
 
 ```bash
 npx tsc --noEmit
@@ -166,30 +201,74 @@ If the project has additional verification configured (tests, lint), also run:
 npx forge verify
 ```
 
-If verification **passes**: print a wave completion summary and proceed to the next wave.
+If verification **fails**: proceed to Step 4 (self-healing loop).
+
+If verification **passes**: proceed to reviewer.
+
+#### 3f. Reviewer Consensus Protocol
+
+After mechanical gates pass, engage the reviewer agent:
+
+1. **Send diff to reviewer:** Use SendMessage to send the wave's git diff to the reviewer agent, along with:
+   - The PRD milestone section (goals and acceptance criteria)
+   - CLAUDE.md rules and architecture decisions
+   - The list of files changed and their ownership
+
+2. **Reviewer analyzes diff:** The reviewer examines the changes for:
+   - PRD alignment — does the code achieve what the milestone specifies?
+   - Architecture adherence — does the code follow CLAUDE.md patterns?
+   - Logic errors — not mechanical (tsc catches those), but semantic issues
+   - Cross-agent integration — do the pieces from different builders fit together?
+
+3. **Reviewer sends findings:** The reviewer sends structured findings via SendMessage to the relevant builder(s):
+   ```
+   Finding: {description}
+   Severity: error | warning
+   File: {path}
+   Line: {number}
+   ```
+
+4. **Builder responds:** The builder can:
+   - **Agree** — finding is queued for fix agent
+   - **Disagree: {reason}** — builder explains why the finding is incorrect
+   - **Alternative: {proposal}** — builder proposes a different approach
+
+5. **Round 2 (if disagreement):** The reviewer re-evaluates the builder's reasoning. Either:
+   - Accepts the builder's position (finding dropped)
+   - Maintains the finding (escalates to executive)
+
+6. **Escalation (deadlock after 2 rounds):** The executive (you) reviews both positions and makes the final call.
+
+7. **Fix agreed findings:** Spawn a fix agent to address all agreed-upon findings. The fix agent receives:
+   - The specific findings to fix
+   - The files to modify
+   - "Fix ONLY the agreed findings. Do not refactor or add features."
+
+8. **Re-verify:** Restage files and re-run mechanical gates after fixes.
+
+If no findings (or all findings resolved): print wave completion summary and proceed to the next wave.
 
 ```
 ## Wave {N} Complete
 
 - agent-1: OK (created file1.ts, file2.ts)
 - agent-2: OK (modified file3.ts)
-- Verification: PASSED
+- Mechanical verification: PASSED
+- Reviewer: {N} findings, {M} resolved, 0 outstanding
 
 Proceeding to Wave {N+1}...
 ```
 
-If verification **fails**: proceed to Step 4 (self-healing loop).
-
 ### Step 4 — Self-Healing Verify Loop
 
-When verification fails after a wave:
+When mechanical verification fails after a wave (or after reviewer fixes):
 
 1. Parse the verification errors into structured feedback. Include:
    - Gate name (types, lint, tests)
    - Error messages with file paths and line numbers
    - Remediation hints if available
 
-2. Spawn a **fix agent** with a prompt that includes:
+2. Spawn a **fix agent** (as a team member) with a prompt that includes:
    - The specific errors to fix
    - The files that need modification
    - The original task context
@@ -212,11 +291,11 @@ When verification fails after a wave:
    Please fix the remaining issues manually, then run `/forge:go` again.
    ```
 
-   **Stop execution.** Do not proceed to the next wave or milestone.
+   **Stop execution.** Do not proceed to the next wave or milestone. Shut down the agent team (TeamDelete).
 
 ### Step 5 — Commit
 
-After ALL waves pass verification:
+After ALL waves pass verification (mechanical + reviewer):
 
 1. Stage all files created/modified across all waves:
 
@@ -238,19 +317,15 @@ After ALL waves pass verification:
 
 ### Step 6 — Update State
 
-Update project state files:
+Update the PRD status file:
 
-1. **STATE.md:** Update the milestone progress table — mark the completed milestone's status as `Complete ({date})`. If there is a next milestone, update the `**Milestone:**` line to point to it. Update `**Last Session:**` to today's date.
+1. **Status JSON:** Update `.planning/status/<slug>.json` — mark the completed milestone's status as `complete` with today's date.
 
-2. **ROADMAP.md:** Update the milestone table row to `Complete ({date})`.
-
-3. **Session memory:** Write session state for the current branch using the writer module's pattern.
-
-4. Commit the state updates:
+2. Commit the status update:
 
    ```bash
-   git add .planning/STATE.md .planning/ROADMAP.md
-   git commit -m "docs: mark Milestone {N} complete, update session state"
+   git add .planning/status/<slug>.json
+   git commit -m "docs: mark Milestone {N} complete"
    git push origin {branch}
    ```
 
@@ -281,10 +356,18 @@ After milestone completion, determine the next action:
 
 - Files created: {count}
 - Files modified: {count}
-- Verification: PASSED
+- Verification: PASSED (mechanical + reviewer)
 - Branch: {branch} (pushed)
 
 **Next:** Run `/clear` then `/forge:go` for Milestone {N+1}, or exit and run `npx forge run` to auto-chain all remaining milestones.
+```
+
+Shut down the agent team:
+
+```
+Send shutdown_request to all team members via SendMessage.
+Wait for shutdown confirmations.
+TeamDelete to clean up team resources.
 ```
 
 #### If this IS the last milestone:
@@ -302,7 +385,7 @@ gh pr create --title "feat: {Project Name}" --body "$(cat <<'EOF'
 ...
 
 ## Verification
-All milestones passed forge verification (types, lint, tests).
+All milestones passed forge verification (types, lint, tests) and agent team review.
 
 ---
 Generated by forge-cc
@@ -310,7 +393,27 @@ EOF
 )"
 ```
 
-Then print:
+**Codex Review Gate:**
+
+After `gh pr create` succeeds, poll for Codex review comments:
+
+1. **Poll loop:** Every 60 seconds, check for new PR review comments:
+   ```bash
+   gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
+   ```
+
+2. **Duration:** Poll for up to 8 minutes (8 checks at 60-second intervals).
+
+3. **If comments found:** For each unresolved comment:
+   - Spawn a fix agent (team member) with the comment text, file path, and line number
+   - The fix agent either makes the code fix or posts a justified reply explaining why the current code is correct
+   - After fixes are pushed, poll one more cycle for new comments from re-review
+
+4. **Completion criteria:** The milestone completes when the PR has 0 unresolved review comments.
+
+5. **Timeout:** If no Codex comments appear after 8 minutes, proceed — Codex may not be configured for this repository.
+
+Then shut down the agent team and print:
 
 ```
 ## All Milestones Complete!
@@ -320,8 +423,15 @@ Then print:
 - {N} milestones completed
 - {total files} files created/modified
 - All verification gates passed
+- Codex review: {resolved/no comments/not configured}
 
 The PR is ready for review.
+```
+
+```
+Send shutdown_request to all team members via SendMessage.
+Wait for shutdown confirmations.
+TeamDelete to clean up team resources.
 ```
 
 ### Auto Mode
@@ -337,18 +447,18 @@ Auto mode runs each milestone in a fresh Claude session for maximum quality.
 
 **To start:** Exit this Claude session (Ctrl+C), then run in your terminal:
 
-    npx forge run
+    npx forge run --prd {slug}
 
 **What happens:**
 - Each milestone gets a fresh Claude session (no context rot)
 - Output streams inline to your terminal
 - Stops on completion, failure, or stall
-- Resume after failure: fix the issue, run `npx forge run` again
+- Resume after failure: fix the issue, run `npx forge run --prd {slug}` again
 
 **Requires:** claude CLI on PATH, --dangerously-skip-permissions (automatic)
 ```
 
-**IMPORTANT:** Auto mode does NOT execute milestones in the current session. It redirects the user to `npx forge run`, which handles spawning fresh Claude sessions per milestone via the Ralph Loop pattern.
+**IMPORTANT:** Auto mode does NOT execute milestones in the current session. It redirects the user to `npx forge run --prd {slug}`, which handles spawning fresh Claude sessions per milestone via the Ralph Loop pattern.
 
 ### Parallel Milestones (dependsOn)
 
@@ -381,12 +491,16 @@ If Linear is not configured, skip silently.
 ## Edge Cases
 
 - **No PRD:** Abort with message to run `/forge:spec` first.
+- **No status files:** Same as no PRD — abort with message to run `/forge:spec` first.
 - **No waves in milestone:** The milestone section may not have structured wave definitions (e.g., it was written by hand without the spec engine). In this case, treat the entire milestone as a single wave with one agent whose task is the milestone's goal.
 - **Agent failure:** If an agent in a wave fails (exits with error, times out), record the failure, include the error in the wave result, and proceed to verification. The self-healing loop may fix the issue.
 - **Branch diverged:** If `git push` fails due to divergence, attempt `git pull --rebase` first. If that fails, stop and ask the user.
-- **Interrupted execution:** If execution is interrupted mid-wave, the state files are NOT updated. Running `/forge:go` again will retry the same milestone from the beginning. Completed agents' work will be in the working tree — the new run's verification will detect what's already working.
+- **Interrupted execution:** If execution is interrupted mid-wave, the status files are NOT updated. Running `/forge:go` again will retry the same milestone from the beginning. Completed agents' work will be in the working tree — the new run's verification will detect what's already working. Shut down any remaining team members before retrying.
 - **Empty milestone section:** If the PRD has a milestone header but no content, abort with:
   > Milestone {N} has no wave definitions. Update the PRD with agent assignments before running /forge:go.
-- **Already on correct milestone:** If STATE.md's current milestone matches the target, proceed normally (this is the expected case).
-- **Linear auth fails:** Warn but continue execution. Linear sync is not blocking.
+- **Already on correct milestone:** If the status file's current milestone matches the target, proceed normally (this is the expected case).
 - **Worktree conflict:** If the worktree directory already exists (e.g., from a crashed session), the engine attempts `npx forge cleanup` first. If that fails, it falls back to main directory execution.
+- **Linear auth fails:** Warn but continue execution. Linear sync is not blocking — the milestone should still execute and complete without Linear.
+- **Team creation fails:** If TeamCreate fails, fall back to the legacy Task-based agent spawning (fire-and-forget without SendMessage). Log a warning that review and consensus will be skipped.
+- **Reviewer timeout:** If the reviewer does not respond within 5 minutes, log a warning and proceed without review findings. Do not block wave progression on a stalled reviewer.
+- **Codex gate timeout:** If Codex does not post comments within 8 minutes, proceed — Codex may not be configured. This is not a failure.

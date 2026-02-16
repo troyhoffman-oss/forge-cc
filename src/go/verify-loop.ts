@@ -1,11 +1,31 @@
 import type {
   ForgeConfig,
   GateError,
-  GateResult,
   PipelineInput,
   PipelineResult,
+  Finding,
+  TeamReviewResult,
 } from "../types.js";
 import { runPipeline } from "../gates/index.js";
+import { reviewWaveDiff } from "../team/reviewer.js";
+import {
+  runConsensusProtocol,
+  escalateToExecutive,
+  createConsensusState,
+  recordBuilderResponse,
+} from "../team/consensus.js";
+import type { BuilderResponse, EscalationDecision } from "../team/consensus.js";
+
+/** Configuration for team-based review after mechanical gates pass */
+export interface ReviewerConfig {
+  projectDir: string;
+  prdPath?: string;
+  baseBranch?: string;
+  /** Callback to get builder responses for findings. The skill drives this via SendMessage. */
+  onBuilderResponses?: (findings: Finding[]) => Promise<Map<string, BuilderResponse[]>>;
+  /** Callback for unresolved escalations. Executive makes the call. */
+  onEscalation?: (findings: Finding[]) => Promise<EscalationDecision[]>;
+}
 
 /** Options for the self-healing verification loop */
 export interface VerifyLoopOptions {
@@ -24,6 +44,10 @@ export interface VerifyLoopOptions {
     iteration: number,
     errors: GateError[],
   ) => Promise<boolean>;
+  /** Configuration for team-based review after mechanical gates pass */
+  reviewerConfig?: ReviewerConfig;
+  /** Called when review findings and consensus are complete */
+  onReviewComplete?: (reviewResult: TeamReviewResult) => void;
 }
 
 /** Result from the complete verification loop */
@@ -39,6 +63,8 @@ export interface VerifyLoopResult {
   failedGates: string[];
   /** Human-readable summary of remaining errors */
   errorSummary: string;
+  /** Review findings from the team reviewer (only present when reviewerConfig is provided) */
+  reviewFindings?: TeamReviewResult;
 }
 
 /**
@@ -57,6 +83,8 @@ export async function runVerifyLoop(
     config,
     onIteration,
     onFixAttempt,
+    reviewerConfig,
+    onReviewComplete,
   } = options;
 
   const maxIterations = options.maxIterations ?? config.maxIterations;
@@ -84,8 +112,42 @@ export async function runVerifyLoop(
     results.push(stamped);
     onIteration?.(iteration, stamped);
 
-    // Success — return immediately
+    // Success — mechanical gates passed
     if (stamped.passed) {
+      // If reviewer is configured, run team-based review before declaring success
+      if (reviewerConfig) {
+        const reviewResult = await runTeamReview(
+          reviewerConfig,
+          onFixAttempt,
+          onReviewComplete,
+          iteration,
+        );
+
+        // If review found accepted errors that need fixing, continue the loop
+        if (reviewResult.hasAcceptedErrors && iteration < maxIterations) {
+          // Convert accepted findings to GateErrors for the fix callback
+          const fixErrors = findingsToGateErrors(reviewResult.acceptedFindings);
+          if (onFixAttempt) {
+            await onFixAttempt(iteration, fixErrors);
+          }
+          // Continue the loop to re-verify after fixes
+          continue;
+        }
+
+        // No accepted errors or at max iterations — return with review data
+        return {
+          passed: true,
+          iterations: iteration,
+          maxIterations,
+          results,
+          finalResult: stamped,
+          failedGates: [],
+          errorSummary: "",
+          reviewFindings: reviewResult.teamReviewResult,
+        };
+      }
+
+      // No reviewer configured — return immediately
       return {
         passed: true,
         iterations: iteration,
@@ -189,6 +251,128 @@ function buildErrorSummary(
 function formatLocation(err: GateError): string {
   if (!err.file) return "";
   return err.line ? `${err.file}:${err.line}` : err.file;
+}
+
+// ---------------------------------------------------------------------------
+// Team Review Integration
+// ---------------------------------------------------------------------------
+
+interface TeamReviewOutcome {
+  teamReviewResult: TeamReviewResult;
+  hasAcceptedErrors: boolean;
+  acceptedFindings: Finding[];
+}
+
+/**
+ * Run the team-based review after mechanical gates pass.
+ *
+ * 1. Call reviewWaveDiff() to get findings from the reviewer
+ * 2. If findings exist, call onBuilderResponses() to get builder consensus
+ * 3. Run runConsensusProtocol() with the builder responses
+ * 4. If escalations are needed, call onEscalation()
+ * 5. Return the review outcome with accepted findings that need fixing
+ */
+async function runTeamReview(
+  reviewerConfig: ReviewerConfig,
+  onFixAttempt: VerifyLoopOptions["onFixAttempt"],
+  onReviewComplete: VerifyLoopOptions["onReviewComplete"],
+  iteration: number,
+): Promise<TeamReviewOutcome> {
+  const startTime = Date.now();
+
+  // Step 1: Get findings from the reviewer
+  const findings = reviewWaveDiff({
+    projectDir: reviewerConfig.projectDir,
+    prdPath: reviewerConfig.prdPath,
+    baseBranch: reviewerConfig.baseBranch,
+  });
+
+  // No findings — review is clean
+  if (findings.length === 0) {
+    const emptyResult: TeamReviewResult = {
+      findings: [],
+      consensusResults: [],
+      duration_ms: Date.now() - startTime,
+    };
+    onReviewComplete?.(emptyResult);
+    return {
+      teamReviewResult: emptyResult,
+      hasAcceptedErrors: false,
+      acceptedFindings: [],
+    };
+  }
+
+  // Step 2: Get builder responses via SendMessage callback
+  let responses = new Map<string, BuilderResponse[]>();
+  if (reviewerConfig.onBuilderResponses) {
+    responses = await reviewerConfig.onBuilderResponses(findings);
+  }
+
+  // Step 3: Run consensus protocol
+  const consensusOutcome = runConsensusProtocol(findings, responses);
+  let allConsensusResults = [...consensusOutcome.results];
+
+  // Step 4: Handle escalations if needed
+  if (consensusOutcome.needsEscalation.length > 0 && reviewerConfig.onEscalation) {
+    const escalationDecisions = await reviewerConfig.onEscalation(
+      consensusOutcome.needsEscalation,
+    );
+
+    // Apply escalation decisions to each finding that needed it
+    for (let i = 0; i < consensusOutcome.needsEscalation.length; i++) {
+      const finding = consensusOutcome.needsEscalation[i];
+      const decision = escalationDecisions[i];
+      if (finding && decision) {
+        let state = createConsensusState(finding);
+        // Replay builder responses to get to the escalation state
+        const findingResponses = responses.get(finding.id) ?? [];
+        for (const resp of findingResponses) {
+          state = recordBuilderResponse(state, resp);
+          if (state.resolved) break;
+        }
+        // Apply the executive decision
+        state = escalateToExecutive(state, decision);
+        if (state.result) {
+          allConsensusResults.push(state.result);
+        }
+      }
+    }
+  }
+
+  // Step 5: Collect accepted findings that need fixing
+  const acceptedFindingIds = new Set(
+    allConsensusResults
+      .filter((r) => r.resolution === "accepted")
+      .map((r) => r.findingId),
+  );
+
+  const acceptedFindings = findings.filter(
+    (f) => acceptedFindingIds.has(f.id) && f.severity === "error",
+  );
+
+  const teamReviewResult: TeamReviewResult = {
+    findings,
+    consensusResults: allConsensusResults,
+    duration_ms: Date.now() - startTime,
+  };
+
+  onReviewComplete?.(teamReviewResult);
+
+  return {
+    teamReviewResult,
+    hasAcceptedErrors: acceptedFindings.length > 0,
+    acceptedFindings,
+  };
+}
+
+/** Convert review Findings into GateError[] for the fix callback */
+function findingsToGateErrors(findings: Finding[]): GateError[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: f.line,
+    message: `[Review] ${f.message}`,
+    remediation: f.remediation,
+  }));
 }
 
 /**

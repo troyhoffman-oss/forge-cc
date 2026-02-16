@@ -118,3 +118,16 @@ export interface VisualCaptureResult {
     durationMs: number;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Team types (re-exported from src/team/types.ts)
+// ---------------------------------------------------------------------------
+export type {
+  AgentRole,
+  TeamConfig,
+  Finding,
+  ConsensusRound,
+  ConsensusResult,
+  TeamReviewResult,
+  CodexComment,
+} from "./team/types.js";

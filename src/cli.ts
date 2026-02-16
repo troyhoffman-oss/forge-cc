@@ -28,6 +28,8 @@ import {
 import type { PipelineResult, VerifyCache } from "./types.js";
 import { loadRegistry, detectStaleSessions, deregisterSession } from "./worktree/session.js";
 import { countPendingMilestones } from "./go/auto-chain.js";
+import { discoverPRDs } from "./state/prd-status.js";
+import { PRDQueue } from "./go/prd-queue.js";
 import { getRepoRoot, cleanupStaleWorktrees } from "./worktree/manager.js";
 import { formatSessionsReport } from "./reporter/human.js";
 
@@ -93,7 +95,7 @@ program
 program
   .command("status")
   .description("Print current project state")
-  .action(() => {
+  .action(async () => {
     const projectDir = process.cwd();
 
     // Branch
@@ -145,6 +147,21 @@ program
     } catch {
       // Not a git repo or no session registry — skip silently
     }
+
+    // Per-PRD status
+    try {
+      const prds = await discoverPRDs(projectDir);
+      if (prds.length > 0) {
+        console.log("");
+        console.log("### PRDs");
+        for (const prd of prds) {
+          const milestones = Object.entries(prd.status.milestones);
+          const complete = milestones.filter(([, m]) => m.status === "complete").length;
+          const total = milestones.length;
+          console.log(`- **${prd.slug}** (${prd.status.branch}): ${complete}/${total} milestones complete`);
+        }
+      }
+    } catch { /* prd-status not available */ }
   });
 
 // ── Skill installation helper ──────────────────────────────────────
@@ -389,21 +406,126 @@ program
     "Maximum iterations before stopping (safety cap)",
     "20",
   )
+  .option("--prd <slug>", "Run milestones for a specific PRD")
+  .option("--all", "Run all PRDs with pending milestones (parallel worktrees for independent PRDs)")
   .action(async (opts) => {
     const projectDir = process.cwd();
     const maxIterations = parseInt(opts.maxIterations, 10);
 
-    // Pre-flight: check ROADMAP.md exists
-    const roadmapPath = join(projectDir, ".planning", "ROADMAP.md");
-    if (!existsSync(roadmapPath)) {
-      console.error(
-        "Error: No .planning/ROADMAP.md found. Run /forge:spec first to create a PRD with milestones.",
-      );
+    // Pre-flight: check for PRD status files
+    const prds = await discoverPRDs(projectDir);
+    if (prds.length === 0) {
+      console.error("Error: No PRD status files found in .planning/status/. Run /forge:spec first.");
       process.exit(1);
     }
 
+    // --all mode: run all PRDs with pending milestones
+    if (opts.all) {
+      const queue = new PRDQueue(projectDir);
+      const readyPRDs = await queue.getReadyPRDs();
+
+      if (readyPRDs.length === 0) {
+        console.log("All PRDs complete! Nothing to run.");
+        console.log(
+          'Create a PR with `gh pr create` or run `/forge:spec` to start a new project.',
+        );
+        process.exit(0);
+      }
+
+      console.log("## Forge Multi-PRD Auto-Chain\n");
+      console.log(`**PRDs with pending milestones:** ${readyPRDs.length}`);
+      console.log(`**Max iterations per PRD:** ${maxIterations}`);
+      console.log(`**Stop:** Ctrl+C\n`);
+
+      // Display per-PRD status
+      console.log("### PRD Queue");
+      for (const entry of readyPRDs) {
+        const next = entry.nextMilestone !== null ? `next: M${entry.nextMilestone}` : "none pending";
+        console.log(`- **${entry.slug}** (${entry.branch}): ${entry.pendingMilestones} pending, ${next}`);
+      }
+      console.log("");
+
+      // Run each PRD sequentially (each PRD runs its milestones in order)
+      for (const entry of readyPRDs) {
+        console.log(`\n--- Running PRD: ${entry.slug} ---\n`);
+
+        let prdPending = entry.pendingMilestones;
+        const prompt = [
+          "You are executing one milestone of a forge auto-chain.",
+          `Use the Skill tool: skill="forge:go", args="--single --prd ${entry.slug}"`,
+          "After the skill completes, stop.",
+        ].join("\n");
+
+        for (let i = 0; i < maxIterations && prdPending > 0; i++) {
+          const iteration = i + 1;
+          console.log(`\n=== ${entry.slug} — Iteration ${iteration} (${prdPending} milestones remaining) ===\n`);
+
+          const result = spawnSync(
+            "claude",
+            [prompt, "--dangerously-skip-permissions"],
+            {
+              stdio: "inherit",
+              cwd: projectDir,
+            },
+          );
+
+          if (result.status !== 0) {
+            console.error(
+              `\nError: Claude session for ${entry.slug} exited with code ${result.status ?? "unknown"}. Skipping to next PRD.`,
+            );
+            break;
+          }
+
+          const newPending = await countPendingMilestones(projectDir, entry.slug);
+
+          if (newPending === 0) {
+            console.log(`\n${entry.slug}: All milestones complete!`);
+            break;
+          }
+
+          if (newPending >= prdPending) {
+            console.error(
+              `\nStall detected for ${entry.slug}: pending count did not decrease (was ${prdPending}, now ${newPending}). Skipping to next PRD.`,
+            );
+            break;
+          }
+
+          prdPending = newPending;
+        }
+      }
+
+      // Final summary
+      console.log("\n---\n");
+      console.log("## Multi-PRD Run Summary\n");
+      const allEntries = await queue.scanPRDs();
+      for (const entry of allEntries) {
+        const status = entry.pendingMilestones === 0 ? "COMPLETE" : `${entry.pendingMilestones} pending`;
+        console.log(`- **${entry.slug}**: ${status}`);
+      }
+
+      const totalPending = allEntries.reduce((sum, e) => sum + e.pendingMilestones, 0);
+      if (totalPending === 0) {
+        console.log("\nAll PRDs complete!");
+      } else {
+        console.log(`\n${totalPending} milestone${totalPending === 1 ? "" : "s"} remaining across all PRDs.`);
+      }
+
+      process.exit(totalPending === 0 ? 0 : 1);
+      return;
+    }
+
+    // Single PRD mode (existing behavior)
+    // Validate --prd slug if provided
+    if (opts.prd) {
+      const slugExists = prds.some((p) => p.slug === opts.prd);
+      if (!slugExists) {
+        console.error(`Error: PRD "${opts.prd}" not found. Available PRDs: ${prds.map((p) => p.slug).join(", ")}`);
+        process.exit(1);
+      }
+    }
+
     // Pre-flight: check pending milestones
-    let pending = await countPendingMilestones(projectDir);
+    let pending = await countPendingMilestones(projectDir, opts.prd);
     if (pending === 0) {
       console.log("All milestones complete! Nothing to run.");
       console.log(
@@ -452,7 +574,7 @@ program
       }
 
       // Check pending count (stall detection)
-      const newPending = await countPendingMilestones(projectDir);
+      const newPending = await countPendingMilestones(projectDir, opts.prd);
 
       if (newPending === 0) {
         console.log("\n---\n");

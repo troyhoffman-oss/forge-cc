@@ -193,9 +193,32 @@ The PRD should follow this structure:
 
 **Milestone sizing check:** Before finalizing, review each milestone against the sizing constraint. Every milestone MUST fit in one agent context window (~4 agents across 2-3 waves max). If any milestone exceeds this, split it into smaller milestones before writing the final PRD. Set `maxContextWindowFit: true` on all milestones — if you cannot make a milestone fit, flag it as `maxContextWindowFit: false` and warn the user.
 
-Write the final PRD to `.planning/prds/{project-slug}.md`. Tell the user:
+Write the final PRD to `.planning/prds/{project-slug}.md`.
+
+After writing the PRD file, also:
+
+1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending":
+   ```json
+   {
+     "project": "{project name}",
+     "slug": "{slug}",
+     "branch": "feat/{slug}",
+     "createdAt": "{today}",
+     "milestones": {
+       "1": { "status": "pending" },
+       "2": { "status": "pending" },
+       ...
+     }
+   }
+   ```
+
+2. **Create feature branch:** `git checkout -b feat/{slug}`
+
+Tell the user:
 
 > Final PRD written to `.planning/prds/{slug}.md`.
+> Status file created at `.planning/status/{slug}.json`.
+> Feature branch `feat/{slug}` created.
 
 Present the full PRD in chat for review and ask:
 
@@ -268,13 +291,15 @@ After sync, print the handoff prompt:
 ## Ready for Development
 
 PRD: `.planning/prds/{slug}.md`
+Status: `.planning/status/{slug}.json`
+Branch: `feat/{slug}`
 Linear: {project URL}
 
 **Next step:** Run `/forge:go` for one milestone at a time, or exit and run `npx forge run` to execute all milestones autonomously. The execution engine will:
-- Read the PRD and milestone plan
-- Spawn agent teams for each issue
-- Verify each change with forge-mcp gates
-- Open PRs and transition issues automatically
+- Read the PRD and per-PRD status file
+- Spawn agent teams for each milestone
+- Verify each change with forge verification gates
+- Update status JSON and transition Linear issues automatically
 ```
 
 **Note:** `/forge:go` now uses git worktrees for session isolation. Multiple users can run `/forge:go` on different milestones simultaneously without conflicts.
