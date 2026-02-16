@@ -65,6 +65,12 @@ Verify the execution environment is ready:
 
    > You have uncommitted changes. Commit or stash them before running /forge:go.
 
+5. **Milestone size:** Count waves and agents in the milestone. If >3 waves or >6 total agents, warn:
+
+   > Warning: This milestone has {N} waves and {M} agents. Large milestones risk context overflow. Consider splitting before execution.
+
+   This is a pre-flight warning, not a hard abort — the user can choose to proceed. But the warning should be prominent so they can split the milestone first if needed.
+
 Print the pre-flight summary:
 
 ```

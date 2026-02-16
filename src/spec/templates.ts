@@ -20,6 +20,12 @@ export const MilestoneWaveSchema = z.object({
   ),
 });
 
+/**
+ * Milestones MUST fit in one agent context window. The maxContextWindowFit
+ * field is a hard constraint — if false, the milestone should be split.
+ * A milestone that requires more than ~4 agents across 2-3 waves is too
+ * large and risks context overflow during execution.
+ */
 export const MilestoneSchema = z.object({
   number: z.number(),
   name: z.string(),
@@ -27,6 +33,7 @@ export const MilestoneSchema = z.object({
   assignedTo: z.string(),
   waves: z.array(MilestoneWaveSchema),
   verificationCommands: z.array(z.string()),
+  maxContextWindowFit: z.boolean().default(true),
 });
 
 export const PRDSchema = z.object({

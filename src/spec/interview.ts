@@ -5,6 +5,14 @@
  * The interview leads with recommendations derived from codebase scan results,
  * follows interesting threads based on user responses, and determines when
  * enough info has been gathered for each PRD section.
+ *
+ * **Rendering contract:** {@link InterviewQuestion} objects are designed to be
+ * rendered via Claude Code's **AskUserQuestion** tool with structured
+ * multiple-choice options — they must NEVER be printed as numbered text in
+ * chat. The caller (the /forge:spec skill) is responsible for converting each
+ * question's `text` and `context` fields into an AskUserQuestion call with
+ * 2-4 predefined options derived from scan context, plus an "Other" escape
+ * hatch for free-text input.
  */
 
 import type { ScanAllResult } from "./scanner.js";
@@ -32,12 +40,22 @@ export const SECTION_LABELS: Record<PRDSection, string> = {
   milestones: "Milestones",
 };
 
-/** A single interview question */
+/**
+ * A single interview question.
+ *
+ * **Rendering:** Must be presented to the user via Claude Code's
+ * AskUserQuestion tool with 2-4 multiple-choice options — NEVER as numbered
+ * text in chat output. The `text` field becomes the AskUserQuestion question
+ * string, and the `context` field provides scan-derived framing that informs
+ * option generation.
+ */
 export interface InterviewQuestion {
   id: string;
   section: PRDSection;
+  /** The question to present via AskUserQuestion */
   text: string;
-  /** Recommendation or observation that motivates the question */
+  /** Recommendation or observation from the codebase scan that motivates
+   *  this question and informs the multiple-choice options */
   context: string;
   /** Follow-up depth — 0 = top-level, 1+ = follow-up */
   depth: number;

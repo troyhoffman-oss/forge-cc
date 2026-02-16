@@ -83,12 +83,17 @@ Conduct an adaptive interview using the interview engine logic from `src/spec/in
 4. **Scope** — what's out, sacred files, boundaries
 5. **Milestones** — phasing, dependencies, delivery chunks
 
+**Milestone Sizing Constraint (Hard Rule):**
+
+Each milestone MUST be completable in one main agent context window. If a milestone requires more than ~4 agents across 2-3 waves, split it. This is non-negotiable — large milestones cause context overflow and execution failures. When interviewing about milestones, actively recommend splitting any milestone that looks too large.
+
 **Interview Rules:**
 
-- **Lead with recommendations.** Every question includes context from the codebase scan. Never ask a blank "what do you want to build?" question.
-- **Ask 1-3 questions per round.** Present them as a numbered list. The user can answer all at once or pick which to answer.
-- **Follow interesting threads.** If the user mentions migration, breaking changes, multiple user types, or external integrations, follow up with targeted questions.
-- **Show progress.** After each answer round, show a compact status:
+- **NEVER present questions as numbered text — always use AskUserQuestion with 2-4 options per question.** Every interview question MUST be delivered via Claude Code's AskUserQuestion tool with structured multiple-choice options. Do not print numbered lists of questions for the user to answer in free text.
+- **Lead with recommendations.** Every question includes context from the codebase scan as the question text. Never ask a blank "what do you want to build?" question.
+- **Ask 1 question at a time via AskUserQuestion.** Each question gets its own AskUserQuestion call with 2-4 predefined options derived from codebase scan context and common patterns. Always include a final option like "Other (I'll describe)" to allow the user to provide a custom answer.
+- **Follow interesting threads.** If the user's selection mentions migration, breaking changes, multiple user types, or external integrations, follow up with targeted AskUserQuestion calls.
+- **Show progress.** After each answer round, show a compact status as text output:
 
 ```
 Progress: [##---] Problem & Goals (2/2) | User Stories (0/2) | Technical (0/1) | Scope (0/1) | Milestones (0/1)
@@ -101,21 +106,34 @@ Progress: [##---] Problem & Goals (2/2) | User Stories (0/2) | Technical (0/1) |
 - **Stop when complete.** When all sections have enough info (Problem 2+, Users 2+, Technical 1+, Scope 1+, Milestones 1+), move to Step 4. Don't drag the interview out.
 - **Allow early exit.** If the user says "that's enough", "skip", or "generate it", respect that and move to Step 4 with what you have.
 
-**Question Format:**
+**Question Format (AskUserQuestion):**
+
+Each interview question MUST use AskUserQuestion. Build the question text from codebase scan context and the section being asked about. Provide 2-4 options that reflect likely answers based on the scan results, plus a free-text escape hatch. Example:
+
+```
+AskUserQuestion:
+  question: "[Section] Context from scan or previous answers. Question text here?"
+  options:
+    - "Option A — a likely answer based on scan findings"
+    - "Option B — another plausible direction"
+    - "Option C — a third possibility (if applicable)"
+    - "Other (I'll describe)"
+```
+
+If the user selects "Other (I'll describe)", prompt them for a free-text answer using a follow-up AskUserQuestion or accept their typed response.
+
+**Do NOT do this (anti-pattern):**
 
 ```
 ### Round N
 
-Based on your codebase scan, I have some questions:
+1. **[Section]** Question text?
+2. **[Section]** Question text?
 
-1. **[Section]** Context from scan or previous answers.
-   Question text here?
-
-2. **[Section]** Context observation.
-   Question text here?
-
-> Answer by number (e.g., "1. My answer to first question. 2. Second answer") or answer all at once.
+> Answer by number...
 ```
+
+This numbered-text format is explicitly prohibited. Always use AskUserQuestion.
 
 ### Step 4 — Generate PRD
 
@@ -156,6 +174,8 @@ The PRD should follow this structure:
 ### Milestone 2: {Name}
 ...
 ```
+
+**Milestone sizing check:** Before finalizing, review each milestone against the sizing constraint. Every milestone MUST fit in one agent context window (~4 agents across 2-3 waves max). If any milestone exceeds this, split it into smaller milestones before writing the final PRD. Set `maxContextWindowFit: true` on all milestones — if you cannot make a milestone fit, flag it as `maxContextWindowFit: false` and warn the user.
 
 Write the final PRD to `.planning/prds/{project-slug}.md`. Tell the user:
 
