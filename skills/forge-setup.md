@@ -39,21 +39,31 @@ options:
 
 ### Step 3 — Configure Gates
 
-Ask the user which verification gates to enable:
+Ask the user which verification gates to enable. **AskUserQuestion supports max 4 options — use TWO questions to cover all 8 gates:**
 
 <AskUserQuestion>
-question: "Which verification gates should be active?"
+question: "Which core gates should be active? (Recommended: all four)"
+header: "Core gates"
 multiSelect: true
 options:
-  - "types — TypeScript type checking (tsc --noEmit)"
-  - "lint — ESLint / Biome linting"
-  - "tests — Vitest / Jest test runner"
-  - "visual — Playwright screenshot regression"
-  - "runtime — Start the app and check for crashes"
+  - "types — TypeScript type checking (tsc --noEmit) (Recommended)"
+  - "lint — ESLint / Biome linting (Recommended)"
+  - "tests — Vitest / Jest test runner (Recommended)"
   - "prd — PRD completeness check"
 </AskUserQuestion>
 
-Default recommendation: `types`, `lint`, `tests`.
+<AskUserQuestion>
+question: "Enable any advanced gates? These require extra setup (Playwright, dev server, API access)."
+header: "Advanced gates"
+multiSelect: true
+options:
+  - "visual — Playwright screenshot regression (requires Playwright + Chromium)"
+  - "runtime — Start the app and check for crashes (requires devServerUrl)"
+  - "review — AI code review (runs during forge verify)"
+  - "codex — Codex PR review polling (runs after PR creation)"
+</AskUserQuestion>
+
+Combine selections from both questions into the final gates list.
 
 Also collect project metadata (skip in Refresh mode if `.forge.json` already has values):
 
