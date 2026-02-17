@@ -108,7 +108,7 @@ function buildPackageJsonUpdates(
 
   if (runner === "vitest") {
     scripts["test"] = "vitest run";
-    devDependencies["vitest"] = "^3.0.0";
+    devDependencies["vitest"] = "^4.0.0";
   } else {
     scripts["test"] = "jest";
     devDependencies["jest"] = "^29.0.0";

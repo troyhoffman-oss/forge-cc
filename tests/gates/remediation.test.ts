@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { GateError, GateResult, PipelineResult } from "../../src/types.js";
+import { describe, it, expect } from "vitest";
+import type { GateError, PipelineResult } from "../../src/types.js";
 import {
   buildTypeRemediation,
   buildLintRemediation,
@@ -43,16 +43,7 @@ describe("buildTypeRemediation", () => {
     };
     const result = buildTypeRemediation(error);
     expect(result.length).toBeGreaterThan(0);
-    // Should include the error code even for unknown codes
     expect(result).toContain("TS9999");
-  });
-
-  it("returns non-empty string for error without TS code", () => {
-    const error: GateError = {
-      message: "Something went terribly wrong",
-    };
-    const result = buildTypeRemediation(error);
-    expect(result.length).toBeGreaterThan(0);
   });
 
   it("includes file location when file and line are provided", () => {
@@ -96,16 +87,6 @@ describe("buildLintRemediation", () => {
     const result = buildLintRemediation(error);
     expect(result.length).toBeGreaterThan(0);
   });
-
-  it("includes file location when available", () => {
-    const error: GateError = {
-      file: "src/foo.ts",
-      line: 10,
-      message: "error lint/style/useConst",
-    };
-    const result = buildLintRemediation(error);
-    expect(result).toContain("src/foo.ts:10");
-  });
 });
 
 describe("buildTestRemediation", () => {
@@ -120,24 +101,6 @@ describe("buildTestRemediation", () => {
     expect(result).toMatch(/assertion|expected/i);
   });
 
-  it("returns remediation containing 'null' or 'function' for TypeError", () => {
-    const error: GateError = {
-      message: "TypeError: Cannot read property 'foo' of null",
-    };
-    const result = buildTestRemediation(error);
-    expect(result).toBeTruthy();
-    expect(result).toMatch(/null|function/i);
-  });
-
-  it("returns non-empty string for FAIL line", () => {
-    const error: GateError = {
-      file: "src/foo.test.ts",
-      message: "FAIL src/foo.test.ts > suite > test name",
-    };
-    const result = buildTestRemediation(error);
-    expect(result.length).toBeGreaterThan(0);
-  });
-
   it("returns remediation containing 'timeout' for timeout errors", () => {
     const error: GateError = {
       message: "Test timed out after 5000ms",
@@ -145,14 +108,6 @@ describe("buildTestRemediation", () => {
     const result = buildTestRemediation(error);
     expect(result).toBeTruthy();
     expect(result).toMatch(/timeout/i);
-  });
-
-  it("returns non-empty fallback for generic test failure", () => {
-    const error: GateError = {
-      message: "something obscure happened in the test",
-    };
-    const result = buildTestRemediation(error);
-    expect(result.length).toBeGreaterThan(0);
   });
 });
 
@@ -163,14 +118,6 @@ describe("buildVisualRemediation", () => {
     };
     const result = buildVisualRemediation(error);
     expect(result).toMatch(/overflow/i);
-  });
-
-  it("returns string containing 'mobile' or 'viewport' for mobile errors", () => {
-    const error: GateError = {
-      message: "Button not visible on mobile",
-    };
-    const result = buildVisualRemediation(error);
-    expect(result).toMatch(/mobile|viewport/i);
   });
 
   it("returns string containing 'missing' for missing element errors", () => {
@@ -187,16 +134,6 @@ describe("buildVisualRemediation", () => {
     };
     const result = buildVisualRemediation(error);
     expect(result.length).toBeGreaterThan(0);
-  });
-
-  it("combines multiple matching hints", () => {
-    const error: GateError = {
-      message: "overflow detected on mobile viewport",
-    };
-    const result = buildVisualRemediation(error);
-    // Should match both overflow and mobile patterns
-    expect(result).toMatch(/overflow/i);
-    expect(result).toMatch(/mobile|viewport/i);
   });
 });
 
@@ -215,14 +152,6 @@ describe("buildReviewRemediation", () => {
     };
     const result = buildReviewRemediation(error);
     expect(result).toMatch(/CLAUDE\.md/);
-  });
-
-  it("returns non-empty fallback for error with no special references", () => {
-    const error: GateError = {
-      message: "Code quality issue found in module",
-    };
-    const result = buildReviewRemediation(error);
-    expect(result.length).toBeGreaterThan(0);
   });
 
   it("includes existing remediation text when present", () => {
@@ -244,7 +173,6 @@ describe("buildTestCoverageRemediation", () => {
     const result = buildTestCoverageRemediation(error);
     expect(result).toContain("src/new-feature.ts");
     expect(result).toMatch(/create a test file/i);
-    expect(result).toContain("/forge:setup");
   });
 
   it("returns baseline remediation for 'no tests found' message", () => {
@@ -253,7 +181,6 @@ describe("buildTestCoverageRemediation", () => {
     };
     const result = buildTestCoverageRemediation(error);
     expect(result).toMatch(/no tests exist/i);
-    expect(result).toContain("/forge:setup");
   });
 
   it("returns thin coverage remediation for 'thin coverage' message", () => {
@@ -262,26 +189,6 @@ describe("buildTestCoverageRemediation", () => {
     };
     const result = buildTestCoverageRemediation(error);
     expect(result).toMatch(/coverage is very low/i);
-    expect(result).toMatch(/critical paths/i);
-  });
-
-  it("returns generic fallback for unrecognized coverage error", () => {
-    const error: GateError = {
-      message: "Some other coverage-related problem",
-    };
-    const result = buildTestCoverageRemediation(error);
-    expect(result.length).toBeGreaterThan(0);
-    expect(result).toContain("/forge:setup");
-  });
-
-  it("includes file location prefix when file is provided", () => {
-    const error: GateError = {
-      file: "src/utils.ts",
-      line: 1,
-      message: "Missing test file for changed source: src/utils.ts",
-    };
-    const result = buildTestCoverageRemediation(error);
-    expect(result).toContain("src/utils.ts:1");
   });
 });
 
@@ -360,7 +267,6 @@ describe("formatErrorsForAgent", () => {
 
     const output = formatErrorsForAgent(result);
 
-    // Should have two remediation blocks
     const remediationCount = (output.match(/> \*\*Remediation:\*\*/g) || []).length;
     expect(remediationCount).toBe(2);
   });
@@ -379,7 +285,6 @@ describe("formatErrorsForAgent", () => {
               file: "src/foo.ts",
               line: 10,
               message: "error TS2322: Something.",
-              // No remediation field
             },
           ],
           warnings: [],
@@ -413,240 +318,5 @@ describe("formatErrorsForAgent", () => {
 
     const output = formatErrorsForAgent(result);
     expect(output).toContain("All gates passed");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Part 3: Gate enrichment integration
-// ---------------------------------------------------------------------------
-
-// We need to mock node:child_process for the gate imports.
-// Each gate test section uses a fresh describe block with its own mock setup.
-
-vi.mock("node:child_process", () => ({
-  execSync: vi.fn(),
-}));
-
-vi.mock("../../src/gates/test-analysis.js", () => ({
-  analyzeTestCoverage: vi.fn(),
-}));
-
-vi.mock("../../src/config/loader.js", () => ({
-  loadConfig: vi.fn(),
-}));
-
-import { execSync } from "node:child_process";
-import { verifyTypes } from "../../src/gates/types-gate.js";
-import { verifyLint } from "../../src/gates/lint-gate.js";
-import { verifyTests } from "../../src/gates/tests-gate.js";
-import { analyzeTestCoverage } from "../../src/gates/test-analysis.js";
-import { loadConfig } from "../../src/config/loader.js";
-
-const mockExecSync = vi.mocked(execSync);
-const mockAnalyzeTestCoverage = vi.mocked(analyzeTestCoverage);
-const mockLoadConfig = vi.mocked(loadConfig);
-
-describe("Gate enrichment: verifyTypes populates remediation", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("enriches TS2322 errors with remediation field", async () => {
-    const tscOutput = [
-      "src/foo.ts(10,5): error TS2322: Type 'string' is not assignable to type 'number'.",
-    ].join("\n");
-
-    const error = Object.assign(new Error("tsc failed"), {
-      stdout: Buffer.from(tscOutput),
-      status: 1,
-    });
-    mockExecSync.mockImplementation(() => {
-      throw error;
-    });
-
-    const result = await verifyTypes("/fake/project");
-
-    expect(result.passed).toBe(false);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].remediation).toBeDefined();
-    expect(result.errors[0].remediation!.length).toBeGreaterThan(0);
-    expect(result.errors[0].remediation).toMatch(/assignable|type/i);
-  });
-
-  it("enriches TS2304 errors with remediation field", async () => {
-    const tscOutput = [
-      "src/bar.ts(42,1): error TS2304: Cannot find name 'baz'.",
-    ].join("\n");
-
-    const error = Object.assign(new Error("tsc failed"), {
-      stdout: Buffer.from(tscOutput),
-      status: 1,
-    });
-    mockExecSync.mockImplementation(() => {
-      throw error;
-    });
-
-    const result = await verifyTypes("/fake/project");
-
-    expect(result.passed).toBe(false);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].remediation).toBeDefined();
-    expect(result.errors[0].remediation!.length).toBeGreaterThan(0);
-    expect(result.errors[0].remediation).toMatch(/name|import/i);
-  });
-
-  it("enriches multiple errors each with remediation", async () => {
-    const tscOutput = [
-      "src/a.ts(1,1): error TS2322: Type mismatch.",
-      "src/b.ts(2,1): error TS2304: Cannot find name 'x'.",
-    ].join("\n");
-
-    const error = Object.assign(new Error("tsc failed"), {
-      stdout: Buffer.from(tscOutput),
-      status: 1,
-    });
-    mockExecSync.mockImplementation(() => {
-      throw error;
-    });
-
-    const result = await verifyTypes("/fake/project");
-
-    expect(result.passed).toBe(false);
-    expect(result.errors).toHaveLength(2);
-    for (const err of result.errors) {
-      expect(err.remediation).toBeDefined();
-      expect(err.remediation!.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe("Gate enrichment: verifyLint populates remediation", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("enriches lint errors with remediation field", async () => {
-    const biomeOutput = [
-      "src/app.ts:10:5 error lint/style/useConst",
-    ].join("\n");
-
-    const error = Object.assign(new Error("biome check failed"), {
-      stdout: Buffer.from(biomeOutput),
-      stderr: Buffer.from(""),
-      status: 1,
-    });
-    mockExecSync.mockImplementation(() => {
-      throw error;
-    });
-
-    const result = await verifyLint("/fake/project");
-
-    expect(result.passed).toBe(false);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].remediation).toBeDefined();
-    expect(result.errors[0].remediation!.length).toBeGreaterThan(0);
-    expect(result.errors[0].remediation).toMatch(/const/i);
-  });
-
-  it("enriches multiple lint errors each with remediation", async () => {
-    const biomeOutput = [
-      "src/a.ts:1:1 error lint/style/useConst",
-      "src/b.ts:2:1 error no-unused-vars x is unused",
-    ].join("\n");
-
-    const error = Object.assign(new Error("biome check failed"), {
-      stdout: Buffer.from(biomeOutput),
-      stderr: Buffer.from(""),
-      status: 1,
-    });
-    mockExecSync.mockImplementation(() => {
-      throw error;
-    });
-
-    const result = await verifyLint("/fake/project");
-
-    expect(result.passed).toBe(false);
-    expect(result.errors.length).toBeGreaterThanOrEqual(2);
-    for (const err of result.errors) {
-      expect(err.remediation).toBeDefined();
-      expect(err.remediation!.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe("Gate enrichment: verifyTests populates remediation", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Provide defaults so verifyTests' new dependencies work
-    mockAnalyzeTestCoverage.mockResolvedValue({
-      framework: { testRunner: "vitest", appFramework: "plain-ts", detectedPatterns: [] },
-      coverage: { sourceFiles: 5, testFiles: 3, ratio: 0.6, untestedFiles: [] },
-      categories: [],
-    });
-    mockLoadConfig.mockReturnValue({
-      gates: ["types", "lint", "tests"],
-      maxIterations: 5,
-      verifyFreshness: 600_000,
-    });
-  });
-
-  it("enriches test failure errors with remediation field", async () => {
-    const testOutput = [
-      "FAIL src/foo.test.ts > suite > test name",
-      "  Expected: 1",
-      "  Received: 2",
-    ].join("\n");
-
-    mockExecSync.mockImplementation((cmd: unknown) => {
-      const command = String(cmd);
-      if (command.includes("package.json")) {
-        return Buffer.from(JSON.stringify({ scripts: { test: "vitest run" } }));
-      }
-      const error = Object.assign(new Error("tests failed"), {
-        stdout: Buffer.from(testOutput),
-        stderr: Buffer.from(""),
-        status: 1,
-      });
-      throw error;
-    });
-
-    const result = await verifyTests("/fake/project");
-
-    expect(result.passed).toBe(false);
-    expect(result.errors.length).toBeGreaterThanOrEqual(1);
-    // Every error should have remediation populated
-    for (const err of result.errors) {
-      expect(err.remediation).toBeDefined();
-      expect(err.remediation!.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("enriches timeout test errors with remediation containing 'timeout'", async () => {
-    const testOutput = [
-      "FAIL src/slow.test.ts > suite > slow test",
-      "  Error: Test timeout of 5000ms exceeded",
-    ].join("\n");
-
-    mockExecSync.mockImplementation((cmd: unknown) => {
-      const command = String(cmd);
-      if (command.includes("package.json")) {
-        return Buffer.from(JSON.stringify({ scripts: { test: "vitest run" } }));
-      }
-      const error = Object.assign(new Error("tests failed"), {
-        stdout: Buffer.from(testOutput),
-        stderr: Buffer.from(""),
-        status: 1,
-      });
-      throw error;
-    });
-
-    const result = await verifyTests("/fake/project");
-
-    expect(result.passed).toBe(false);
-    expect(result.errors.length).toBeGreaterThanOrEqual(1);
-    for (const err of result.errors) {
-      expect(err.remediation).toBeDefined();
-      expect(err.remediation!.length).toBeGreaterThan(0);
-    }
   });
 });

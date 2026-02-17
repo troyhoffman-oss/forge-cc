@@ -193,6 +193,10 @@ The PRD should follow this structure:
 
 **Milestone sizing check:** Before finalizing, review each milestone against the sizing constraint. Every milestone MUST fit in one agent context window (~4 agents across 2-3 waves max). If any milestone exceeds this, split it into smaller milestones before writing the final PRD. Set `maxContextWindowFit: true` on all milestones — if you cannot make a milestone fit, flag it as `maxContextWindowFit: false` and warn the user.
 
+**Test criteria guidance:** Test criteria are optional. Only include them when the milestone produces testable behavior. Verification commands (`npx tsc --noEmit`, `npx forge verify`) are always included automatically — test criteria are for additional functional checks beyond mechanical gates. When including test criteria, make them **functional**, not structural:
+- Good: "CLI `npx forge verify` runs and exits 0", "tsc compiles with no errors", "the new gate produces structured JSON output"
+- Bad: "All new source files must have corresponding test files", "Run npx forge verify --gate tests"
+
 Write the final PRD to `.planning/prds/{project-slug}.md`.
 
 After writing the PRD file, also:
