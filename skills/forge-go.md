@@ -362,12 +362,12 @@ Check for the Linear project ID in this priority order:
 
 If a Linear project ID is found:
 
-1. Transition issues for the completed milestone to appropriate state:
-   - If this was the **last milestone**: move issues to "In Review"
+1. **Transition issues** for the completed milestone:
+   - If this was the **last milestone**: use `mcp__linear__update_issue` on each issue to set state to "In Review"
    - Otherwise: keep issues as-is (they were set to "In Progress" at start)
 
-2. If this is the **last milestone**, also:
-   - Transition the project to "In Review"
+2. If this is the **last milestone**, **also transition the project itself** (separate from issues):
+   - Use `mcp__linear__update_project` to set the project state to "In Review". **Do not skip this — the project is a separate entity from its issues.**
    - Create a PR (see Step 8)
 
 If no Linear project ID is found in either location, skip this step silently.
@@ -514,12 +514,12 @@ At the START of milestone execution (between Step 2 and Step 3), check for the L
 1. `linearProjectId` field in `.planning/status/<slug>.json`
 2. `linearProject` field in `.forge.json`
 
-If a Linear project ID is found:
+If a Linear project ID is found, **execute ALL four steps below — do not skip any**:
 
-1. Find issues associated with this milestone in Linear.
-2. Transition them to "In Progress".
-3. Transition the project to "In Progress" (if not already).
-4. Add a brief comment: "Starting execution via forge:go."
+1. **Find issues:** Use `mcp__linear__list_issues` with the project ID to find issues associated with this milestone.
+2. **Transition issues:** Use `mcp__linear__update_issue` on each issue to set state to "In Progress".
+3. **Transition the project:** Use `mcp__linear__update_project` to set the project state to "In Progress". **This is a separate step from transitioning issues — do not skip it.** The project and its issues are independent entities in Linear.
+4. **Add comment:** Use `mcp__linear__create_comment` on each milestone issue with the body: "Starting execution via forge:go."
 
 If no Linear project ID is found, skip silently.
 
