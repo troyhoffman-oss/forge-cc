@@ -64,18 +64,22 @@ void main() {
   // Mouse heat influence
   vec2 mousePixel = u_mouse * u_resolution;
   float dist = length(gl_FragCoord.xy - mousePixel);
-  float heatRadius = 180.0;
+  float heatRadius = 250.0;
   float heat = smoothstep(heatRadius, 0.0, dist);
   heat = heat * heat; // Quadratic falloff for more concentrated effect
 
-  // Ripple wave from mouse
+  // Radial bloom glow around cursor
+  float bloom = smoothstep(heatRadius * 1.3, 0.0, dist) * 0.35;
+
+  // Ripple wave from mouse — increased amplitude
   float ripple = sin(dist * 0.05 - u_time * 3.0) * 0.5 + 0.5;
-  ripple *= smoothstep(heatRadius * 1.5, heatRadius * 0.5, dist);
+  ripple *= smoothstep(heatRadius * 1.5, heatRadius * 0.3, dist);
 
   // Character density: base noise + heat boost
   float density = mix(n, n2, 0.3) * 0.5 + 0.1;
-  density += heat * 0.5;
-  density += ripple * heat * 0.15;
+  density += heat * 0.65;
+  density += ripple * heat * 0.25;
+  density += bloom * 0.2;
   density = clamp(density, 0.0, 1.0);
 
   // Render pseudo-character shapes using cell UV
@@ -107,15 +111,21 @@ void main() {
   vec3 amber = vec3(0.83, 0.66, 0.33);    // #d4a855
   vec3 deepAmber = vec3(0.77, 0.58, 0.20); // #c49532
 
+  vec3 brightAmber = vec3(0.91, 0.63, 0.13); // Brighter saturated core
   vec3 baseColor = charcoal;
   vec3 heatColor = mix(deepAmber, amber, ripple);
+  // Brighten the core near cursor center
+  heatColor = mix(heatColor, brightAmber, heat * heat);
   vec3 color = mix(baseColor, heatColor, heat);
+
+  // Radial bloom additive glow
+  color += bloom * vec3(0.91, 0.63, 0.13) * 0.6;
 
   // Add subtle overall dim glow
   float bgGlow = fbm(uv * 3.0 + t * 0.1) * 0.03;
 
   // Final color with alpha
-  float alpha = charAlpha + bgGlow;
+  float alpha = charAlpha + bgGlow + bloom * 0.15;
   alpha = clamp(alpha, 0.0, 1.0);
 
   fragColor = vec4(color * alpha, 1.0);

@@ -1,38 +1,19 @@
-import Link from "next/link";
-import InstallPill from "@/components/InstallPill";
-import Footer from "@/components/Footer";
+import AlchemicalCanvas from "./v1/AlchemicalCanvas";
+import AlchemicalInstallPill from "./v1/AlchemicalInstallPill";
+import AlchemicalFooter from "./v1/AlchemicalFooter";
+import EmberTrail from "./v1/EmberTrail";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-between">
-      <main className="flex flex-1 flex-col items-center justify-center gap-12 px-6">
-        <h1 className="text-4xl font-semibold tracking-tight">forge</h1>
-        <InstallPill />
-        <nav className="flex flex-col items-center gap-4">
-          <p className="text-sm text-[#a3a3a3]">Explore directions</p>
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-            <Link
-              href="/v1"
-              className="text-sm text-[#e5e5e5] underline underline-offset-4 transition-colors hover:text-white"
-            >
-              v1 &mdash; Alchemical Forge
-            </Link>
-            <Link
-              href="/v2"
-              className="text-sm text-[#e5e5e5] underline underline-offset-4 transition-colors hover:text-white"
-            >
-              v2 &mdash; Stratigraphic Descent
-            </Link>
-            <Link
-              href="/v3"
-              className="text-sm text-[#e5e5e5] underline underline-offset-4 transition-colors hover:text-white"
-            >
-              v3 &mdash; Negative Space
-            </Link>
-          </div>
-        </nav>
+    <div className="flex min-h-screen flex-col items-center justify-between" style={{ background: "#0d0d0d" }}>
+      <AlchemicalCanvas />
+      <EmberTrail />
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center gap-6 px-6">
+        <h1 className="text-[72px] font-light leading-none tracking-tight text-[#e8dcc8] max-md:text-[48px]" style={{ fontFamily: "var(--font-cormorant)" }}>forge</h1>
+        <p className="text-sm tracking-widest text-[#8a7e6b] uppercase" style={{ fontFamily: "var(--font-ibm-plex-mono)" }}>forge your workflow</p>
+        <div className="mt-8"><AlchemicalInstallPill /></div>
       </main>
-      <Footer />
+      <AlchemicalFooter />
     </div>
   );
 }
