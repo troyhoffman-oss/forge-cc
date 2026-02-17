@@ -201,13 +201,14 @@ Write the final PRD to `.planning/prds/{project-slug}.md`.
 
 After writing the PRD file, also:
 
-1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending":
+1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending". Include `linearProjectId` from the project selected in Step 1 (this is the Linear project UUID — required for `/forge:go` to sync issue status automatically):
    ```json
    {
      "project": "{project name}",
      "slug": "{slug}",
      "branch": "feat/{slug}",
      "createdAt": "{today}",
+     "linearProjectId": "{Linear project UUID from Step 1}",
      "milestones": {
        "1": { "status": "pending" },
        "2": { "status": "pending" },
