@@ -1,6 +1,6 @@
 {
   "name": "forge-cc",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "description": "Pre-PR verification harness for Claude Code agents — gate runner + CLI + MCP server",
   "type": "module",
   "license": "MIT",
