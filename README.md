@@ -52,7 +52,6 @@ Four commands take you from raw idea to production-ready, merged code.
  │                                                     ┌────────────────┐          │
  │                                                     │  VERIFY + PR   │          │
  │                                                     │  + CODE REVIEW │          │
- │                                                     │  + AUTO-MERGE  │          │
  │                                                     └────────────────┘          │
  │                                                                                  │
  └──────────────────────────────────────────────────────────────────────────────────┘
@@ -96,7 +95,7 @@ This is the engine. Each milestone is executed by an autonomous agent team:
     └─ Parallel builder agents execute independent tasks
 ```
 
-After the final wave passes all gates + review, forge creates the PR, waits for Codex review comments, spawns fix agents for any findings, and auto-merges when clean.
+After the final wave passes all gates + review, forge creates the PR, waits for Codex review comments, and spawns fix agents for any findings. The PR is left for the user to merge.
 
 ### `npx forge run` -- Auto-Chain Everything
 
@@ -145,9 +144,9 @@ Forge manages your Linear project lifecycle end-to-end. Every state transition h
 ```
  Linear State:    Backlog  ──►  Planned  ──►  In Progress  ──►  In Review  ──►  Done
                      │             │               │                │              │
- Forge Action:    triage       /forge:spec      /forge:go       PR created     PR merged
-                  creates      generates PRD,   executes        after final    auto-merge
-                  projects     syncs milestones milestone       verification   completes
+ Forge Action:    triage       /forge:spec      /forge:go       PR created     user merges
+                  creates      generates PRD,   executes        after final    when ready
+                  projects     syncs milestones milestone       verification
 ```
 
 Set `FORGE_LINEAR_API_KEY` in your environment to enable. Forge creates projects, milestones, and issues during spec, transitions them through states during execution, and marks them done when the PR merges.
@@ -260,7 +259,7 @@ Expose gates as MCP tools for programmatic access:
 | Without forge | With forge |
 |--------------|-----------|
 | Agent writes code, you review everything | Agent teams build, verify, review, and fix their own code |
-| Manual git branching, PRs, merges | Automatic branches, worktrees, PRs, and auto-merge |
+| Manual git branching, PRs, merges | Automatic branches, worktrees, and PRs |
 | "Tests pass" = done | 8 gates including visual regression, PRD compliance, and AI code review |
 | One agent, one task, serial | Parallel agent teams with wave-based execution |
 | Context rot across long sessions | Fresh session per milestone, no degradation |

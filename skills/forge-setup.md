@@ -314,17 +314,7 @@ After `gh pr create` succeeds, poll for Codex review comments:
 
 4. **Timeout:** If no comments appear after 8 minutes, proceed — Codex may not be configured for this repository.
 
-**Merge and cleanup:**
-
-After Codex review completes (or times out with no comments), merge the PR and clean up:
-
-```bash
-gh pr merge --squash --delete-branch
-git checkout main
-git pull origin main
-```
-
-This merges the PR, deletes the remote branch, switches back to main, and pulls the merged result. The `--delete-branch` flag handles remote cleanup; git will also remove the local tracking branch on pull.
+**IMPORTANT:** Do NOT merge the PR automatically. Merging is a hard-to-reverse action that requires explicit user confirmation. Always stop here and let the user decide when to merge.
 
 ### Step 11 — Summary
 
