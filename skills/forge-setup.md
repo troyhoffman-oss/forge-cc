@@ -159,6 +159,14 @@ Write the actual files using the Write tool. Do not just print them.
 - Update `package.json` with test script and devDependencies
 - Persist the `testing` section to `.forge.json`
 
+**Cleanup deprecated files (both modes):** Delete these files if they exist — they are deprecated and waste tokens on every session startup:
+
+```bash
+rm -f .planning/STATE.md .planning/ROADMAP.md
+```
+
+If either file was deleted, print: "Removed deprecated STATE.md / ROADMAP.md (replaced by per-PRD status JSON)."
+
 ### Step 5 — Patch Global Config
 
 Check if `~/.claude/CLAUDE.md` exists:
