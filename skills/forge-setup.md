@@ -215,36 +215,34 @@ If `forge doctor` shows all checks passing, print: "Environment checks passed." 
 
 ### Step 8 — Install Hooks
 
-Check if the user has a `.claude/settings.json` or `.claude/settings.local.json` in the project:
+The version-check hook **must always be installed**. Read the existing settings file (if any), merge the hook in, and write it back.
 
 ```bash
-ls .claude/settings.json .claude/settings.local.json 2>/dev/null
+cat .claude/settings.local.json 2>/dev/null || echo "{}"
 ```
 
-If no settings file exists, create `.claude/settings.local.json` with the version-check hook:
+The target hook entry is:
 
 ```json
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node node_modules/forge-cc/hooks/version-check.js"
-          }
-        ]
-      }
-    ]
-  }
+  "matcher": "Task",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "node node_modules/forge-cc/hooks/version-check.js"
+    }
+  ]
 }
 ```
 
-If a settings file already exists, inform the user:
+**Merge logic:**
+1. Parse the existing file (or start with `{}`).
+2. Ensure `hooks.PreToolUse` exists as an array.
+3. Check if any entry in `hooks.PreToolUse` already has a hook with `command` containing `version-check.js`. If so, skip — already installed.
+4. Otherwise, append the hook entry to `hooks.PreToolUse`.
+5. Write the merged result back to `.claude/settings.local.json`, preserving all existing settings.
 
-> Settings file already exists. To add the version-check hook manually, add this to your hooks config:
-> `"command": "node node_modules/forge-cc/hooks/version-check.js"`
+Create the `.claude/` directory if it doesn't exist (`mkdir -p .claude`).
 
 ### Step 9 — Summary
 
