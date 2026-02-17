@@ -244,7 +244,77 @@ The target hook entry is:
 
 Create the `.claude/` directory if it doesn't exist (`mkdir -p .claude`).
 
-### Step 9 — Summary
+### Step 9 — Run Verification
+
+Run `npx forge verify` to confirm all gates pass with the scaffolded files:
+
+```bash
+npx forge verify
+```
+
+If any gate fails, fix the issues before proceeding. Common fixes:
+- **lint:** Run the project's lint autofix (e.g., `npx biome check --fix .`)
+- **tests:** Convert failing stub tests to `it.todo('description')` so they show as pending
+- **types:** Fix any type errors introduced by scaffolding
+
+Re-run `npx forge verify` until all gates pass.
+
+### Step 10 — Commit, PR, and Codex Review
+
+Once all gates pass, automatically create a branch, commit, open a PR, and poll for Codex review.
+
+**Create branch and commit:**
+
+```bash
+git checkout -b feat/forge-setup
+git add -A
+git commit -m "feat: initialize forge workflow scaffolding
+
+- .forge.json config with gate selection
+- CLAUDE.md project instructions
+- .planning/ directory with STATE.md and ROADMAP.md
+- Test stubs and structural tests (if enabled)
+- Version-check hook in .claude/settings.local.json
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+git push -u origin feat/forge-setup
+```
+
+**Important:** Before `git add -A`, check `git diff --stat` for CRLF-only noise on unrelated files. If any files show changes but have zero content diff, discard them with `git checkout -- <file>` before staging.
+
+**Open PR:**
+
+```bash
+gh pr create --title "feat: initialize forge workflow" --body "$(cat <<'EOF'
+## Summary
+- Scaffold forge verification gates, planning docs, and test infrastructure
+- Gates configured: {comma-separated list}
+- Test stubs: {N} it.todo() stubs as pending backlog + {N} structural tests passing
+
+## Test plan
+- [x] `npx forge verify` passes all gates
+- [x] `npx tsc --noEmit` clean
+- [ ] Codex review (auto-polling)
+EOF
+)"
+```
+
+**Codex Review Gate:**
+
+After `gh pr create` succeeds, poll for Codex review comments:
+
+1. **Poll loop:** Every 60 seconds, check for new PR review comments:
+   ```bash
+   gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
+   ```
+
+2. **Duration:** Poll for up to 8 minutes (8 checks at 60-second intervals).
+
+3. **If comments found:** For each unresolved comment, address it — either fix the code or reply with justification. Push fixes and re-poll.
+
+4. **Timeout:** If no comments appear after 8 minutes, proceed — Codex may not be configured for this repository.
+
+### Step 11 — Summary
 
 Print a summary of everything that was created or updated:
 
@@ -254,6 +324,7 @@ Print a summary of everything that was created or updated:
 **Mode:** {Fresh Setup / Refresh}
 **Project:** {projectName}
 **Gates:** {comma-separated list}
+**PR:** {PR URL}
 
 ### Files Created/Updated
 - ~/.claude/commands/forge/*.md ✓ (skills)
@@ -269,12 +340,11 @@ Print a summary of everything that was created or updated:
 {If tests gate enabled: "Test planning: {N} test stubs scaffolded, {runner} configured, structural tests {included/skipped}"}
 {If tests gate not enabled: "Test planning: skipped (tests gate not enabled)"}
 
+### Verification
+- All gates passed ✓
+- Codex review: {resolved N comments / no comments / not configured}
+
 ### Next Steps
 1. Review the generated `CLAUDE.md` and customize the Code Map section
-2. Run `npx forge verify` to test your gate configuration
-3. Run `/forge:spec` to create a PRD for your first feature
+2. Run `/forge:spec` to create a PRD for your first feature
 ```
-
----
-
-Do NOT commit or push. The user decides when to commit the scaffolded files.
