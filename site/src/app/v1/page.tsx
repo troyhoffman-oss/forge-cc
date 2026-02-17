@@ -1,16 +1,11 @@
 import AlchemicalCanvas from "./AlchemicalCanvas";
 import AlchemicalInstallPill from "./AlchemicalInstallPill";
 import AlchemicalFooter from "./AlchemicalFooter";
-import EmberTrail from "./EmberTrail";
 
 export default function V1Page() {
   return (
-    <div
-      className="flex min-h-screen flex-col items-center justify-between"
-      style={{ background: "#0d0d0d" }}
-    >
+    <div className="relative flex min-h-screen flex-col items-center justify-between">
       <AlchemicalCanvas />
-      <EmberTrail />
 
       <main className="relative z-10 flex flex-1 flex-col items-center justify-center gap-6 px-6">
         <h1

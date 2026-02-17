@@ -76,7 +76,7 @@ void main() {
   ripple *= smoothstep(heatRadius * 1.5, heatRadius * 0.3, dist);
 
   // Character density: base noise + heat boost
-  float density = mix(n, n2, 0.3) * 0.5 + 0.1;
+  float density = mix(n, n2, 0.3) * 0.6 + 0.15;
   density += heat * 0.65;
   density += ripple * heat * 0.25;
   density += bloom * 0.2;
@@ -301,12 +301,12 @@ export default function AlchemicalCanvas() {
       {/* WebGL canvas for desktop */}
       <canvas
         ref={canvasRef}
-        className="fixed inset-0 -z-10 hidden md:block"
+        className="fixed inset-0 z-0 hidden md:block"
         aria-hidden="true"
       />
       {/* Static ASCII fallback for mobile or no-WebGL */}
       <div
-        className="fixed inset-0 -z-10 md:hidden"
+        className="fixed inset-0 z-0 md:hidden"
         aria-hidden="true"
         style={{ background: "#0d0d0d" }}
       >
