@@ -40,6 +40,7 @@ export interface ReviewResult extends GateResult {
 /** Input for the full verification pipeline */
 export interface PipelineInput {
   projectDir: string;
+  appDir?: string;
   gates?: string[];
   prdPath?: string;
   milestoneType?: "ui" | "data" | "mixed";
@@ -73,6 +74,7 @@ export interface TestingConfig {
 
 /** Configuration from .forge.json */
 export interface ForgeConfig {
+  appDir?: string;
   gates: string[];
   maxIterations: number;
   verifyFreshness: number;

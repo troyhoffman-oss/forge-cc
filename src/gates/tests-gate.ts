@@ -12,13 +12,16 @@ import { loadConfig } from "../config/loader.js";
 const TEST_FILE_RE = /^FAIL\s+(.+?)(?:\s+>|$)/;
 const STACKTRACE_RE = /at\s+.*?([^\s(]+):(\d+):\d+/;
 
-export async function verifyTests(projectDir: string): Promise<GateResult> {
+export async function verifyTests(
+  projectDir: string,
+  options?: { configRoot?: string },
+): Promise<GateResult> {
   const start = Date.now();
   const errors: GateError[] = [];
   const warnings: string[] = [];
 
   // Load config and run test analysis
-  const config = loadConfig(projectDir);
+  const config = loadConfig(options?.configRoot ?? projectDir);
   const testingConfig = config.testing;
   const analysis = await analyzeTestCoverage(projectDir);
 

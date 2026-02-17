@@ -20,6 +20,7 @@ export const testingConfigSchema = z.object({
 });
 
 export const forgeConfigSchema = z.object({
+  appDir: z.string().optional(),
   gates: z.array(z.string()).default(["types", "lint", "tests"]),
   maxIterations: z.number().int().positive().default(5),
   verifyFreshness: z.number().int().positive().default(600_000),

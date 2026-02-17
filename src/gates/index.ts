@@ -10,14 +10,14 @@ import { verifyReview } from "./review-gate.js";
 
 /** Gate registry -- maps gate name to its function */
 export const gateRegistry: Record<string, (input: PipelineInput) => Promise<GateResult>> = {
-  types: (input) => verifyTypes(input.projectDir),
-  lint: (input) => verifyLint(input.projectDir),
-  tests: (input) => verifyTests(input.projectDir),
-  visual: (input) => verifyVisual(input.projectDir, input.pages ?? [], {
+  types: (input) => verifyTypes(input.appDir ?? input.projectDir),
+  lint: (input) => verifyLint(input.appDir ?? input.projectDir),
+  tests: (input) => verifyTests(input.appDir ?? input.projectDir, { configRoot: input.projectDir }),
+  visual: (input) => verifyVisual(input.appDir ?? input.projectDir, input.pages ?? [], {
     devServerCommand: input.devServerCommand,
     devServerPort: input.devServerPort,
   }),
-  runtime: (input) => verifyRuntime(input.projectDir, input.apiEndpoints ?? [], {
+  runtime: (input) => verifyRuntime(input.appDir ?? input.projectDir, input.apiEndpoints ?? [], {
     devServerCommand: input.devServerCommand,
     devServerPort: input.devServerPort,
   }),

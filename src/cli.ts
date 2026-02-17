@@ -60,9 +60,11 @@ program
 
       const gates = opts.gate ? opts.gate.split(",").map((g: string) => g.trim()) : config.gates;
       const prdPath = opts.prd ?? config.prdPath;
+      const appDir = config.appDir ? resolve(projectDir, config.appDir) : undefined;
 
       const result = await runPipeline({
         projectDir,
+        appDir,
         gates,
         prdPath,
         maxIterations: config.maxIterations,

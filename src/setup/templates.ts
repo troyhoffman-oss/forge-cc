@@ -9,6 +9,7 @@ export interface SetupContext {
   description: string;
   gates: string[];
   date: string;
+  appDir?: string;
   testing?: TestingConfig;
 }
 
@@ -19,6 +20,9 @@ export function forgeConfigTemplate(ctx: SetupContext): string {
     gates: ctx.gates,
     maxIterations: 5,
   };
+  if (ctx.appDir) {
+    config.appDir = ctx.appDir;
+  }
   if (ctx.testing) {
     config.testing = ctx.testing;
   }
