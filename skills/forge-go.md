@@ -158,7 +158,7 @@ For each wave, in order:
 
 **Build Agent Prompts:**
 
-For each agent in the wave, construct a prompt that includes:
+For each agent in the wave, construct a prompt that includes **ALL 10 items below — do not skip any.** Items 9 and 10 are mandatory context that prevent repeated mistakes and ensure consistent agent behavior:
 
 1. **Agent identity:** "You are **{agent-name}** working on Milestone {N}: {name}."
 2. **Team context:** "You are part of team `{slug}-m{N}`. Use SendMessage to communicate with the executive and other builders."
@@ -168,8 +168,8 @@ For each agent in the wave, construct a prompt that includes:
 6. **Existing code context:** Read the actual contents of files the agent depends on (imports, types, utilities). **Inline the actual code** — never reference files by path alone. This is critical for agents that run in isolated contexts.
 7. **Subagent guidance:** "You may spawn subagents for research (Explore type — read-only) or implementation grunt work (general-purpose type). Use subagents for tasks that don't require team coordination."
 8. **Conflict avoidance:** "Do NOT modify files outside your assignment. If you discover a need to change a file owned by another agent, send a message to the executive describing the conflict instead of making the change."
-9. **Lessons:** Read `tasks/lessons.md` and include all active lessons.
-10. **Rules:**
+9. **Lessons (MANDATORY):** Read `tasks/lessons.md` and include the full text of all active lessons in the prompt. These are hard-won fixes for recurring mistakes — omitting them causes agents to repeat known errors.
+10. **Rules (MANDATORY):** Include these rules verbatim in every agent prompt:
     - Use ES module imports with `.js` extension in import paths
     - Stage only your files (never `git add .` or `git add -A`)
     - Run `npx tsc --noEmit` after creating files to verify compilation
@@ -235,14 +235,14 @@ If `.forge.json` includes `visual` in gates or specifies a `devServerUrl`, captu
 
 After mechanical gates pass, engage the reviewer agent:
 
-1. **Send diff to reviewer:** Use SendMessage to send the wave's git diff to the reviewer agent, along with:
+1. **Send diff to reviewer:** Use SendMessage to send **ALL of the following** to the reviewer agent. Do not send partial context — the reviewer cannot do its job without every item:
    - The PRD milestone section including:
      - The **Goal** line (what this milestone delivers)
      - All `- [ ]` checklist items from the milestone (these are the acceptance criteria)
      - The **User Stories** section from the PRD (for context on what users expect)
-   - The full git diff for the wave
+   - The full git diff for the wave (run `git diff --cached` or `git diff HEAD` — do not summarize or truncate)
    - CLAUDE.md rules and architecture decisions
-   - The list of files changed and their ownership
+   - The list of files changed and their ownership (which agent created/modified which files)
    - If the visual gate ran, include the screenshot file paths:
      - Before: `.forge/screenshots/before/*.png` (if captured in Step 2)
      - After: `.forge/screenshots/after/*.png`
