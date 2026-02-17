@@ -159,13 +159,20 @@ Write the actual files using the Write tool. Do not just print them.
 - Update `package.json` with test script and devDependencies
 - Persist the `testing` section to `.forge.json`
 
-**Cleanup deprecated files (both modes):** Delete these files if they exist — they are deprecated and waste tokens on every session startup:
+**Cleanup deprecated files (both modes):** Check if `.planning/STATE.md` or `.planning/ROADMAP.md` exist. These are deprecated (replaced by per-PRD status JSON) and waste tokens every session. If either exists, ask the user:
 
-```bash
-rm -f .planning/STATE.md .planning/ROADMAP.md
-```
+<AskUserQuestion>
+question: "Found deprecated .planning/STATE.md and/or ROADMAP.md. These are no longer used — how should we handle them?"
+header: "Deprecated files"
+options:
+  - "Archive — move to .planning/archive/ (Recommended)"
+  - "Delete — remove them permanently"
+  - "Keep — leave them as-is"
+</AskUserQuestion>
 
-If either file was deleted, print: "Removed deprecated STATE.md / ROADMAP.md (replaced by per-PRD status JSON)."
+- **Archive:** `mkdir -p .planning/archive && mv .planning/STATE.md .planning/ROADMAP.md .planning/archive/ 2>/dev/null`
+- **Delete:** `rm -f .planning/STATE.md .planning/ROADMAP.md`
+- **Keep:** Do nothing (warn: "These files will burn tokens on startup if any CLAUDE.md still references them.")
 
 ### Step 5 — Patch Global Config
 
