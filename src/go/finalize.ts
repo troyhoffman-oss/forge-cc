@@ -28,6 +28,7 @@ export interface CreatePROptions {
   milestones: Array<{ number: number; name: string; success: boolean }>;
   verificationReport?: string; // human-readable forge verify output
   commitSha?: string;
+  linearIssueIdentifiers?: string[]; // e.g., ["MSIG-123", "MSIG-124"]
 }
 
 export interface PRResult {
@@ -340,6 +341,18 @@ function buildPRBody(options: CreatePROptions): string {
     lines.push(`- ${checkbox} M${m.number}: ${m.name}`);
   }
   lines.push("");
+
+  // Linear Issues section — enables auto-close on PR merge via Linear's
+  // GitHub integration. Identifiers are workspace-specific (e.g., MSIG-123).
+  if (
+    options.linearIssueIdentifiers &&
+    options.linearIssueIdentifiers.length > 0
+  ) {
+    lines.push("## Linear Issues");
+    lines.push("");
+    lines.push(`Closes ${options.linearIssueIdentifiers.join(", ")}`);
+    lines.push("");
+  }
 
   // Verification report section
   lines.push("## Verification Report");

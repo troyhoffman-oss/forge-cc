@@ -15,10 +15,14 @@ import { loadConfig } from "../config/loader.js";
 import {
   syncMilestoneStart,
   syncMilestoneComplete,
+  fetchProjectIssueIdentifiers,
+  syncProjectDone,
 } from "./linear-sync.js";
 import type {
   MilestoneStartSync,
   MilestoneCompleteSync,
+  ProjectIssueIdentifiers,
+  ProjectDoneSync,
 } from "./linear-sync.js";
 
 // ---------------------------------------------------------------------------
@@ -181,4 +185,58 @@ export async function cliSyncComplete(
     isLastMilestone,
     prUrl,
   });
+}
+
+// ---------------------------------------------------------------------------
+// CLI Fetch Issue Identifiers
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all Linear issue identifiers for a project, resolving the project ID
+ * from the PRD slug. Used to inject `Closes TEAM-XXX` into PR descriptions.
+ *
+ * Returns null when no project ID is found or no LINEAR_API_KEY is set.
+ */
+export async function cliFetchIssueIdentifiers(
+  projectDir: string,
+  slug: string,
+): Promise<ProjectIssueIdentifiers | null> {
+  const projectId = await resolveLinearProjectId(projectDir, slug);
+  if (!projectId) return null;
+
+  try {
+    new LinearClient();
+  } catch (error) {
+    if (error instanceof LinearClientError) return null;
+    throw error;
+  }
+
+  return fetchProjectIssueIdentifiers({ projectId });
+}
+
+// ---------------------------------------------------------------------------
+// CLI Sync Done
+// ---------------------------------------------------------------------------
+
+/**
+ * Transition all project issues and the project to "Done" (post-merge).
+ * Resolves the project ID from the PRD slug.
+ *
+ * Returns null when no project ID is found or no LINEAR_API_KEY is set.
+ */
+export async function cliSyncDone(
+  projectDir: string,
+  slug: string,
+): Promise<ProjectDoneSync | null> {
+  const projectId = await resolveLinearProjectId(projectDir, slug);
+  if (!projectId) return null;
+
+  try {
+    new LinearClient();
+  } catch (error) {
+    if (error instanceof LinearClientError) return null;
+    throw error;
+  }
+
+  return syncProjectDone({ projectId });
 }

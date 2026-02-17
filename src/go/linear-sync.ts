@@ -7,6 +7,7 @@
  * - Milestone start: issues -> In Progress, project -> In Progress
  * - Mid-execution: progress comments on milestone issues
  * - Milestone complete: issues -> In Review (last milestone) or progress comment
+ * - Project done: issues -> Done, project -> Done (post-merge)
  *
  * All operations degrade gracefully — the execution engine must never fail
  * because Linear is unavailable or misconfigured.
@@ -52,6 +53,16 @@ export interface ProgressCommentOptions {
   milestoneName: string;
   message: string; // e.g., "Wave 2/3 complete. Verification passed."
   apiKey?: string;
+}
+
+export interface ProjectIssueIdentifiers {
+  identifiers: string[]; // e.g., ["MSIG-123", "MSIG-124"]
+  issues: Array<{ id: string; identifier: string; title: string }>;
+}
+
+export interface ProjectDoneSync {
+  issuesUpdated: number;
+  projectUpdated: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -331,4 +342,88 @@ export async function addMilestoneProgressComment(
       await client.createComment(issue.id, options.message);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Fetch Project Issue Identifiers
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all issue identifiers for a project (e.g., ["MSIG-123", "MSIG-124"]).
+ * Used to inject `Closes TEAM-XXX` into PR descriptions so Linear's GitHub
+ * integration auto-closes issues on merge.
+ *
+ * Degrades gracefully if Linear is unavailable.
+ */
+export async function fetchProjectIssueIdentifiers(
+  options: { projectId: string; apiKey?: string },
+): Promise<ProjectIssueIdentifiers | null> {
+  const client = createClientSafe(options.apiKey);
+  if (!client) return null;
+
+  return syncLinearSafe(async () => {
+    const allIssues = await client.listIssues({
+      projectId: options.projectId,
+    });
+
+    return {
+      identifiers: allIssues.map((issue) => issue.identifier),
+      issues: allIssues.map((issue) => ({
+        id: issue.id,
+        identifier: issue.identifier,
+        title: issue.title,
+      })),
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Project Done
+// ---------------------------------------------------------------------------
+
+/**
+ * Transition all project issues and the project itself to "Done".
+ * Intended for post-merge cleanup — run after a PR is merged to complete
+ * the Linear lifecycle.
+ *
+ * Skips issues already in Done or Canceled state.
+ * Degrades gracefully if Linear is unavailable.
+ */
+export async function syncProjectDone(
+  options: { projectId: string; apiKey?: string },
+): Promise<ProjectDoneSync> {
+  const noopResult: ProjectDoneSync = { issuesUpdated: 0, projectUpdated: false };
+
+  const client = createClientSafe(options.apiKey);
+  if (!client) return noopResult;
+
+  const result = await syncLinearSafe(async () => {
+    const allIssues = await client.listIssues({
+      projectId: options.projectId,
+    });
+
+    let updatedCount = 0;
+    for (const issue of allIssues) {
+      if (issue.state !== "Done" && issue.state !== "Canceled") {
+        try {
+          await client.updateIssue(issue.id, { state: "Done" });
+          updatedCount++;
+        } catch {
+          // Some issues may not support this transition — skip them
+        }
+      }
+    }
+
+    let projectUpdated = false;
+    try {
+      await transitionProject(client, options.projectId, "Done");
+      projectUpdated = true;
+    } catch {
+      // Project may already be Done or the transition may be invalid
+    }
+
+    return { issuesUpdated: updatedCount, projectUpdated };
+  });
+
+  return result ?? noopResult;
 }

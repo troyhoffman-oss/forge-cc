@@ -28,6 +28,8 @@ vi.mock("../../src/linear/client.js", () => {
 vi.mock("../../src/go/linear-sync.js", () => ({
   syncMilestoneStart: vi.fn(),
   syncMilestoneComplete: vi.fn(),
+  fetchProjectIssueIdentifiers: vi.fn(),
+  syncProjectDone: vi.fn(),
 }));
 
 import { readPRDStatus } from "../../src/state/prd-status.js";
@@ -38,12 +40,16 @@ import { LinearClient, LinearClientError } from "../../src/linear/client.js";
 import {
   syncMilestoneStart,
   syncMilestoneComplete,
+  fetchProjectIssueIdentifiers,
+  syncProjectDone,
 } from "../../src/go/linear-sync.js";
 import {
   resolveLinearProjectId,
   resolveMilestoneName,
   cliSyncStart,
   cliSyncComplete,
+  cliFetchIssueIdentifiers,
+  cliSyncDone,
 } from "../../src/go/linear-sync-cli.js";
 
 const mockReadPRDStatus = vi.mocked(readPRDStatus);
@@ -53,6 +59,8 @@ const mockFindProjectByName = vi.mocked(findProjectByName);
 const MockLinearClient = vi.mocked(LinearClient);
 const mockSyncStart = vi.mocked(syncMilestoneStart);
 const mockSyncComplete = vi.mocked(syncMilestoneComplete);
+const mockFetchIdentifiers = vi.mocked(fetchProjectIssueIdentifiers);
+const mockSyncDone = vi.mocked(syncProjectDone);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -218,5 +226,89 @@ describe("cliSyncComplete", () => {
 
     expect(result).toBeNull();
     expect(mockSyncComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe("cliFetchIssueIdentifiers", () => {
+  it("calls fetchProjectIssueIdentifiers with resolved project ID", async () => {
+    mockReadPRDStatus.mockResolvedValue({
+      linearProjectId: "proj-123",
+    } as any);
+    const fetchResult = {
+      identifiers: ["MSIG-1", "MSIG-2"],
+      issues: [
+        { id: "i-1", identifier: "MSIG-1", title: "Issue 1" },
+        { id: "i-2", identifier: "MSIG-2", title: "Issue 2" },
+      ],
+    };
+    mockFetchIdentifiers.mockResolvedValue(fetchResult);
+
+    const result = await cliFetchIssueIdentifiers("/project", "my-slug");
+
+    expect(mockFetchIdentifiers).toHaveBeenCalledWith({
+      projectId: "proj-123",
+    });
+    expect(result).toBe(fetchResult);
+  });
+
+  it("returns null when no project ID", async () => {
+    mockReadPRDStatus.mockResolvedValue(null as any);
+    mockLoadConfig.mockReturnValue({} as any);
+
+    const result = await cliFetchIssueIdentifiers("/project", "my-slug");
+
+    expect(result).toBeNull();
+    expect(mockFetchIdentifiers).not.toHaveBeenCalled();
+  });
+
+  it("returns null when no API key", async () => {
+    mockReadPRDStatus.mockResolvedValue({
+      linearProjectId: "proj-123",
+    } as any);
+    MockLinearClient.mockImplementation(() => {
+      throw new (LinearClientError as any)("No API key");
+    });
+
+    const result = await cliFetchIssueIdentifiers("/project", "my-slug");
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("cliSyncDone", () => {
+  it("calls syncProjectDone with resolved project ID", async () => {
+    mockReadPRDStatus.mockResolvedValue({
+      linearProjectId: "proj-789",
+    } as any);
+    const doneResult = { issuesUpdated: 3, projectUpdated: true };
+    mockSyncDone.mockResolvedValue(doneResult);
+
+    const result = await cliSyncDone("/project", "my-slug");
+
+    expect(mockSyncDone).toHaveBeenCalledWith({ projectId: "proj-789" });
+    expect(result).toBe(doneResult);
+  });
+
+  it("returns null when no project ID", async () => {
+    mockReadPRDStatus.mockResolvedValue(null as any);
+    mockLoadConfig.mockReturnValue({} as any);
+
+    const result = await cliSyncDone("/project", "my-slug");
+
+    expect(result).toBeNull();
+    expect(mockSyncDone).not.toHaveBeenCalled();
+  });
+
+  it("returns null when no API key", async () => {
+    mockReadPRDStatus.mockResolvedValue({
+      linearProjectId: "proj-789",
+    } as any);
+    MockLinearClient.mockImplementation(() => {
+      throw new (LinearClientError as any)("No API key");
+    });
+
+    const result = await cliSyncDone("/project", "my-slug");
+
+    expect(result).toBeNull();
   });
 });

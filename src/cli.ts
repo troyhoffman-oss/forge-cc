@@ -500,6 +500,32 @@ linearSync
     }
   });
 
+linearSync
+  .command("list-issues")
+  .description("List all Linear issue identifiers for a project")
+  .requiredOption("--slug <slug>", "PRD slug")
+  .action(async (opts) => {
+    const { cliFetchIssueIdentifiers } = await import("./go/linear-sync-cli.js");
+    const projectDir = process.cwd();
+    const result = await cliFetchIssueIdentifiers(projectDir, opts.slug);
+    if (result) {
+      console.log(JSON.stringify(result.identifiers));
+    }
+  });
+
+linearSync
+  .command("done")
+  .description("Transition all project issues and the project to Done (post-merge)")
+  .requiredOption("--slug <slug>", "PRD slug")
+  .action(async (opts) => {
+    const { cliSyncDone } = await import("./go/linear-sync-cli.js");
+    const projectDir = process.cwd();
+    const result = await cliSyncDone(projectDir, opts.slug);
+    if (result) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+  });
+
 // ── doctor command ─────────────────────────────────────────────────
 
 program
