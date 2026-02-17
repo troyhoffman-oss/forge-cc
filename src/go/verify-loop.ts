@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   ForgeConfig,
   GateError,
@@ -90,6 +92,15 @@ export async function runVerifyLoop(
   const maxIterations = options.maxIterations ?? config.maxIterations;
   const results: PipelineResult[] = [];
 
+  // Snapshot .forge.json before the loop to detect unauthorized config mutation
+  const configPath = join(projectDir, ".forge.json");
+  let configSnapshot: string | null = null;
+  try {
+    configSnapshot = readFileSync(configPath, "utf-8");
+  } catch {
+    // .forge.json may not exist — skip detection
+  }
+
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     const pipelineInput: PipelineInput = {
       projectDir,
@@ -168,6 +179,33 @@ export async function runVerifyLoop(
         // loop and re-verify (the caller may have partially fixed things, or
         // an external process may have intervened).
         await onFixAttempt(iteration, allErrors);
+
+        // Guard: detect if the fix agent mutated .forge.json (gate removal, etc.)
+        if (configSnapshot !== null) {
+          try {
+            const currentConfig = readFileSync(configPath, "utf-8");
+            if (currentConfig !== configSnapshot) {
+              // Restore the original config — agents must not modify it
+              const { writeFileSync } = await import("node:fs");
+              writeFileSync(configPath, configSnapshot, "utf-8");
+              // Add a warning to the last result so it surfaces in reports
+              const lastResult = results[results.length - 1];
+              if (lastResult) {
+                lastResult.gates.push({
+                  gate: "config-guard",
+                  passed: true,
+                  errors: [],
+                  warnings: [
+                    ".forge.json was modified by a fix agent and has been restored. Agents must not modify project configuration to pass verification.",
+                  ],
+                  duration_ms: 0,
+                });
+              }
+            }
+          } catch {
+            // Non-fatal: if we can't read the file, skip detection
+          }
+        }
       }
     }
   }

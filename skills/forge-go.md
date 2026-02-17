@@ -214,6 +214,8 @@ If the project has additional verification configured (tests, lint), also run:
 npx forge verify
 ```
 
+**CRITICAL: NEVER remove a gate from `.forge.json` or modify CLAUDE.md to make verification pass.** If a gate fails due to missing prerequisites (no dev server, no PRD), that is an environment issue — not a code error. Fix only code errors; skip or note environment-dependent failures.
+
 If verification **fails**: proceed to Step 4 (self-healing loop).
 
 If verification **passes**: capture after screenshots (if visual gate configured), then proceed to reviewer.
@@ -266,7 +268,7 @@ After mechanical gates pass, engage the reviewer agent:
 4. **Fix findings:** Spawn a fix agent to address all findings. The fix agent receives:
    - The specific findings to fix
    - The files to modify
-   - "Fix ONLY the listed findings. Do not refactor or add features."
+   - "Fix ONLY the listed findings. Do not refactor or add features. NEVER modify .forge.json, CLAUDE.md, or tasks/lessons.md to resolve verification errors."
 
 5. **Re-verify:** Restage files and re-run mechanical gates after fixes.
 
@@ -297,7 +299,7 @@ When mechanical verification fails after a wave (or after reviewer fixes):
    - The specific errors to fix
    - The files that need modification
    - The original task context
-   - "Fix ONLY the errors listed. Do not refactor or add features."
+   - "Fix ONLY the errors listed. Do not refactor or add features. NEVER modify .forge.json, CLAUDE.md, or tasks/lessons.md to resolve verification errors."
 
 3. After the fix agent completes, restage files and re-run verification.
 

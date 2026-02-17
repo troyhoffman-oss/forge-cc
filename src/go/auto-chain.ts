@@ -189,6 +189,9 @@ export async function buildFreshSessionPrompt(
   lines.push(
     "- On completion, the orchestrator will update the status JSON automatically.",
   );
+  lines.push(
+    "- NEVER modify .forge.json, CLAUDE.md, or tasks/lessons.md to resolve verification errors.",
+  );
   lines.push("");
 
   return lines.join("\n");

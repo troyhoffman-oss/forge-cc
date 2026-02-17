@@ -44,11 +44,13 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     for (const gateName of gatesToRun) {
       const gateFn = gateRegistry[gateName];
       if (!gateFn) {
+        // Gates like "codex" are post-PR only and handled outside the pipeline.
+        // Treat them as a skip with a warning, not a hard failure.
         results.push({
           gate: gateName,
-          passed: false,
-          errors: [{ message: `Unknown gate: ${gateName}` }],
-          warnings: [],
+          passed: true,
+          errors: [],
+          warnings: [`Gate "${gateName}" is not in the verify pipeline — skipped`],
           duration_ms: 0,
         });
         continue;

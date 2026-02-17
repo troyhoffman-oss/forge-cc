@@ -459,9 +459,12 @@ export async function runWaveVerification(
 ): Promise<PipelineResult> {
   const { projectDir, config, prdPath } = options;
 
+  // Filter out post-pipeline gates (codex is handled after PR creation, not during waves)
+  const waveGates = config.gates?.filter((g) => g !== "codex");
+
   const pipelineInput: PipelineInput = {
     projectDir,
-    gates: config.gates,
+    gates: waveGates,
     prdPath: config.prdPath ?? prdPath,
     maxIterations: config.maxIterations,
     devServerCommand: config.devServer?.command,
