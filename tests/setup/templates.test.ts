@@ -3,8 +3,6 @@ import {
   globalClaudeMdTemplate,
   claudeMdTemplate,
   forgeConfigTemplate,
-  stateMdTemplate,
-  roadmapMdTemplate,
   lessonsMdTemplate,
   gitignoreForgeLines,
   type SetupContext,
@@ -87,30 +85,6 @@ describe("forgeConfigTemplate", () => {
   it("has maxIterations: 5", () => {
     const parsed = JSON.parse(output);
     expect(parsed.maxIterations).toBe(5);
-  });
-});
-
-describe("stateMdTemplate", () => {
-  const output = stateMdTemplate(ctx);
-
-  it("has Current Status", () => {
-    expect(output).toContain("## Current Status");
-  });
-
-  it("has What Was Done", () => {
-    expect(output).toContain("## What Was Done");
-  });
-
-  it("has Next Actions", () => {
-    expect(output).toContain("## Next Actions");
-  });
-});
-
-describe("roadmapMdTemplate", () => {
-  const output = roadmapMdTemplate(ctx);
-
-  it("has markdown table with correct headers", () => {
-    expect(output).toContain("| Project | Status | PRD | Milestones |");
   });
 });
 

@@ -35,7 +35,7 @@ src/
   spec/               # /forge:spec engine (scanner, interview, generator, templates)
   go/                 # /forge:go engine (executor, verify-loop, auto-chain, finalize)
   setup/              # /forge:setup templates
-  worktree/           # Git worktree manager, session registry, state merge, parallel scheduler
+  worktree/           # Git worktree manager, session registry, parallel scheduler
   utils/              # Platform utilities (atomic writes, path normalization, shell quoting)
 skills/               # Skill files (triage, spec, go, setup, update)
 hooks/                # Installable hooks (pre-commit, version-check)

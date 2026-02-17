@@ -3,8 +3,6 @@ import {
   mkdtempSync,
   rmSync,
   mkdirSync,
-  writeFileSync,
-  readFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,9 +17,6 @@ import {
 } from "../../src/worktree/session.js";
 import type { Session } from "../../src/worktree/session.js";
 import type { UserIdentity } from "../../src/worktree/identity.js";
-import {
-  mergeSessionState,
-} from "../../src/worktree/state-merge.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -53,43 +48,6 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     ...overrides,
   };
 }
-
-function writePlanningFile(
-  baseDir: string,
-  filename: string,
-  content: string,
-): string {
-  const planningDir = join(baseDir, ".planning");
-  mkdirSync(planningDir, { recursive: true });
-  const filePath = join(planningDir, filename);
-  writeFileSync(filePath, content, "utf-8");
-  return filePath;
-}
-
-// ---------------------------------------------------------------------------
-// Fixtures for merge tests
-// ---------------------------------------------------------------------------
-
-const SAMPLE_STATE = `# Test Project — Project State
-
-**Last Session:** 2026-02-10
-
-## Milestone Progress
-| Milestone | Name | Status |
-|-----------|------|--------|
-| 1 | Foundation | In Progress |
-| 2 | Integration | Pending |
-| 3 | Polish | Pending |
-`;
-
-const SAMPLE_ROADMAP = `# Test Project — Roadmap
-
-| Milestone | Name | Status |
-|-----------|------|--------|
-| 1 | Foundation | In Progress |
-| 2 | Integration | Pending |
-| 3 | Polish | Pending |
-`;
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
@@ -221,70 +179,3 @@ describe("Session isolation", () => {
   });
 });
 
-// ===========================================================================
-// 2. State merge isolation tests
-// ===========================================================================
-
-describe("State merge isolation", () => {
-  let mainDir: string;
-  let worktreeA: string;
-  let worktreeB: string;
-
-  beforeEach(() => {
-    mainDir = join(tempDir, "main-repo");
-    worktreeA = join(tempDir, "worktree-a");
-    worktreeB = join(tempDir, "worktree-b");
-    mkdirSync(mainDir, { recursive: true });
-    mkdirSync(worktreeA, { recursive: true });
-    mkdirSync(worktreeB, { recursive: true });
-  });
-
-  it("two sessions completing different milestones produce correct merged state", () => {
-    writePlanningFile(mainDir, "STATE.md", SAMPLE_STATE);
-    writePlanningFile(mainDir, "ROADMAP.md", SAMPLE_ROADMAP);
-    writePlanningFile(worktreeA, "STATE.md", SAMPLE_STATE);
-    writePlanningFile(worktreeA, "ROADMAP.md", SAMPLE_ROADMAP);
-    writePlanningFile(worktreeB, "STATE.md", SAMPLE_STATE);
-    writePlanningFile(worktreeB, "ROADMAP.md", SAMPLE_ROADMAP);
-
-    const resultA = mergeSessionState(mainDir, worktreeA, 1, "2026-02-14");
-    expect(resultA.stateUpdated).toBe(true);
-    expect(resultA.roadmapUpdated).toBe(true);
-
-    const resultB = mergeSessionState(mainDir, worktreeB, 2, "2026-02-15");
-    expect(resultB.stateUpdated).toBe(true);
-
-    const state = readFileSync(
-      join(mainDir, ".planning", "STATE.md"),
-      "utf-8",
-    );
-    const stateLines = state.split("\n");
-
-    const m1StateLine = stateLines.find((l) => l.includes("| 1 |"));
-    const m2StateLine = stateLines.find((l) => l.includes("| 2 |"));
-    const m3StateLine = stateLines.find((l) => l.includes("| 3 |"));
-
-    expect(m1StateLine).toContain("Complete (2026-02-14)");
-    expect(m2StateLine).toContain("Complete (2026-02-15)");
-    expect(m3StateLine).toContain("Pending");
-  });
-
-  it("merging the same milestone from two sessions uses last-write-wins", () => {
-    writePlanningFile(mainDir, "STATE.md", SAMPLE_STATE);
-    writePlanningFile(mainDir, "ROADMAP.md", SAMPLE_ROADMAP);
-    writePlanningFile(worktreeA, "STATE.md", SAMPLE_STATE);
-    writePlanningFile(worktreeA, "ROADMAP.md", SAMPLE_ROADMAP);
-    writePlanningFile(worktreeB, "STATE.md", SAMPLE_STATE);
-    writePlanningFile(worktreeB, "ROADMAP.md", SAMPLE_ROADMAP);
-
-    mergeSessionState(mainDir, worktreeA, 1, "2026-02-14");
-    mergeSessionState(mainDir, worktreeB, 1, "2026-02-15");
-
-    const roadmap = readFileSync(
-      join(mainDir, ".planning", "ROADMAP.md"),
-      "utf-8",
-    );
-    const m1Line = roadmap.split("\n").find((l) => l.includes("| 1 |"));
-    expect(m1Line).toContain("Complete (2026-02-15)");
-  });
-});

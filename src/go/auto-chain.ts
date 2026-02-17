@@ -284,8 +284,8 @@ export async function runAutoChain(
   });
 
   // Use worktree path as the effective project directory for code execution.
-  // CLAUDE.md and STATE.md are read from the main projectDir (see buildFreshSessionPrompt),
-  // but PRD files and milestone context come from the worktree.
+  // CLAUDE.md is read from the main projectDir (see buildFreshSessionPrompt),
+  // PRD files and milestone context come from the worktree.
   const effectiveProjectDir = worktreePath;
 
   try {
@@ -294,7 +294,7 @@ export async function runAutoChain(
       // Update session milestone tracking
       updateSessionStatus(repoRoot, session.id, "active");
 
-      // Build fresh-context prompt: CLAUDE.md/STATE.md from main project,
+      // Build fresh-context prompt: CLAUDE.md from main project,
       // PRD path resolved relative to the worktree
       const effectivePrdPath = join(effectiveProjectDir, prdPath);
       const freshPrompt = await buildFreshSessionPrompt(
