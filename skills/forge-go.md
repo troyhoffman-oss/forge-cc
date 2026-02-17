@@ -95,7 +95,9 @@ If `.forge.json` includes `visual` in gates or specifies a `devServerUrl`, captu
 3. Screenshots save to `.forge/screenshots/before/`
 4. Stop the dev server
 
-This establishes the visual baseline for regression detection. Skip if no visual gate is configured.
+This establishes the visual baseline for regression detection.
+
+**The visual gate MUST run if configured — do not skip based on your assessment of whether changes affect the UI.** Parser changes, data fixes, and test-only changes can surface unexpected visual regressions. The only valid reason to skip is: `.forge.json` does NOT include `visual` in gates AND does NOT specify a `devServerUrl`.
 
 ### Step 2.5 — Session Isolation (Automatic)
 
@@ -214,7 +216,18 @@ npx forge verify
 
 If verification **fails**: proceed to Step 4 (self-healing loop).
 
-If verification **passes**: proceed to reviewer.
+If verification **passes**: capture after screenshots (if visual gate configured), then proceed to reviewer.
+
+#### 3e-vis. Capture After Screenshots (If Visual Gate Configured)
+
+If `.forge.json` includes `visual` in gates or specifies a `devServerUrl`, capture after screenshots:
+
+1. Start the dev server (from `.forge.json` devServerUrl or `npm run dev`)
+2. Run `npx forge verify --gate visual --after-only` (or manually call the screenshot capture)
+3. Screenshots save to `.forge/screenshots/after/`
+4. Stop the dev server
+
+**This step is mandatory when the visual gate is configured — same rule as Step 2.** The reviewer needs both before and after screenshots to detect visual regressions.
 
 #### 3f. Reviewer Consensus Protocol
 
@@ -265,7 +278,7 @@ If no findings (or all findings resolved): print wave completion summary and pro
 - agent-1: OK (created file1.ts, file2.ts)
 - agent-2: OK (modified file3.ts)
 - Mechanical verification: PASSED
-- Visual gate: PASSED (3 viewports captured) | SKIPPED (not configured)
+- Visual gate: PASSED (3 viewports captured) | SKIPPED (not in .forge.json gates)
 - Reviewer: {N} findings, {M} resolved, 0 outstanding
 
 Proceeding to Wave {N+1}...
