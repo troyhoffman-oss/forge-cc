@@ -5,7 +5,7 @@
   "createdAt": "2026-02-16",
   "milestones": {
     "1": { "status": "complete", "date": "2026-02-16" },
-    "2": { "status": "pending" },
+    "2": { "status": "complete", "date": "2026-02-16" },
     "3": { "status": "pending" }
   }
 }
