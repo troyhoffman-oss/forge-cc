@@ -235,12 +235,13 @@ The target hook entry is:
 }
 ```
 
-**Merge logic:**
-1. Parse the existing file (or start with `{}`).
-2. Ensure `hooks.PreToolUse` exists as an array.
-3. Check if any entry in `hooks.PreToolUse` already has a hook with `command` containing `version-check.js`. If so, skip — already installed.
-4. Otherwise, append the hook entry to `hooks.PreToolUse`.
-5. Write the merged result back to `.claude/settings.local.json`, preserving all existing settings.
+**Merge logic — follow ALL 5 steps. Do NOT overwrite the file; you MUST read-merge-write to preserve existing user settings:**
+
+1. Parse the existing file (or start with `{}`). **Use the Read tool first** — never write without reading.
+2. Ensure `hooks.PreToolUse` exists as an array. If the key is missing, create it. If it exists, preserve all existing entries.
+3. Check if any entry in `hooks.PreToolUse` already has a hook with `command` containing `version-check.js`. **If found, skip — already installed. Do not duplicate it.**
+4. If NOT found, append the hook entry to `hooks.PreToolUse`. Do not replace existing entries.
+5. Write the merged result back to `.claude/settings.local.json`, preserving ALL existing settings (permissions, other hooks, custom keys).
 
 Create the `.claude/` directory if it doesn't exist (`mkdir -p .claude`).
 
@@ -265,8 +266,11 @@ Once all gates pass, automatically create a branch, commit, open a PR, and poll 
 
 **Create branch and commit:**
 
+**IMPORTANT — CRLF check is mandatory before staging.** Run `git diff --stat` first. If any files show changes but have zero meaningful content diff (CRLF-only / whitespace-only noise on unrelated files), discard them with `git checkout -- <file>` BEFORE running `git add`. Skipping this check causes unrelated files to be included in the commit.
+
 ```bash
 git checkout -b feat/forge-setup
+git diff --stat  # Check for CRLF noise — discard any whitespace-only changes on unrelated files
 git add -A
 git commit -m "feat: initialize forge workflow scaffolding
 
@@ -279,8 +283,6 @@ git commit -m "feat: initialize forge workflow scaffolding
 Co-Authored-By: Claude <noreply@anthropic.com>"
 git push -u origin feat/forge-setup
 ```
-
-**Important:** Before `git add -A`, check `git diff --stat` for CRLF-only noise on unrelated files. If any files show changes but have zero content diff, discard them with `git checkout -- <file>` before staging.
 
 **Open PR:**
 

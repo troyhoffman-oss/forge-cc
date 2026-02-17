@@ -199,9 +199,9 @@ The PRD should follow this structure:
 
 Write the final PRD to `.planning/prds/{project-slug}.md`.
 
-After writing the PRD file, also:
+After writing the PRD file, **execute BOTH steps below — do not skip either**:
 
-1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending". Include `linearProjectId` from the project selected in Step 1 (this is the Linear project UUID — required for `/forge:go` to sync issue status automatically):
+1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending". **You MUST include `linearProjectId`** — this is the Linear project UUID from the project selected in Step 1. Without it, `/forge:go` cannot sync Linear issue or project state and will silently skip all Linear operations. Copy the exact project ID string — do not omit this field:
    ```json
    {
      "project": "{project name}",
@@ -268,11 +268,13 @@ Use mcp__linear__create_issue with:
   - milestoneId: the milestone ID just created
 ```
 
-After all milestones and issues are created, transition the project to "Planned":
+**After all milestones and issues are created, transition the project to "Planned" — this is a separate mandatory step, do not skip it:**
 
 ```
 Use mcp__linear__update_project to set the project state to "planned".
 ```
+
+**The project is a separate entity from its milestones and issues.** Creating milestones and issues does NOT automatically update the project state. You must explicitly call `mcp__linear__update_project`. Without this transition, `/forge:go` will find the project still in "Backlog" and the state machine will reject the "In Progress" transition.
 
 Print a summary:
 
