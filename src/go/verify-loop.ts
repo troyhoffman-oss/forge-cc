@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   ForgeConfig,
@@ -186,7 +186,6 @@ export async function runVerifyLoop(
             const currentConfig = readFileSync(configPath, "utf-8");
             if (currentConfig !== configSnapshot) {
               // Restore the original config — agents must not modify it
-              const { writeFileSync } = await import("node:fs");
               writeFileSync(configPath, configSnapshot, "utf-8");
               // Add a warning to the last result so it surfaces in reports
               const lastResult = results[results.length - 1];

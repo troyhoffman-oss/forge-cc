@@ -57,7 +57,7 @@ describe("readCurrentMilestone", () => {
 describe("readSessionContext", () => {
   it("returns slug and milestone section with token estimate", async () => {
     mockReadFile.mockResolvedValue(PRD_MD);
-    const result = await readSessionContext("/proj", "/prd.md", 2, "test-slug");
+    const result = await readSessionContext("/prd.md", 2, "test-slug");
     expect(result.prdSlug).toBe("test-slug");
     expect(result.currentMilestoneSection).not.toBeNull();
     expect(result.estimatedTokens).toBeGreaterThan(0);

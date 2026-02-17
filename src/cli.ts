@@ -455,6 +455,51 @@ program
     }
   });
 
+// ── linear-sync command ────────────────────────────────────────────
+
+const linearSync = program
+  .command("linear-sync")
+  .description("Sync milestone state with Linear (programmatic)");
+
+linearSync
+  .command("start")
+  .description("Transition milestone issues and project to In Progress")
+  .requiredOption("--slug <slug>", "PRD slug")
+  .requiredOption("--milestone <number>", "Milestone number")
+  .action(async (opts) => {
+    const { cliSyncStart } = await import("./go/linear-sync-cli.js");
+    const projectDir = process.cwd();
+    const milestoneNumber = parseInt(opts.milestone, 10);
+    const result = await cliSyncStart(projectDir, opts.slug, milestoneNumber);
+    if (result) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+  });
+
+linearSync
+  .command("complete")
+  .description("Transition milestone issues and project on completion")
+  .requiredOption("--slug <slug>", "PRD slug")
+  .requiredOption("--milestone <number>", "Milestone number")
+  .option("--last", "This is the last milestone (transition to In Review)")
+  .option("--pr-url <url>", "PR URL to attach as comments")
+  .action(async (opts) => {
+    const { cliSyncComplete } = await import("./go/linear-sync-cli.js");
+    const projectDir = process.cwd();
+    const milestoneNumber = parseInt(opts.milestone, 10);
+    const isLastMilestone = opts.last === true;
+    const result = await cliSyncComplete(
+      projectDir,
+      opts.slug,
+      milestoneNumber,
+      isLastMilestone,
+      opts.prUrl,
+    );
+    if (result) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+  });
+
 // ── doctor command ─────────────────────────────────────────────────
 
 program

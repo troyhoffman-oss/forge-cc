@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readCurrentMilestone, readSessionContext } from "../state/reader.js";
 import type { SessionContext } from "../state/reader.js";
-import { readPRDStatus } from "../state/prd-status.js";
+
 import { runPipeline } from "../gates/index.js";
 import { formatHumanReport } from "../reporter/human.js";
 import { createTeamConfig, shouldIncludeNotetaker } from "../team/lifecycle.js";
@@ -220,7 +220,6 @@ export async function buildMilestoneContext(
 
   // Read session context (milestone section from PRD)
   const sessionContext = await readSessionContext(
-    projectDir,
     prdPath,
     milestoneNumber,
     options.prdSlug ?? "unknown",
@@ -239,10 +238,9 @@ export async function buildMilestoneContext(
   const prdSlug = options.prdSlug ?? "unknown";
 
   // Read supporting files and PRD status in parallel
-  const [lessons, claudeMd, _prdStatus] = await Promise.all([
+  const [lessons, claudeMd] = await Promise.all([
     safeRead(join(projectDir, "tasks", "lessons.md")),
     safeRead(join(projectDir, "CLAUDE.md")),
-    readPRDStatus(projectDir, prdSlug),
   ]);
 
   // Build team config based on wave structure

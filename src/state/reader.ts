@@ -56,7 +56,6 @@ export async function readCurrentMilestone(
 // ---------------------------------------------------------------------------
 
 export async function readSessionContext(
-  projectDir: string,
   prdPath: string,
   milestoneNumber: number,
   prdSlug: string,

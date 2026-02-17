@@ -364,13 +364,15 @@ Check for the Linear project ID in this priority order:
 
 If a Linear project ID is found:
 
-1. **Transition issues** for the completed milestone:
-   - If this was the **last milestone**: use `mcp__linear__update_issue` on each issue to set state to "In Review"
-   - Otherwise: keep issues as-is (they were set to "In Progress" at start)
+```bash
+npx forge linear-sync complete --slug {slug} --milestone {number} [--last] [--pr-url {url}]
+```
 
-2. If this is the **last milestone**, **also transition the project itself** (separate from issues):
-   - Use `mcp__linear__update_project` to set the project state to "In Review". **Do not skip this — the project is a separate entity from its issues.**
-   - Create a PR (see Step 8)
+Pass `--last` if this is the last milestone. Pass `--pr-url {url}` if a PR was created. This command:
+- If NOT last milestone: adds progress comments to milestone issues
+- If last milestone: transitions all project issues and the project to "In Review", adds PR link comments
+
+It degrades gracefully — if no API key or config, it exits silently.
 
 If no Linear project ID is found in either location, skip this step silently.
 
@@ -516,12 +518,13 @@ At the START of milestone execution (between Step 2 and Step 3), check for the L
 1. `linearProjectId` field in `.planning/status/<slug>.json`
 2. `linearProject` field in `.forge.json`
 
-If a Linear project ID is found, **execute ALL four steps below — do not skip any**:
+If a Linear project ID is found:
 
-1. **Find issues:** Use `mcp__linear__list_issues` with the project ID to find issues associated with this milestone.
-2. **Transition issues:** Use `mcp__linear__update_issue` on each issue to set state to "In Progress".
-3. **Transition the project:** Use `mcp__linear__update_project` to set the project state to "In Progress". **This is a separate step from transitioning issues — do not skip it.** The project and its issues are independent entities in Linear.
-4. **Add comment:** Use `mcp__linear__create_comment` on each milestone issue with the body: "Starting execution via forge:go."
+```bash
+npx forge linear-sync start --slug {slug} --milestone {number}
+```
+
+This command programmatically transitions milestone issues to "In Progress" and the project to "In Progress". It degrades gracefully — if no API key or config, it exits silently.
 
 If no Linear project ID is found, skip silently.
 
