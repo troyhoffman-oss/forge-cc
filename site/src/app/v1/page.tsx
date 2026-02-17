@@ -1,16 +1,36 @@
-import InstallPill from "@/components/InstallPill";
-import Footer from "@/components/Footer";
+import AlchemicalCanvas from "./AlchemicalCanvas";
+import AlchemicalInstallPill from "./AlchemicalInstallPill";
+import AlchemicalFooter from "./AlchemicalFooter";
 
 export default function V1Page() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-between">
-      <main className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Direction 1: Alchemical Forge
+    <div
+      className="flex min-h-screen flex-col items-center justify-between"
+      style={{ background: "#0d0d0d" }}
+    >
+      <AlchemicalCanvas />
+
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center gap-6 px-6">
+        <h1
+          className="text-[72px] font-light leading-none tracking-tight text-[#e8dcc8] max-md:text-[48px]"
+          style={{ fontFamily: "var(--font-cormorant)" }}
+        >
+          forge
         </h1>
-        <InstallPill />
+
+        <p
+          className="text-sm tracking-widest text-[#8a7e6b] uppercase"
+          style={{ fontFamily: "var(--font-ibm-plex-mono)" }}
+        >
+          forge your workflow
+        </p>
+
+        <div className="mt-8">
+          <AlchemicalInstallPill />
+        </div>
       </main>
-      <Footer />
+
+      <AlchemicalFooter />
     </div>
   );
 }
