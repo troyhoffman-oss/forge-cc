@@ -20,6 +20,7 @@ Read these files in parallel:
 
 From the status files, determine:
 - **Available PRDs** with pending milestones
+- If `--prd <slug>` was passed as an argument: select that specific PRD (no picker needed)
 - If only one PRD: auto-select it
 - If multiple PRDs: present a picker using AskUserQuestion with each PRD as an option showing its name, branch, and pending milestone count
 - **Current milestone number** — the lowest-numbered pending milestone for the selected PRD
@@ -52,6 +53,8 @@ Otherwise: **your very next tool call MUST be AskUserQuestion.** No file reads, 
 **Wait for the user's response before continuing.** Do not proceed to Step 2 until you have their answer. Store the choice for Step 8 (Route Next).
 
 ### Step 2 — Pre-flight Checks
+
+**Print progress immediately** — before running any checks, output: `## Step 2 — Pre-flight Checks`
 
 Verify the execution environment is ready:
 
@@ -116,6 +119,8 @@ The execution engine automatically creates a git worktree for isolated execution
 
 ### Step 3 — Create Agent Team + Execute Waves
 
+**Print progress:** `## Step 3 — Executing Waves`
+
 #### 3a. Create the Agent Team
 
 Use TeamCreate to establish the milestone's agent team:
@@ -177,6 +182,8 @@ For each agent in the wave, construct a prompt that includes **ALL 10 items belo
     - Send a message to the executive when your work is complete
 
 **Spawn Builder Agents in Parallel:**
+
+**Print progress before each wave:** `### Wave {N} — Spawning {M} agents: {agent-name-1}, {agent-name-2}, ...`
 
 Spawn all builder agents for the current wave as team members:
 
@@ -288,6 +295,8 @@ Proceeding to Wave {N+1}...
 
 ### Step 4 — Self-Healing Verify Loop
 
+**Print progress:** `## Step 4 — Self-Healing (attempt {N}/{max})`
+
 When mechanical verification fails after a wave (or after reviewer fixes):
 
 1. Parse the verification errors into structured feedback. Include:
@@ -322,6 +331,8 @@ When mechanical verification fails after a wave (or after reviewer fixes):
 
 ### Step 5 — Commit
 
+**Print progress:** `## Step 5 — Committing`
+
 After ALL waves pass verification (mechanical + reviewer):
 
 1. Stage all files created/modified across all waves:
@@ -343,6 +354,8 @@ After ALL waves pass verification (mechanical + reviewer):
    ```
 
 ### Step 6 — Update State
+
+**Print progress:** `## Step 6 — Updating State`
 
 Update the PRD status file:
 

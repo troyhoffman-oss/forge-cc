@@ -604,8 +604,9 @@ program
 
           const result = spawnSync(
             "claude",
-            [prompt, "--dangerously-skip-permissions"],
+            ["--dangerously-skip-permissions"],
             {
+              input: prompt,
               stdio: ["pipe", "inherit", "inherit"],
               cwd: projectDir,
             },
@@ -687,9 +688,10 @@ program
     console.log("Output streams inline below.\n");
     console.log("---\n");
 
+    const skillArgs = opts.prd ? `--single --prd ${opts.prd}` : "--single";
     const prompt = [
       "You are executing one milestone of a forge auto-chain.",
-      'Use the Skill tool: skill="forge:go", args="--single"',
+      `Use the Skill tool: skill="forge:go", args="${skillArgs}"`,
       "After the skill completes, stop.",
     ].join("\n");
 
@@ -699,8 +701,9 @@ program
 
       const result = spawnSync(
         "claude",
-        [prompt, "--dangerously-skip-permissions"],
+        ["--dangerously-skip-permissions"],
         {
+          input: prompt,
           stdio: ["pipe", "inherit", "inherit"],
           cwd: projectDir,
         },
