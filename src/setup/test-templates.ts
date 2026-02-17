@@ -65,7 +65,7 @@ export function nextjsApiRouteTemplate(sourcePath: string): string {
   const testPath = deriveTestPath(sourcePath);
   const importPath = computeRelativeImport(testPath, sourcePath);
 
-  return `import { describe, it, expect, vi } from "vitest";
+  return `import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
 
 // TODO: Update imports to match the actual exports from the source module

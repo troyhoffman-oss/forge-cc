@@ -48,8 +48,7 @@ function parseImports(filePath: string): string[] {
   const content = fs.readFileSync(filePath, "utf-8");
   const importRegex = /(?:import|export)\\s.*?from\\s+["'](.+?)["']/g;
   const imports: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = importRegex.exec(content)) !== null) {
+  for (const match of content.matchAll(importRegex)) {
     const specifier = match[1];
     // Only resolve relative imports
     if (!specifier.startsWith(".")) continue;
@@ -212,8 +211,7 @@ function parseExports(filePath: string): string[] {
   const content = fs.readFileSync(filePath, "utf-8");
   const exportRegex = /export\\s.*?from\\s+["'](.+?)["']/g;
   const exports: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = exportRegex.exec(content)) !== null) {
+  for (const match of content.matchAll(exportRegex)) {
     exports.push(match[1]);
   }
   return exports;
