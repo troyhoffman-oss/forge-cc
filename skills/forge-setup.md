@@ -11,7 +11,7 @@ Follow these steps exactly. Do not skip confirmation.
 Check the current directory for existing forge files:
 
 ```bash
-ls .forge.json CLAUDE.md .planning/STATE.md .planning/ROADMAP.md tasks/lessons.md 2>/dev/null
+ls .forge.json CLAUDE.md tasks/lessons.md 2>/dev/null
 ```
 
 Determine which files exist. This determines whether this is a fresh setup or a refresh.
@@ -34,8 +34,6 @@ options:
 **Refresh** will update templates while preserving:
 - `CLAUDE.md` → keeps `## Learned Rules` section content
 - `tasks/lessons.md` → keeps all existing lessons
-- `.planning/STATE.md` → keeps current state
-- `.planning/ROADMAP.md` → keeps current roadmap
 
 ### Step 3 — Configure Gates
 
@@ -145,14 +143,12 @@ Use the template functions from `forge-cc/src/setup/templates.ts` to generate fi
 
 - `forgeConfigTemplate(ctx)` → `.forge.json` (includes `forgeVersion`)
 - `claudeMdTemplate(ctx)` → `CLAUDE.md`
-- `stateMdTemplate(ctx)` → `.planning/STATE.md`
-- `roadmapMdTemplate(ctx)` → `.planning/ROADMAP.md`
 - `lessonsMdTemplate(ctx)` → `tasks/lessons.md`
 - `gitignoreForgeLines()` → lines to append to `.gitignore`
 
 **Fresh Setup mode:** Create all files. Create directories `.planning/` and `tasks/` if they don't exist. Append forge lines to `.gitignore` if not already present.
 
-**Refresh mode:** Only overwrite `.forge.json` and the structural parts of `CLAUDE.md` (everything except `## Learned Rules`). Do NOT touch `STATE.md`, `ROADMAP.md`, or `lessons.md`.
+**Refresh mode:** Only overwrite `.forge.json` and the structural parts of `CLAUDE.md` (everything except `## Learned Rules`). Do NOT touch `lessons.md`.
 
 Write the actual files using the Write tool. Do not just print them.
 
@@ -301,7 +297,7 @@ git commit -m "feat: initialize forge workflow scaffolding
 
 - .forge.json config with gate selection
 - CLAUDE.md project instructions
-- .planning/ directory with STATE.md and ROADMAP.md
+- .planning/ directory for PRD status tracking
 - Test stubs and structural tests (if enabled)
 - Version-check hook in .claude/settings.local.json
 
@@ -359,8 +355,6 @@ Print a summary of everything that was created or updated:
 - ~/.claude/commands/forge/*.md ✓ (skills)
 - .forge.json ✓
 - CLAUDE.md ✓
-- .planning/STATE.md ✓
-- .planning/ROADMAP.md ✓
 - tasks/lessons.md ✓
 - .gitignore (forge lines) ✓
 - .claude/settings.local.json ✓ (version-check hook)

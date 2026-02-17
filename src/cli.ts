@@ -19,8 +19,6 @@ import { loadConfig } from "./config/loader.js";
 import {
   forgeConfigTemplate,
   claudeMdTemplate,
-  stateMdTemplate,
-  roadmapMdTemplate,
   lessonsMdTemplate,
   globalClaudeMdTemplate,
   gitignoreForgeLines,
@@ -292,14 +290,6 @@ program
     writeFileSync(join(projectDir, ".forge.json"), forgeConfigTemplate(ctx));
     writeFileSync(join(projectDir, "CLAUDE.md"), claudeMdTemplate(ctx));
     writeFileSync(
-      join(projectDir, ".planning", "STATE.md"),
-      stateMdTemplate(ctx),
-    );
-    writeFileSync(
-      join(projectDir, ".planning", "ROADMAP.md"),
-      roadmapMdTemplate(ctx),
-    );
-    writeFileSync(
       join(projectDir, "tasks", "lessons.md"),
       lessonsMdTemplate(ctx),
     );
@@ -330,8 +320,6 @@ program
     console.log(`\nFiles created:`);
     console.log(`  - .forge.json`);
     console.log(`  - CLAUDE.md`);
-    console.log(`  - .planning/STATE.md`);
-    console.log(`  - .planning/ROADMAP.md`);
     console.log(`  - tasks/lessons.md`);
     console.log(`  - .gitignore (forge lines)`);
     console.log(`\nNext: Review CLAUDE.md, then run \`npx forge verify\``);

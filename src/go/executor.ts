@@ -211,7 +211,7 @@ function parseMilestoneSection(section: string): {
 
 /**
  * Build the full context needed to execute a milestone.
- * Reads STATE.md, ROADMAP.md, PRD milestone section, CLAUDE.md, and lessons.
+ * Reads PRD milestone section, CLAUDE.md, lessons, and per-PRD status JSON.
  */
 export async function buildMilestoneContext(
   options: ExecuteMilestoneOptions,
