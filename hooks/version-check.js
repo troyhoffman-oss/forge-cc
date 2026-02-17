@@ -30,6 +30,9 @@ function checkForUpdate() {
 
   if (!currentVersion) return;
 
+  // Check if project's .forge.json was set up with an older version
+  checkSetupStaleness(currentVersion);
+
   // Query npm registry for latest version (5 second timeout)
   let latestVersion;
   try {
@@ -51,6 +54,27 @@ function checkForUpdate() {
     process.stderr.write(
       `[forge] Update available: v${currentVersion} → v${latestVersion}. Run /forge:update to upgrade.\n`
     );
+  }
+}
+
+/**
+ * Compare the installed forge-cc version against the forgeVersion
+ * stamped in .forge.json during /forge:setup. If the installed version
+ * is newer, remind the user to refresh.
+ */
+function checkSetupStaleness(installedVersion) {
+  try {
+    const forgeConfig = JSON.parse(readFileSync(".forge.json", "utf-8"));
+    const setupVersion = forgeConfig.forgeVersion;
+    if (!setupVersion || typeof setupVersion !== "string") return;
+
+    if (isOutdated(setupVersion, installedVersion)) {
+      process.stderr.write(
+        `[forge] Project was set up with v${setupVersion}, but v${installedVersion} is installed. Run /forge:setup (Refresh) to update project files.\n`
+      );
+    }
+  } catch {
+    // No .forge.json or unreadable — not a forge project, skip
   }
 }
 

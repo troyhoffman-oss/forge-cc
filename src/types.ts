@@ -89,6 +89,8 @@ export interface ForgeConfig {
     blocking: boolean;
   };
   testing?: TestingConfig;
+  /** forge-cc version used during last /forge:setup */
+  forgeVersion?: string;
 }
 
 /** Verification cache written to .forge/last-verify.json */

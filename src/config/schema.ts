@@ -29,6 +29,8 @@ export const forgeConfigSchema = z.object({
   linearProject: z.string().optional(),
   review: reviewConfigSchema.optional(),
   testing: testingConfigSchema.optional(),
+  /** forge-cc version used during last /forge:setup */
+  forgeVersion: z.string().optional(),
 });
 
 export type ForgeConfigInput = z.input<typeof forgeConfigSchema>;
