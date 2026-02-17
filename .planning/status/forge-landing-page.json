@@ -4,7 +4,7 @@
   "branch": "feat/forge-landing-page",
   "createdAt": "2026-02-16",
   "milestones": {
-    "1": { "status": "pending" },
+    "1": { "status": "complete", "date": "2026-02-16" },
     "2": { "status": "pending" },
     "3": { "status": "pending" }
   }
