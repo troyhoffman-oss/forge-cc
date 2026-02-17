@@ -16,6 +16,7 @@ export const PRDStatusSchema = z.object({
   slug: z.string(),
   branch: z.string(),
   createdAt: z.string(),
+  linearProjectId: z.string().optional(),
   milestones: z.record(z.string(), MilestoneStatusSchema),
 });
 

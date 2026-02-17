@@ -343,7 +343,11 @@ Update the PRD status file:
 
 ### Step 7 — Linear Sync (If Configured)
 
-If the project has a `linearProject` configured in `.forge.json` or the PRD:
+Check for the Linear project ID in this priority order:
+1. `linearProjectId` field in `.planning/status/<slug>.json` (written by `/forge:spec`)
+2. `linearProject` field in `.forge.json` (manual fallback)
+
+If a Linear project ID is found:
 
 1. Transition issues for the completed milestone to appropriate state:
    - If this was the **last milestone**: move issues to "In Review"
@@ -353,7 +357,7 @@ If the project has a `linearProject` configured in `.forge.json` or the PRD:
    - Transition the project to "In Review"
    - Create a PR (see Step 8)
 
-If Linear is not configured, skip this step silently.
+If no Linear project ID is found in either location, skip this step silently.
 
 ### Step 8 — Route Next
 
@@ -503,14 +507,18 @@ If no `dependsOn` fields are present, milestones execute sequentially (backward 
 
 ### Step 9 — Linear Issue Start (On Milestone Begin)
 
-At the START of milestone execution (between Step 2 and Step 3), if Linear is configured:
+At the START of milestone execution (between Step 2 and Step 3), check for the Linear project ID using the same priority as Step 7:
+1. `linearProjectId` field in `.planning/status/<slug>.json`
+2. `linearProject` field in `.forge.json`
+
+If a Linear project ID is found:
 
 1. Find issues associated with this milestone in Linear.
 2. Transition them to "In Progress".
 3. Transition the project to "In Progress" (if not already).
 4. Add a brief comment: "Starting execution via forge:go."
 
-If Linear is not configured, skip silently.
+If no Linear project ID is found, skip silently.
 
 ## Edge Cases
 
