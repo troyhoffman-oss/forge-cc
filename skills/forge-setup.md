@@ -257,18 +257,33 @@ Create the `.claude/` directory if it doesn't exist (`mkdir -p .claude`).
 
 ### Step 9 — Run Verification
 
-Run `npx forge verify` to confirm all gates pass with the scaffolded files:
+**Only verify setup-safe gates.** Several gates structurally cannot pass during setup because their prerequisites don't exist yet:
+
+| Gate | Why it's deferred |
+|------|-------------------|
+| `prd` | No PRD file exists until `/forge:spec` runs |
+| `visual` | Dev server may not be running; Playwright timeouts expected |
+| `runtime` | Dev server may not be running |
+| `codex` | Post-PR only — runs in Step 10 after PR creation |
+
+**Setup-safe gates:** `types`, `lint`, `tests`, `review`
+
+Build the `--gate` flag from the user's selected gates, keeping **only** the setup-safe ones:
 
 ```bash
-npx forge verify
+npx forge verify --gate types,lint,tests,review
 ```
 
-If any gate fails, fix the issues before proceeding. Common fixes:
+(Include only gates the user selected that are in the setup-safe set. If the user only selected `types` and `lint`, run `--gate types,lint`.)
+
+**CRITICAL: NEVER remove a gate from `.forge.json` to make verification pass.** The `.forge.json` gates list is the user's full desired configuration for development. Deferred gates will be verified later during `/forge:go` and post-PR steps.
+
+If any setup-safe gate fails, fix the issue before proceeding. Common fixes:
 - **lint:** Run the project's lint autofix (e.g., `npx biome check --fix .`)
 - **tests:** Convert failing stub tests to `it.todo('description')` so they show as pending
 - **types:** Fix any type errors introduced by scaffolding
 
-Re-run `npx forge verify` until all gates pass.
+Re-run the setup-safe gates until they pass.
 
 ### Step 10 — Commit, PR, and Codex Review
 

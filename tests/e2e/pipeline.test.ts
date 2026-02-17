@@ -193,14 +193,14 @@ describe("Pipeline / Multiple gates", () => {
     expect(result.gates[2].passed).toBe(true);
   });
 
-  it("handles unknown gate name gracefully", async () => {
+  it("handles unknown gate name gracefully (skips with warning)", async () => {
     const result = await runPipeline(makeInput({ gates: ["nonexistent-gate"] }));
 
-    expect(result.passed).toBe(false);
+    expect(result.passed).toBe(true); // unknown gates skip, not fail
     expect(result.gates).toHaveLength(1);
     expect(result.gates[0].gate).toBe("nonexistent-gate");
-    expect(result.gates[0].passed).toBe(false);
-    expect(result.gates[0].errors[0].message).toContain("Unknown gate");
+    expect(result.gates[0].passed).toBe(true);
+    expect(result.gates[0].warnings[0]).toContain("not in the verify pipeline");
   });
 
   it("mixes unknown and known gates", async () => {
@@ -210,12 +210,12 @@ describe("Pipeline / Multiple gates", () => {
       makeInput({ gates: ["types", "bogus-gate", "lint"] }),
     );
 
-    expect(result.passed).toBe(false); // bogus gate fails
+    expect(result.passed).toBe(true); // unknown gates skip, don't block
     expect(result.gates).toHaveLength(3);
     expect(result.gates[0].gate).toBe("types");
     expect(result.gates[0].passed).toBe(true);
     expect(result.gates[1].gate).toBe("bogus-gate");
-    expect(result.gates[1].passed).toBe(false);
+    expect(result.gates[1].passed).toBe(true); // skipped with warning
     expect(result.gates[2].gate).toBe("lint");
     expect(result.gates[2].passed).toBe(true);
   });

@@ -45,13 +45,14 @@ describe("Gate Registry", () => {
     );
   });
 
-  it("rejects unknown gates gracefully in pipeline", async () => {
+  it("skips unknown gates with warning in pipeline", async () => {
     const result = await runPipeline({
       projectDir: fixtureDir,
       gates: ["nonexistent"],
     });
-    expect(result.passed).toBe(false);
+    expect(result.passed).toBe(true); // unknown gates skip, not fail
     expect(result.gates[0].gate).toBe("nonexistent");
-    expect(result.gates[0].errors[0].message).toContain("Unknown gate");
+    expect(result.gates[0].passed).toBe(true);
+    expect(result.gates[0].warnings[0]).toContain("not in the verify pipeline");
   });
 });
