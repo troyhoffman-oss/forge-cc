@@ -141,9 +141,9 @@ Store the scaffold plan for execution in Step 4. The testing config will be pers
 
 ### Step 4 — Create or Update Files
 
-Use the template functions from `forge-cc/src/setup/templates.ts` to generate file contents. The templates are:
+Use the template functions from `forge-cc/src/setup/templates.ts` to generate file contents. **Always include `forgeVersion` in the SetupContext** — read it from forge-cc's own `package.json` (`node_modules/forge-cc/package.json` → `.version` field). This stamps the installed version into `.forge.json` so the version-check hook can detect when a refresh is needed after an update. The templates are:
 
-- `forgeConfigTemplate(ctx)` → `.forge.json`
+- `forgeConfigTemplate(ctx)` → `.forge.json` (includes `forgeVersion`)
 - `claudeMdTemplate(ctx)` → `CLAUDE.md`
 - `stateMdTemplate(ctx)` → `.planning/STATE.md`
 - `roadmapMdTemplate(ctx)` → `.planning/ROADMAP.md`

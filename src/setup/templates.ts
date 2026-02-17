@@ -11,6 +11,8 @@ export interface SetupContext {
   date: string;
   appDir?: string;
   testing?: TestingConfig;
+  /** forge-cc version stamped into .forge.json during setup */
+  forgeVersion?: string;
 }
 
 // ── .forge.json ─────────────────────────────────────────────────────
@@ -25,6 +27,9 @@ export function forgeConfigTemplate(ctx: SetupContext): string {
   }
   if (ctx.testing) {
     config.testing = ctx.testing;
+  }
+  if (ctx.forgeVersion) {
+    config.forgeVersion = ctx.forgeVersion;
   }
   return JSON.stringify(config, null, 2) + "\n";
 }
