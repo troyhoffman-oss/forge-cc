@@ -17,6 +17,7 @@ vi.mock("../../src/linear/projects.js", () => ({
 }));
 vi.mock("../../src/linear/issues.js", () => ({
   transitionMilestoneIssues: vi.fn(),
+  resolveStateId: vi.fn(),
 }));
 vi.mock("../../src/linear/milestones.js", () => ({
   findMilestoneByName: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("../../src/linear/milestones.js", () => ({
 
 import { LinearClient, LinearClientError } from "../../src/linear/client.js";
 import { transitionProject } from "../../src/linear/projects.js";
+import { resolveStateId } from "../../src/linear/issues.js";
 import {
   fetchProjectIssueIdentifiers,
   syncProjectDone,
@@ -31,6 +33,7 @@ import {
 
 const MockLinearClient = vi.mocked(LinearClient);
 const mockTransitionProject = vi.mocked(transitionProject);
+const mockResolveStateId = vi.mocked(resolveStateId);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -80,25 +83,26 @@ describe("fetchProjectIssueIdentifiers", () => {
 });
 
 describe("syncProjectDone", () => {
-  it("transitions issues and project to Done", async () => {
+  it("transitions issues and project to Done using state UUID", async () => {
     const mockUpdateIssue = vi.fn().mockResolvedValue({});
     const mockListIssues = vi.fn().mockResolvedValue([
-      { id: "i-1", identifier: "TEAM-10", title: "A", state: "In Review", url: "" },
-      { id: "i-2", identifier: "TEAM-11", title: "B", state: "Done", url: "" },
-      { id: "i-3", identifier: "TEAM-12", title: "C", state: "In Progress", url: "" },
+      { id: "i-1", identifier: "TEAM-10", title: "A", state: "In Review", teamId: "team-1", url: "" },
+      { id: "i-2", identifier: "TEAM-11", title: "B", state: "Done", teamId: "team-1", url: "" },
+      { id: "i-3", identifier: "TEAM-12", title: "C", state: "In Progress", teamId: "team-1", url: "" },
     ]);
     MockLinearClient.mockImplementation(() => ({
       listIssues: mockListIssues,
       updateIssue: mockUpdateIssue,
     }) as any);
+    mockResolveStateId.mockResolvedValue("state-done-uuid");
     mockTransitionProject.mockResolvedValue({} as any);
 
     const result = await syncProjectDone({ projectId: "proj-1" });
 
-    // Should update i-1 and i-3 (skip i-2 which is already Done)
+    // Should update i-1 and i-3 (skip i-2 which is already Done) using stateId
     expect(mockUpdateIssue).toHaveBeenCalledTimes(2);
-    expect(mockUpdateIssue).toHaveBeenCalledWith("i-1", { state: "Done" });
-    expect(mockUpdateIssue).toHaveBeenCalledWith("i-3", { state: "Done" });
+    expect(mockUpdateIssue).toHaveBeenCalledWith("i-1", { stateId: "state-done-uuid" });
+    expect(mockUpdateIssue).toHaveBeenCalledWith("i-3", { stateId: "state-done-uuid" });
     expect(mockTransitionProject).toHaveBeenCalledWith(expect.anything(), "proj-1", "Done");
     expect(result).toEqual({ issuesUpdated: 2, projectUpdated: true });
   });
@@ -107,10 +111,11 @@ describe("syncProjectDone", () => {
     const mockUpdateIssue = vi.fn().mockResolvedValue({});
     MockLinearClient.mockImplementation(() => ({
       listIssues: vi.fn().mockResolvedValue([
-        { id: "i-1", identifier: "TEAM-10", title: "A", state: "Canceled", url: "" },
+        { id: "i-1", identifier: "TEAM-10", title: "A", state: "Canceled", teamId: "team-1", url: "" },
       ]),
       updateIssue: mockUpdateIssue,
     }) as any);
+    mockResolveStateId.mockResolvedValue("state-done-uuid");
     mockTransitionProject.mockResolvedValue({} as any);
 
     const result = await syncProjectDone({ projectId: "proj-1" });

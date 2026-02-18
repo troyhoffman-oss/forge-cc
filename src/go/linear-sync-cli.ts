@@ -60,6 +60,7 @@ export async function resolveLinearProjectId(
     client = new LinearClient();
   } catch (error) {
     if (error instanceof LinearClientError) {
+      console.warn("[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync");
       return null;
     }
     throw error;
@@ -127,7 +128,10 @@ export async function cliSyncStart(
   try {
     new LinearClient();
   } catch (error) {
-    if (error instanceof LinearClientError) return null;
+    if (error instanceof LinearClientError) {
+      console.warn("[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync");
+      return null;
+    }
     throw error;
   }
 
@@ -168,7 +172,10 @@ export async function cliSyncComplete(
   try {
     new LinearClient();
   } catch (error) {
-    if (error instanceof LinearClientError) return null;
+    if (error instanceof LinearClientError) {
+      console.warn("[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync");
+      return null;
+    }
     throw error;
   }
 
@@ -207,7 +214,10 @@ export async function cliFetchIssueIdentifiers(
   try {
     new LinearClient();
   } catch (error) {
-    if (error instanceof LinearClientError) return null;
+    if (error instanceof LinearClientError) {
+      console.warn("[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync");
+      return null;
+    }
     throw error;
   }
 
@@ -234,7 +244,10 @@ export async function cliSyncDone(
   try {
     new LinearClient();
   } catch (error) {
-    if (error instanceof LinearClientError) return null;
+    if (error instanceof LinearClientError) {
+      console.warn("[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync");
+      return null;
+    }
     throw error;
   }
 

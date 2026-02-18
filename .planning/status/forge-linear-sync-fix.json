@@ -1,0 +1,10 @@
+{
+  "project": "Forge Linear Sync Fix",
+  "slug": "forge-linear-sync-fix",
+  "branch": "feat/forge-linear-sync-fix",
+  "createdAt": "2026-02-18",
+  "linearProjectId": "5ff82858-73ff-4ffc-9c11-bc106407896c",
+  "milestones": {
+    "1": { "status": "pending" }
+  }
+}

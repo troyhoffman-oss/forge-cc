@@ -16,7 +16,7 @@
 import { LinearClient, LinearClientError } from "../linear/client.js";
 import type { LinearIssue } from "../linear/client.js";
 import { transitionProject } from "../linear/projects.js";
-import { transitionMilestoneIssues } from "../linear/issues.js";
+import { transitionMilestoneIssues, resolveStateId } from "../linear/issues.js";
 import { findMilestoneByName } from "../linear/milestones.js";
 
 // ---------------------------------------------------------------------------
@@ -27,6 +27,7 @@ export interface LinearSyncOptions {
   projectId: string;
   milestoneNumber: number;
   milestoneName: string; // e.g., "M4: Execution Engine (go)"
+  teamId?: string; // for resolving state UUIDs
   apiKey?: string; // optional, falls back to LINEAR_API_KEY env
 }
 
@@ -166,12 +167,42 @@ export async function syncMilestoneStart(
       };
     }
 
+    // Derive teamId from options or from milestone issues
+    let teamId = options.teamId;
+    if (!teamId) {
+      const milestoneIssues = await client.listIssues({
+        projectId: options.projectId,
+        milestoneId: milestone.id,
+      });
+      teamId = milestoneIssues[0]?.teamId;
+    }
+    if (!teamId) {
+      console.warn(
+        `[linear-sync] No teamId available — cannot resolve state UUIDs. Skipping issue transitions.`,
+      );
+      // Still try to transition the project
+      let projectUpdated = false;
+      try {
+        await transitionProject(client, options.projectId, "In Progress");
+        projectUpdated = true;
+      } catch {
+        // Project may already be In Progress or beyond — that's fine
+      }
+
+      return {
+        linearMilestoneId: milestone.id,
+        issuesUpdated: 0,
+        projectUpdated,
+      };
+    }
+
     // Transition milestone issues to In Progress
     const { updated } = await transitionMilestoneIssues(
       client,
       options.projectId,
       milestone.id,
       "In Progress",
+      teamId,
     );
 
     // Transition project to In Progress
@@ -258,11 +289,22 @@ export async function syncMilestoneComplete(
       projectId: options.projectId,
     });
 
+    // Resolve state UUID for "In Review"
+    const teamId = options.teamId ?? allIssues[0]?.teamId;
+    let stateId: string | undefined;
+    if (teamId) {
+      try {
+        stateId = await resolveStateId(client, teamId, "In Review");
+      } catch {
+        // State resolution failed — skip issue transitions
+      }
+    }
+
     let updatedCount = 0;
     for (const issue of allIssues) {
       if (issue.state !== "In Review" && issue.state !== "Done") {
         try {
-          await client.updateIssue(issue.id, { state: "In Review" });
+          await client.updateIssue(issue.id, stateId ? { stateId } : { state: "In Review" });
           updatedCount++;
         } catch {
           // Some issues may not support this transition — skip them
@@ -402,11 +444,22 @@ export async function syncProjectDone(
       projectId: options.projectId,
     });
 
+    // Resolve state UUID for "Done"
+    const teamId = allIssues[0]?.teamId;
+    let stateId: string | undefined;
+    if (teamId) {
+      try {
+        stateId = await resolveStateId(client, teamId, "Done");
+      } catch {
+        // State resolution failed — fall back to name
+      }
+    }
+
     let updatedCount = 0;
     for (const issue of allIssues) {
       if (issue.state !== "Done" && issue.state !== "Canceled") {
         try {
-          await client.updateIssue(issue.id, { state: "Done" });
+          await client.updateIssue(issue.id, stateId ? { stateId } : { state: "Done" });
           updatedCount++;
         } catch {
           // Some issues may not support this transition — skip them

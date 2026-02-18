@@ -1,4 +1,4 @@
-import { LinearClient, type LinearProject } from "./client.js";
+import { LinearClient, LinearClientError, type LinearProject } from "./client.js";
 
 /** Valid project states in forward-only order */
 export const PROJECT_STATES = [
@@ -52,10 +52,10 @@ export async function transitionProject(
   const projects = await client.listProjects();
   const project = projects.find((p) => p.id === projectId);
   if (!project) {
-    throw new Error(`Project not found: ${projectId}`);
+    throw new LinearClientError(`Project not found: ${projectId}`);
   }
   if (!isValidTransition(project.state, targetState)) {
-    throw new Error(
+    throw new LinearClientError(
       `Invalid project transition: ${project.state} -> ${targetState}`,
     );
   }

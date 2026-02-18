@@ -1,4 +1,4 @@
-import { LinearClient, type LinearIssue } from "./client.js";
+import { LinearClient, LinearClientError, type LinearIssue } from "./client.js";
 
 /** Valid issue states */
 export const ISSUE_STATES = [
@@ -33,20 +33,40 @@ export async function createMilestoneIssue(
   });
 }
 
+/** Resolve a state name to its UUID for a given team */
+export async function resolveStateId(
+  client: LinearClient,
+  teamId: string,
+  stateName: string,
+): Promise<string> {
+  const states = await client.listWorkflowStates(teamId);
+  const match = states.find((s) => s.name === stateName);
+  if (!match) {
+    throw new LinearClientError(
+      `Workflow state "${stateName}" not found for team ${teamId}`,
+    );
+  }
+  return match.id;
+}
+
 /** Transition all issues in a milestone to a target state */
 export async function transitionMilestoneIssues(
   client: LinearClient,
   projectId: string,
   milestoneId: string,
   targetState: string,
+  teamId: string,
 ): Promise<{ updated: number; issues: LinearIssue[] }> {
+  // Resolve state name to UUID
+  const stateId = await resolveStateId(client, teamId, targetState);
+
   const issues = await client.listIssues({ projectId, milestoneId });
 
   const updatedIssues: LinearIssue[] = [];
   for (const issue of issues) {
     if (issue.state !== targetState) {
       const updated = await client.updateIssue(issue.id, {
-        state: targetState,
+        stateId,
       });
       updatedIssues.push(updated);
     }
