@@ -81,8 +81,9 @@ export interface ForgeConfig {
   devServer?: {
     command: string;
     port: number;
-    readyPattern?: string;
   };
+  /** Pages to capture for the visual gate */
+  pages?: string[];
   prdPath?: string;
   linearProject?: string;
   review?: {

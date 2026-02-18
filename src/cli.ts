@@ -14,7 +14,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { runPipeline } from "./gates/index.js";
+import { runPipeline, captureBeforeSnapshots, clearBeforeSnapshots } from "./gates/index.js";
+import { closeBrowser } from "./utils/browser.js";
 import { loadConfig } from "./config/loader.js";
 import {
   forgeConfigTemplate,
@@ -51,20 +52,84 @@ program
   .option("--gate <gates>", "Comma-separated list of gates to run (e.g., types,lint,tests)")
   .option("--json", "Output structured JSON instead of human-readable report")
   .option("--prd <path>", "Path to PRD for acceptance criteria matching")
+  .option("--before-only", "Capture visual baseline screenshots and exit (no verification)")
+  .option("--after-only", "Run visual verification comparing against stored baseline")
   .action(async (opts) => {
     try {
       const projectDir = process.cwd();
       const config = loadConfig(projectDir);
+      const appDir = config.appDir ? resolve(projectDir, config.appDir) : undefined;
+      const targetDir = appDir ?? projectDir;
+      const pages = config.pages ?? ["/"];
 
+      // --before-only: capture baseline screenshots to disk and exit
+      if (opts.beforeOnly) {
+        console.log("Capturing visual baseline screenshots...");
+        try {
+          await captureBeforeSnapshots(targetDir, pages, {
+            devServerCommand: config.devServer?.command,
+            devServerPort: config.devServer?.port,
+          });
+          console.log(`Visual baseline captured for ${pages.length} page(s): ${pages.join(", ")}`);
+          console.log("Snapshots saved to .forge/screenshots/before/");
+          process.exit(0);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`Error: Visual baseline capture failed — ${message}`);
+          process.exit(1);
+        } finally {
+          try { await closeBrowser(); } catch { /* non-fatal */ }
+        }
+        return;
+      }
+
+      // --after-only: run only the visual gate (comparison against stored baseline)
+      if (opts.afterOnly) {
+        const { verifyVisual } = await import("./gates/visual-gate.js");
+        console.log("Running visual verification against baseline...");
+        try {
+          const result = await verifyVisual(targetDir, pages, {
+            devServerCommand: config.devServer?.command,
+            devServerPort: config.devServer?.port,
+          });
+
+          if (opts.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            const status = result.passed ? "PASSED" : "FAILED";
+            console.log(`Visual gate: ${status}`);
+            if (result.warnings.length > 0) {
+              for (const w of result.warnings) console.log(`  Warning: ${w}`);
+            }
+            if (result.errors.length > 0) {
+              for (const e of result.errors) console.log(`  Error: ${e.message}`);
+            }
+            if (result.screenshots.length > 0) {
+              console.log(`Screenshots saved to .forge/screenshots/after/`);
+            }
+          }
+
+          process.exit(result.passed ? 0 : 1);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`Error: Visual verification failed — ${message}`);
+          process.exit(1);
+        } finally {
+          try { await closeBrowser(); } catch { /* non-fatal */ }
+        }
+        return;
+      }
+
+      // Standard verify: run the full pipeline
       const gates = opts.gate ? opts.gate.split(",").map((g: string) => g.trim()) : config.gates;
       const prdPath = opts.prd ?? config.prdPath;
-      const appDir = config.appDir ? resolve(projectDir, config.appDir) : undefined;
 
       const result = await runPipeline({
         projectDir,
         appDir,
         gates,
         prdPath,
+        pages: config.pages,
         maxIterations: config.maxIterations,
         devServerCommand: config.devServer?.command,
         devServerPort: config.devServer?.port,

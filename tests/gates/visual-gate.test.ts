@@ -4,8 +4,31 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock ALL external dependencies before importing the module under test
 // ---------------------------------------------------------------------------
 
+// In-memory file store for before-snapshot persistence tests
+const fileStore = new Map<string, string>();
+
 vi.mock("node:fs", () => ({
   mkdirSync: vi.fn(),
+  writeFileSync: vi.fn((path: string, data: string) => { fileStore.set(path, data); }),
+  readFileSync: vi.fn((path: string) => {
+    const data = fileStore.get(path);
+    if (data === undefined) throw new Error(`ENOENT: ${path}`);
+    return data;
+  }),
+  existsSync: vi.fn((path: string) => fileStore.has(path)),
+  readdirSync: vi.fn((dir: string) => {
+    const files: string[] = [];
+    for (const key of fileStore.keys()) {
+      if (key.startsWith(dir)) {
+        const relative = key.slice(dir.length).replace(/^[\\/]/, "");
+        if (!relative.includes("/") && !relative.includes("\\")) {
+          files.push(relative);
+        }
+      }
+    }
+    return files;
+  }),
+  unlinkSync: vi.fn((path: string) => { fileStore.delete(path); }),
 }));
 
 vi.mock("../../src/utils/browser.js", () => ({
@@ -136,7 +159,8 @@ function setupBrowserMocks() {
 describe("visual-gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearBeforeSnapshots();
+    fileStore.clear();
+    clearBeforeSnapshots("/proj");
     setupBrowserMocks();
   });
 
@@ -242,7 +266,11 @@ describe("visual-gate", () => {
     const result = await verifyVisual("/proj", ["/"]);
 
     expect(reviewVisual).toHaveBeenCalledTimes(1);
-    expect(reviewVisual).toHaveBeenCalledWith(beforeResult, afterResult);
+    // Before result was serialized to disk and deserialized, so deep-equal not reference-equal
+    expect(reviewVisual).toHaveBeenCalledWith(
+      expect.objectContaining({ domSnapshots: beforeResult.domSnapshots }),
+      afterResult,
+    );
     expect(result.passed).toBe(false);
     expect(result.errors).toEqual(
       expect.arrayContaining([
@@ -348,7 +376,7 @@ describe("visual-gate", () => {
     await captureBeforeSnapshots("/proj", ["/"]);
 
     // Clear them
-    clearBeforeSnapshots();
+    clearBeforeSnapshots("/proj");
 
     // Now verifyVisual should NOT call reviewVisual since no before snapshot exists
     const afterResult = makeCaptureResult("/", "/proj/.forge/screenshots/after");

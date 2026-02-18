@@ -3,7 +3,6 @@ import { z } from "zod";
 export const devServerSchema = z.object({
   command: z.string(),
   port: z.number().int().positive(),
-  readyPattern: z.string().optional(),
 });
 
 export const reviewConfigSchema = z.object({
@@ -25,6 +24,8 @@ export const forgeConfigSchema = z.object({
   maxIterations: z.number().int().positive().default(5),
   verifyFreshness: z.number().int().positive().default(600_000),
   devServer: devServerSchema.optional(),
+  /** Pages to capture for the visual gate (e.g. ["/", "/dashboard"]) */
+  pages: z.array(z.string()).optional(),
   prdPath: z.string().optional(),
   linearProject: z.string().optional(),
   review: reviewConfigSchema.optional(),

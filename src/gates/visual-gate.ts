@@ -7,20 +7,42 @@ import {
 } from "../utils/browser.js";
 import { captureVisual } from "./visual-capture.js";
 import { reviewVisual } from "./visual-reviewer.js";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
-// Before/after snapshot storage
+// Before snapshot disk persistence
 // ---------------------------------------------------------------------------
 
-/** Module-level map storing "before" snapshots keyed by page path */
-const beforeSnapshots = new Map<string, VisualCaptureResult>();
+/** Sanitize a page path to a safe filename key (e.g. "/" -> "index", "/dashboard" -> "dashboard") */
+function snapshotKey(pagePath: string): string {
+  const sanitized = pagePath.replace(/\//g, "_").replace(/^_/, "");
+  return sanitized || "index";
+}
+
+/** Save a before snapshot to disk so it survives across CLI invocations. */
+function saveBeforeSnapshot(screenshotDir: string, pagePath: string, result: VisualCaptureResult): void {
+  const dir = join(screenshotDir, "before");
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, `${snapshotKey(pagePath)}.snapshot.json`);
+  writeFileSync(filePath, JSON.stringify(result, null, 2));
+}
+
+/** Load a before snapshot from disk. Returns null if none exists. */
+function loadBeforeSnapshot(screenshotDir: string, pagePath: string): VisualCaptureResult | null {
+  const filePath = join(screenshotDir, "before", `${snapshotKey(pagePath)}.snapshot.json`);
+  if (!existsSync(filePath)) return null;
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8")) as VisualCaptureResult;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Capture and store "before" snapshots for the given pages.
- * Called at milestone start by the orchestrator so we have a baseline
- * to compare against when `verifyVisual` runs later.
+ * Snapshots are persisted to disk (.forge/screenshots/before/*.snapshot.json)
+ * so they survive across separate CLI invocations.
  */
 export async function captureBeforeSnapshots(
   projectDir: string,
@@ -65,7 +87,7 @@ export async function captureBeforeSnapshots(
             screenshotDir: beforeDir,
           });
 
-          beforeSnapshots.set(pagePath, result);
+          saveBeforeSnapshot(screenshotDir, pagePath, result);
         } catch {
           // Failed to capture baseline for this page — skip it
         } finally {
@@ -80,9 +102,20 @@ export async function captureBeforeSnapshots(
   }
 }
 
-/** Clear all stored "before" snapshots (e.g. between milestones). */
-export function clearBeforeSnapshots(): void {
-  beforeSnapshots.clear();
+/** Clear all stored "before" snapshots from disk (e.g. between milestones). */
+export function clearBeforeSnapshots(projectDir: string): void {
+  const dir = join(projectDir, ".forge", "screenshots", "before");
+  let files: string[];
+  try {
+    files = readdirSync(dir);
+  } catch {
+    return; // Directory doesn't exist — nothing to clear
+  }
+  for (const file of files) {
+    if (file.endsWith(".snapshot.json")) {
+      try { unlinkSync(join(dir, file)); } catch { /* ignore */ }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -188,8 +221,8 @@ export async function verifyVisual(
             screenshots.push({ page: shot.page, path: shot.path });
           }
 
-          // Compare with "before" snapshot if one exists
-          const beforeResult = beforeSnapshots.get(pagePath);
+          // Compare with "before" snapshot if one exists (loaded from disk)
+          const beforeResult = loadBeforeSnapshot(screenshotDir, pagePath);
           if (beforeResult) {
             const findings = reviewVisual(beforeResult, afterResult);
             reviewerErrors.push(...findings);

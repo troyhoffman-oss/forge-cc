@@ -51,7 +51,7 @@ describe("loadConfig", () => {
   it("parses devServer config from .forge.json", () => {
     const forgeConfig = {
       gates: ["types"],
-      devServer: { command: "npm run dev", port: 3000, readyPattern: "ready" },
+      devServer: { command: "npm run dev", port: 3000 },
     };
 
     mockExistsSync.mockReturnValue(true);
@@ -62,7 +62,6 @@ describe("loadConfig", () => {
     expect(config.devServer).toEqual({
       command: "npm run dev",
       port: 3000,
-      readyPattern: "ready",
     });
   });
 
