@@ -591,6 +591,46 @@ linearSync
     }
   });
 
+// ── codex-poll command ────────────────────────────────────────────
+
+program
+  .command("codex-poll")
+  .description("Poll for Codex review comments on a PR (deterministic 8-poll loop)")
+  .requiredOption("--owner <owner>", "GitHub repository owner")
+  .requiredOption("--repo <repo>", "GitHub repository name")
+  .requiredOption("--pr <number>", "Pull request number", parseInt)
+  .option("--interval <ms>", "Poll interval in milliseconds", parseInt, 60_000)
+  .option("--max-polls <n>", "Maximum number of polls", parseInt, 8)
+  .action(async (opts) => {
+    const { pollForCodexComments } = await import("./gates/codex-gate.js");
+
+    const maxPolls = opts.maxPolls;
+    const intervalMs = opts.interval;
+    const total = Math.ceil((maxPolls * intervalMs) / 1000);
+
+    process.stderr.write(
+      `Polling for Codex comments on ${opts.owner}/${opts.repo}#${opts.pr} ` +
+        `(${maxPolls} polls, ${intervalMs / 1000}s interval, ~${total}s max)\n`,
+    );
+
+    const comments = await pollForCodexComments({
+      owner: opts.owner,
+      repo: opts.repo,
+      prNumber: opts.pr,
+      pollIntervalMs: intervalMs,
+      maxPolls,
+      projectDir: process.cwd(),
+    });
+
+    process.stderr.write(
+      comments.length > 0
+        ? `Found ${comments.length} comment(s)\n`
+        : `No comments found after ${maxPolls} polls\n`,
+    );
+
+    console.log(JSON.stringify(comments));
+  });
+
 // ── doctor command ─────────────────────────────────────────────────
 
 program
