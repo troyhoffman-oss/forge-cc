@@ -69,3 +69,4 @@ hooks/                # Installable hooks (pre-commit, version-check)
 - **[wave consolidation]** When Wave 1 covers Wave 2 scope, skip redundant agents
 - **[cross-agent types]** Inline actual code into downstream agent prompts — never predicted types
 - **[between-wave verify]** Run `tsc --noEmit` between every wave, not just at the end
+- **[forge-cc global path on Windows]** Use `process.env.APPDATA + '/npm/node_modules/forge-cc'` to locate the global install. Bash can't handle the Windows path (`\n` in `npm\node_modules` breaks). Use `node -e` for forge-cc file operations, never raw bash.
