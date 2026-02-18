@@ -37,6 +37,7 @@ export interface LinearIssue {
   state: string;
   projectId?: string;
   milestoneId?: string;
+  teamId?: string;
   url: string;
 }
 
@@ -80,6 +81,7 @@ export interface UpdateIssueInput {
   title?: string;
   description?: string;
   state?: string;
+  stateId?: string;
   milestoneId?: string;
   priority?: number;
 }
@@ -301,6 +303,7 @@ export class LinearClient {
             state { name }
             project { id }
             projectMilestone { id }
+            team { id }
           }
         }
       }
@@ -325,6 +328,7 @@ export class LinearClient {
             state { name }
             project { id }
             projectMilestone { id }
+            team { id }
           }
         }
       }
@@ -368,6 +372,7 @@ export class LinearClient {
             state { name }
             project { id }
             projectMilestone { id }
+            team { id }
           }
         }
       }
@@ -376,7 +381,8 @@ export class LinearClient {
     const issueInput: Record<string, unknown> = {};
     if (input.title != null) issueInput.title = input.title;
     if (input.description != null) issueInput.description = input.description;
-    if (input.state != null) issueInput.stateId = input.state;
+    if (input.stateId != null) issueInput.stateId = input.stateId;
+    else if (input.state != null) issueInput.stateId = input.state;
     if (input.milestoneId != null)
       issueInput.projectMilestoneId = input.milestoneId;
     if (input.priority != null) issueInput.priority = input.priority;
@@ -423,6 +429,28 @@ export class LinearClient {
     `;
 
     return this.paginate<LinearTeam>(query, "teams", {});
+  }
+
+  // -------------------------------------------------------------------------
+  // Workflow States
+  // -------------------------------------------------------------------------
+
+  async listWorkflowStates(
+    teamId: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    const query = `
+      query WorkflowStates($teamId: String!) {
+        workflowStates(filter: { team: { id: { eq: $teamId } } }, first: 50) {
+          nodes { id name }
+        }
+      }
+    `;
+
+    const data = await this.request(query, { teamId });
+    return (data.workflowStates?.nodes ?? []) as Array<{
+      id: string;
+      name: string;
+    }>;
   }
 
   // -------------------------------------------------------------------------
@@ -551,6 +579,7 @@ export class LinearClient {
       state: node.state?.name ?? "Unknown",
       projectId: node.project?.id ?? undefined,
       milestoneId: node.projectMilestone?.id ?? undefined,
+      teamId: node.team?.id ?? undefined,
       url: node.url,
     };
   }

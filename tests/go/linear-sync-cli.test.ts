@@ -170,7 +170,7 @@ describe("cliSyncStart", () => {
     expect(mockSyncStart).not.toHaveBeenCalled();
   });
 
-  it("returns null when no API key", async () => {
+  it("returns null and warns when no API key", async () => {
     // readPRDStatus returns linearProjectId directly (no name lookup needed)
     mockReadPRDStatus.mockResolvedValue({
       linearProjectId: "proj-123",
@@ -179,10 +179,15 @@ describe("cliSyncStart", () => {
     MockLinearClient.mockImplementation(() => {
       throw new (LinearClientError as any)("No API key");
     });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await cliSyncStart("/project", "my-slug", 1);
 
     expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync",
+    );
+    warnSpy.mockRestore();
   });
 });
 
@@ -261,17 +266,22 @@ describe("cliFetchIssueIdentifiers", () => {
     expect(mockFetchIdentifiers).not.toHaveBeenCalled();
   });
 
-  it("returns null when no API key", async () => {
+  it("returns null and warns when no API key", async () => {
     mockReadPRDStatus.mockResolvedValue({
       linearProjectId: "proj-123",
     } as any);
     MockLinearClient.mockImplementation(() => {
       throw new (LinearClientError as any)("No API key");
     });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await cliFetchIssueIdentifiers("/project", "my-slug");
 
     expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync",
+    );
+    warnSpy.mockRestore();
   });
 });
 
@@ -299,16 +309,21 @@ describe("cliSyncDone", () => {
     expect(mockSyncDone).not.toHaveBeenCalled();
   });
 
-  it("returns null when no API key", async () => {
+  it("returns null and warns when no API key", async () => {
     mockReadPRDStatus.mockResolvedValue({
       linearProjectId: "proj-789",
     } as any);
     MockLinearClient.mockImplementation(() => {
       throw new (LinearClientError as any)("No API key");
     });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await cliSyncDone("/project", "my-slug");
 
     expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[linear-sync] WARN: LINEAR_API_KEY not set — skipping Linear sync",
+    );
+    warnSpy.mockRestore();
   });
 });
