@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -562,6 +562,137 @@ program
     }
   });
 
+// ── Claude session runner (stream-json for real-time output) ─────
+
+interface StreamEvent {
+  type: string;
+  subtype?: string;
+  message?: {
+    content?: Array<{
+      type: string;
+      name?: string;
+      text?: string;
+      input?: Record<string, unknown>;
+    }>;
+  };
+  result?: string;
+  is_error?: boolean;
+  num_turns?: number;
+  total_cost_usd?: number;
+  duration_ms?: number;
+}
+
+function runClaudeSession(
+  prompt: string,
+  cwd: string,
+): Promise<{ exitCode: number; result?: string }> {
+  return new Promise((resolve) => {
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+
+    // Pass prompt as CLI argument (not stdin) — matches Ralphy pattern
+    const child = spawn(
+      "claude",
+      [
+        "-p",
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        prompt,
+      ],
+      { stdio: ["ignore", "pipe", "inherit"], cwd, env },
+    );
+
+    let buffer = "";
+    let finalResult: string | undefined;
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? ""; // keep incomplete last line
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let evt: StreamEvent;
+        try {
+          evt = JSON.parse(line);
+        } catch {
+          continue;
+        }
+
+        if (evt.type === "assistant" && evt.message?.content) {
+          for (const block of evt.message.content) {
+            if (block.type === "text" && block.text) {
+              process.stdout.write(block.text);
+            } else if (block.type === "tool_use" && block.name) {
+              const summary = formatToolInput(block.name, block.input);
+              process.stdout.write(`  [${block.name}] ${summary}\n`);
+            }
+          }
+        } else if (evt.type === "result") {
+          finalResult = evt.result;
+          const turns = evt.num_turns ?? 0;
+          const cost = evt.total_cost_usd
+            ? `$${evt.total_cost_usd.toFixed(2)}`
+            : "";
+          const dur = evt.duration_ms
+            ? `${Math.round(evt.duration_ms / 1000)}s`
+            : "";
+          const parts = [
+            `${turns} turns`,
+            dur,
+            cost,
+          ].filter(Boolean);
+          console.log(`\n--- Session complete (${parts.join(", ")}) ---`);
+          if (evt.is_error) {
+            console.error("Session ended with error.");
+          }
+        }
+      }
+    });
+
+    child.on("close", (code) => {
+      resolve({ exitCode: code ?? 1, result: finalResult });
+    });
+  });
+}
+
+function formatToolInput(
+  name: string,
+  input?: Record<string, unknown>,
+): string {
+  if (!input) return "";
+  switch (name) {
+    case "Read":
+      return String(input.file_path ?? "");
+    case "Write":
+      return String(input.file_path ?? "");
+    case "Edit":
+      return String(input.file_path ?? "");
+    case "Bash":
+      return String(input.command ?? "").substring(0, 120);
+    case "Glob":
+      return String(input.pattern ?? "");
+    case "Grep":
+      return String(input.pattern ?? "");
+    case "Skill":
+      return `${input.skill ?? ""}${input.args ? " " + input.args : ""}`;
+    case "TeamCreate":
+      return String(input.team_name ?? "");
+    case "TeamDelete":
+      return "";
+    case "SendMessage":
+      return `→ ${input.recipient ?? "all"}: ${String(input.summary ?? "").substring(0, 80)}`;
+    case "Task":
+      return String(input.description ?? "").substring(0, 80);
+    case "TaskUpdate":
+      return `#${input.taskId ?? ""} → ${input.status ?? ""}`;
+    default:
+      return JSON.stringify(input).substring(0, 100);
+  }
+}
+
 // ── run command ────────────────────────────────────────────────────
 
 program
@@ -628,22 +759,11 @@ program
           const iteration = i + 1;
           console.log(`\n=== ${entry.slug} — Iteration ${iteration} (${prdPending} milestones remaining) ===\n`);
 
-          const spawnEnv = { ...process.env };
-          delete spawnEnv.CLAUDECODE;
-          const result = spawnSync(
-            "claude",
-            ["-p", "--dangerously-skip-permissions"],
-            {
-              input: prompt,
-              stdio: ["pipe", "inherit", "inherit"],
-              cwd: projectDir,
-              env: spawnEnv,
-            },
-          );
+          const { exitCode } = await runClaudeSession(prompt, projectDir);
 
-          if (result.status !== 0) {
+          if (exitCode !== 0) {
             console.error(
-              `\nError: Claude session for ${entry.slug} exited with code ${result.status ?? "unknown"}. Skipping to next PRD.`,
+              `\nError: Claude session for ${entry.slug} exited with code ${exitCode}. Skipping to next PRD.`,
             );
             break;
           }
@@ -728,23 +848,12 @@ program
       const iteration = i + 1;
       console.log(`\n=== Iteration ${iteration} (${pending} milestones remaining) ===\n`);
 
-      const spawnEnv = { ...process.env };
-      delete spawnEnv.CLAUDECODE;
-      const result = spawnSync(
-        "claude",
-        ["-p", "--dangerously-skip-permissions"],
-        {
-          input: prompt,
-          stdio: ["pipe", "inherit", "inherit"],
-          cwd: projectDir,
-          env: spawnEnv,
-        },
-      );
+      const { exitCode } = await runClaudeSession(prompt, projectDir);
 
       // Check exit code
-      if (result.status !== 0) {
+      if (exitCode !== 0) {
         console.error(
-          `\nError: Claude session exited with code ${result.status ?? "unknown"}. Stopping.`,
+          `\nError: Claude session exited with code ${exitCode}. Stopping.`,
         );
         console.log("Fix the issue, then run `npx forge run` again to resume.");
         process.exit(1);
