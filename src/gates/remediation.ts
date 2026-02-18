@@ -159,6 +159,13 @@ const BIOME_RULE_RE = /lint\/[\w-]+\/([\w-]+)/;
 export function buildLintRemediation(error: GateError): string {
   const location = formatLocation(error);
 
+  // Detect CRLF / line ending issues — common on Windows where Biome auto-detects
+  // CRLF as the target but files are already LF (via git autocrlf). The fix is
+  // biome.json config, not file content.
+  if (/crlf|line.?ending|endOfLine/i.test(error.message)) {
+    return `${location}[lineEnding] Line ending mismatch — add \`"formatter": { "lineEnding": "lf" }\` to biome.json. Do NOT attempt to fix file contents; the files are likely already LF but Biome is auto-detecting CRLF on Windows.`;
+  }
+
   // Try Biome-style rule path first (e.g., lint/style/useConst)
   const biomeMatch = BIOME_RULE_RE.exec(error.message);
   if (biomeMatch) {
