@@ -73,15 +73,48 @@ If the current working directory does not look like a project (no package.json, 
 
 > This directory doesn't look like a project root. Should I scan here, or provide a path to the project?
 
-### Step 3 — Adaptive Interview
+### Step 3 — LLM-Driven Adaptive Interview
 
-Conduct an adaptive interview using the interview engine logic from `src/spec/interview.ts`. The interview covers 5 sections in priority order:
+You (the LLM) drive the interview. The interview engine (`src/spec/interview.ts`) is a state tracker and coverage analyzer — you decide what to ask and when to stop. Use `createInterview()` to initialize state, `addQuestion()` to register each question you ask, `recordAnswer()` to record responses, and `getCoverageAnalysis()` to assess coverage gaps.
 
-1. **Problem & Goals** — what problem, desired outcome, success criteria
-2. **User Stories** — primary users, workflows, secondary users
-3. **Technical Approach** — architecture decisions, constraints, stack
-4. **Scope** — what's out, sacred files, boundaries
-5. **Milestones** — phasing, dependencies, delivery chunks
+The interview covers 5 sections:
+
+1. **Problem & Goals** — core problem, desired outcome, success criteria, impact/urgency, current workarounds, who feels the pain
+2. **User Stories** — primary users, user workflows step-by-step, secondary users, edge cases, permissions/roles, error states
+3. **Technical Approach** — architecture pattern, data model/schema, APIs/integrations, auth/security, performance requirements, error handling, existing code to leverage
+4. **Scope** — in scope boundaries, out of scope, sacred files/areas, constraints, future phases explicitly deferred
+5. **Milestones** — breakdown into chunks, dependencies between milestones, sizing (fits in one agent context?), verification criteria, delivery order, risk areas
+
+**Interview Loop — You Drive:**
+
+1. Initialize interview state with `createInterview(projectName, scanResults)`
+2. Start with a broad opening question for Problem & Goals, informed by scan results
+3. After each answer:
+   - Assess coverage gaps mentally (which topics are uncovered? which answers were vague?)
+   - Generate the next question based on: scan results, all prior Q&A, what's still ambiguous
+   - Probe deeper on vague or short answers — don't accept "TBD" or one-liners for important topics
+   - Move to the next section when the current one has thorough coverage
+   - Revisit earlier sections if later answers reveal new info
+4. Register each question with `addQuestion(state, section, text, context, depth)` for tracking
+5. Record each answer with `recordAnswer(state, questionId, answer)`
+
+**Question Principles — Encode These:**
+
+- Ask about edge cases, error states, and "what could go wrong"
+- When the user mentions an integration, ask about auth, rate limits, failure modes
+- When the user describes a workflow, walk through it step-by-step
+- For milestones, actively challenge sizing — "is this too big for one context window?"
+- Don't ask yes/no questions — ask "how" and "what" questions that elicit detail
+- Circle back to earlier sections when new info surfaces
+- Follow interesting threads: if the user mentions migration, breaking changes, multiple user types, or external services, dig deeper
+
+**Stop Condition:**
+
+You determine you have enough detail for a thorough PRD across ALL sections, with no significant ambiguity remaining. Before transitioning to Step 4, print a coverage summary showing the final state of each section.
+
+**Early Exit:**
+
+If the user says "stop", "that's enough", "skip", or "generate it" at any time, respect that and move to Step 4 with what you have.
 
 **Milestone Sizing Constraint (Hard Rule):**
 
@@ -101,40 +134,28 @@ If milestones have explicit dependencies, include `**dependsOn:** 1, 2` in the m
 
 Independent milestones enable parallel execution via `/forge:go`, which creates separate worktrees for each parallel milestone.
 
-**Interview Rules:**
+**Question Format:**
 
-- **NEVER present questions as numbered text — always use AskUserQuestion with 2-4 options per question.** Every interview question MUST be delivered via Claude Code's AskUserQuestion tool with structured multiple-choice options. Do not print numbered lists of questions for the user to answer in free text.
-- **Lead with recommendations.** Every question includes context from the codebase scan as the question text. Never ask a blank "what do you want to build?" question.
-- **Ask 1 question at a time via AskUserQuestion.** Each question gets its own AskUserQuestion call with 2-4 predefined options derived from codebase scan context and common patterns. Always include a final option like "Other (I'll describe)" to allow the user to provide a custom answer.
-- **Follow interesting threads.** If the user's selection mentions migration, breaking changes, multiple user types, or external integrations, follow up with targeted AskUserQuestion calls.
-- **Show progress.** After each answer round, show a compact status as text output:
+Mix AskUserQuestion (for structured choices) and conversational questions (for open-ended probing):
+
+- **Use AskUserQuestion** when there are clear option sets (architecture choices, yes/no with detail, picking from scan-derived options). Provide 2-4 options plus "Other (I'll describe)".
+- **Use conversational questions** when probing for depth, asking "how" or "what" questions, or exploring topics that don't have predefined options.
+- **NEVER present questions as numbered text lists.** Each structured question gets its own AskUserQuestion call.
+- **Lead with recommendations.** Every question includes context from the codebase scan. Never ask a blank "what do you want to build?" question.
+
+**Progress Display:**
+
+After each answer, show a compact coverage status:
 
 ```
-Progress: [##---] Problem & Goals (2/2) | User Stories (0/2) | Technical (0/1) | Scope (0/1) | Milestones (0/1)
+Progress: Problem & Goals [thorough] | User Stories [moderate] | Technical [thin] | Scope [none] | Milestones [none]
 ```
 
-- **Update the PRD draft every 2-3 answers.** Write the current draft to `.planning/prds/{project-slug}.md`. Tell the user:
+**Draft Updates:**
+
+- **Update the PRD draft every 2-3 answers** (use `shouldUpdateDraft(state)` to check, `markDraftUpdated(state)` after writing). Write to `.planning/prds/{project-slug}.md`. Tell the user:
 
 > Updated PRD draft at `.planning/prds/{slug}.md` — you can review it anytime.
-
-- **Stop when complete.** When all sections have enough info (Problem 2+, Users 2+, Technical 1+, Scope 1+, Milestones 1+), move to Step 4. Don't drag the interview out.
-- **Allow early exit.** If the user says "that's enough", "skip", or "generate it", respect that and move to Step 4 with what you have.
-
-**Question Format (AskUserQuestion):**
-
-Each interview question MUST use AskUserQuestion. Build the question text from codebase scan context and the section being asked about. Provide 2-4 options that reflect likely answers based on the scan results, plus a free-text escape hatch. Example:
-
-```
-AskUserQuestion:
-  question: "[Section] Context from scan or previous answers. Question text here?"
-  options:
-    - "Option A — a likely answer based on scan findings"
-    - "Option B — another plausible direction"
-    - "Option C — a third possibility (if applicable)"
-    - "Other (I'll describe)"
-```
-
-If the user selects "Other (I'll describe)", prompt them for a free-text answer using a follow-up AskUserQuestion or accept their typed response.
 
 **Do NOT do this (anti-pattern):**
 
@@ -147,7 +168,7 @@ If the user selects "Other (I'll describe)", prompt them for a free-text answer 
 > Answer by number...
 ```
 
-This numbered-text format is explicitly prohibited. Always use AskUserQuestion.
+This numbered-text format is explicitly prohibited. Always use AskUserQuestion for structured choices.
 
 ### Step 4 — Generate PRD
 

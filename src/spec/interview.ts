@@ -1,10 +1,10 @@
 /**
- * Adaptive interview engine for spec generation.
+ * Interview state tracker and coverage analyzer for spec generation.
  *
  * Pure logic — no side effects, no I/O. All state is passed in and returned.
- * The interview leads with recommendations derived from codebase scan results,
- * follows interesting threads based on user responses, and determines when
- * enough info has been gathered for each PRD section.
+ * The LLM (via the /forge:spec skill) drives question generation using scan
+ * results, prior answers, and coverage analysis. This module tracks state,
+ * analyzes coverage gaps, and provides structured summaries for PRD generation.
  *
  * **Rendering contract:** {@link InterviewQuestion} objects are designed to be
  * rendered via Claude Code's **AskUserQuestion** tool with structured
@@ -69,13 +69,16 @@ export interface InterviewAnswer {
   timestamp: number;
 }
 
+/** Coverage level for a section */
+export type CoverageLevel = "none" | "thin" | "moderate" | "thorough";
+
 /** Completeness status for a single section */
 export interface SectionStatus {
   section: PRDSection;
   answeredCount: number;
-  /** Minimum answers needed before the section is considered covered */
-  minRequired: number;
-  isComplete: boolean;
+  totalWords: number;
+  coverageLevel: CoverageLevel;
+  hasGaps: boolean;
 }
 
 /** Full interview state — serializable, passed in/out of every function */
@@ -100,22 +103,79 @@ export interface InterviewSummary {
     {
       label: string;
       answers: Array<{ question: string; answer: string }>;
-      isComplete: boolean;
+      coverageLevel: CoverageLevel;
     }
   >;
   scanResults: ScanAllResult;
 }
 
+/** Per-section coverage detail */
+export interface SectionCoverage {
+  section: PRDSection;
+  label: string;
+  answeredCount: number;
+  totalWords: number;
+  coverageLevel: CoverageLevel;
+  /** All subtopics for this section */
+  topics: string[];
+  /** Topics that appear in answers (simple substring match) */
+  mentionedTopics: string[];
+  /** topics − mentionedTopics */
+  uncoveredTopics: string[];
+}
+
+/** Full coverage analysis across all sections */
+export interface CoverageAnalysis {
+  sections: SectionCoverage[];
+  overallLevel: CoverageLevel;
+  hasGaps: boolean;
+}
+
 // ---------------------------------------------------------------------------
-// Minimum answer thresholds per section
+// Section Topics — subtopic checklists the LLM uses for coverage analysis
 // ---------------------------------------------------------------------------
 
-const MIN_ANSWERS: Record<PRDSection, number> = {
-  problem_and_goals: 2,
-  user_stories: 2,
-  technical_approach: 1,
-  scope: 1,
-  milestones: 1,
+export const SECTION_TOPICS: Record<PRDSection, string[]> = {
+  problem_and_goals: [
+    "core problem",
+    "desired outcome",
+    "success criteria",
+    "impact/urgency",
+    "current workarounds",
+    "who feels the pain",
+  ],
+  user_stories: [
+    "primary users",
+    "user workflows step-by-step",
+    "secondary users",
+    "edge cases",
+    "permissions/roles",
+    "error states",
+  ],
+  technical_approach: [
+    "architecture pattern",
+    "data model/schema",
+    "APIs/integrations",
+    "auth/security",
+    "performance requirements",
+    "error handling",
+    "existing code to leverage",
+  ],
+  scope: [
+    "in scope boundaries",
+    "out of scope",
+    "sacred files/areas",
+    "constraints",
+    "future phases explicitly deferred",
+  ],
+  milestones: [
+    "breakdown into chunks",
+    "dependencies between milestones",
+    "sizing (fits in one agent context?)",
+    "verification criteria",
+    "delivery order",
+    "risk areas",
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -142,71 +202,36 @@ export function createInterview(
 }
 
 // ---------------------------------------------------------------------------
-// Question Generation
+// Question Registration (LLM registers questions it asks for tracking)
 // ---------------------------------------------------------------------------
 
 /**
- * Generate 1-3 next questions based on current state.
- * Prioritizes sections with the most gaps, leads with recommendations.
- * Returns questions and the updated state (with new questions appended).
+ * Register a question the LLM asked, for summary/tracking purposes.
+ * The LLM drives question generation — this just records what was asked.
  */
-export function generateNextQuestions(state: InterviewState): {
-  questions: InterviewQuestion[];
-  state: InterviewState;
-} {
-  const statuses = getSectionStatuses(state);
-  const pendingFollowUp = findFollowUpOpportunities(state);
-
-  const newQuestions: InterviewQuestion[] = [];
-  let nextId = state.nextQuestionId;
-
-  // Priority 1: Follow up on interesting threads (max 1 follow-up per batch)
-  if (pendingFollowUp.length > 0 && newQuestions.length < 3) {
-    const followUp = pendingFollowUp[0];
-    newQuestions.push({
-      id: `q${nextId++}`,
-      section: followUp.section,
-      text: followUp.text,
-      context: followUp.context,
-      depth: followUp.depth,
-    });
-  }
-
-  // Priority 2: Ask about incomplete sections in priority order
-  for (const section of PRD_SECTIONS) {
-    if (newQuestions.length >= 3) break;
-
-    const status = statuses.find((s) => s.section === section);
-    if (status?.isComplete) continue;
-
-    // Skip if we already have a question for this section in this batch
-    if (newQuestions.some((q) => q.section === section)) continue;
-
-    const question = generateSectionQuestion(state, section, nextId);
-    if (question) {
-      newQuestions.push(question);
-      nextId++;
-    }
-  }
-
-  // If we generated nothing (everything complete), return empty
-  if (newQuestions.length === 0) {
-    return { questions: [], state };
-  }
-
-  const updatedState: InterviewState = {
-    ...state,
-    questions: [...state.questions, ...newQuestions],
-    nextQuestionId: nextId,
-    askedSections: [
-      ...new Set([
-        ...state.askedSections,
-        ...newQuestions.map((q) => q.section),
-      ]),
-    ],
+export function addQuestion(
+  state: InterviewState,
+  section: PRDSection,
+  text: string,
+  context: string,
+  depth: number = 0,
+): InterviewState {
+  const question: InterviewQuestion = {
+    id: `q${state.nextQuestionId}`,
+    section,
+    text,
+    context,
+    depth,
   };
 
-  return { questions: newQuestions, state: updatedState };
+  return {
+    ...state,
+    questions: [...state.questions, question],
+    nextQuestionId: state.nextQuestionId + 1,
+    askedSections: [
+      ...new Set([...state.askedSections, section]),
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -263,36 +288,133 @@ export function markDraftUpdated(state: InterviewState): InterviewState {
 }
 
 // ---------------------------------------------------------------------------
-// Completeness Check
+// Section Statuses
 // ---------------------------------------------------------------------------
 
 /**
- * Returns true when all sections have met their minimum answer thresholds.
+ * Compute the coverage level for a section based on answer count, word count,
+ * and topic coverage.
  */
-export function isComplete(state: InterviewState): boolean {
-  return getSectionStatuses(state).every((s) => s.isComplete);
+function computeCoverageLevel(
+  answeredCount: number,
+  totalWords: number,
+  topics: string[],
+  mentionedTopics: string[],
+): CoverageLevel {
+  if (answeredCount === 0) return "none";
+  if (answeredCount === 1 || totalWords < 50) return "thin";
+
+  const mostTopicsMentioned =
+    topics.length === 0 || mentionedTopics.length >= topics.length * 0.6;
+
+  if (answeredCount >= 4 || (totalWords >= 200 && mostTopicsMentioned)) {
+    return "thorough";
+  }
+  if (answeredCount >= 2 && totalWords >= 50) return "moderate";
+  return "thin";
 }
 
-// ---------------------------------------------------------------------------
-// Section Statuses
-// ---------------------------------------------------------------------------
+/**
+ * Find which SECTION_TOPICS appear in the section's answers (simple substring match).
+ */
+function findMentionedTopics(
+  answers: string[],
+  topics: string[],
+): string[] {
+  const combined = answers.join(" ").toLowerCase();
+  return topics.filter((topic) => combined.includes(topic.toLowerCase()));
+}
 
 /**
  * Get the completeness status for all sections.
  */
 export function getSectionStatuses(state: InterviewState): SectionStatus[] {
   return PRD_SECTIONS.map((section) => {
-    const answeredCount = state.answers.filter(
-      (a) => a.section === section,
-    ).length;
-    const minRequired = MIN_ANSWERS[section];
+    const sectionAnswers = state.answers.filter((a) => a.section === section);
+    const answeredCount = sectionAnswers.length;
+    const totalWords = sectionAnswers.reduce(
+      (sum, a) => sum + a.answer.split(/\s+/).filter(Boolean).length,
+      0,
+    );
+    const topics = SECTION_TOPICS[section];
+    const mentionedTopics = findMentionedTopics(
+      sectionAnswers.map((a) => a.answer),
+      topics,
+    );
+    const uncoveredTopics = topics.filter((t) => !mentionedTopics.includes(t));
+    const coverageLevel = computeCoverageLevel(
+      answeredCount,
+      totalWords,
+      topics,
+      mentionedTopics,
+    );
+
     return {
       section,
       answeredCount,
-      minRequired,
-      isComplete: answeredCount >= minRequired,
+      totalWords,
+      coverageLevel,
+      hasGaps: uncoveredTopics.length > 0,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Coverage Analysis
+// ---------------------------------------------------------------------------
+
+/**
+ * Get detailed coverage analysis for all sections, including topic-level detail.
+ * This is the primary tool for the LLM to decide what to ask next.
+ */
+export function getCoverageAnalysis(state: InterviewState): CoverageAnalysis {
+  const sections: SectionCoverage[] = PRD_SECTIONS.map((section) => {
+    const sectionAnswers = state.answers.filter((a) => a.section === section);
+    const answeredCount = sectionAnswers.length;
+    const totalWords = sectionAnswers.reduce(
+      (sum, a) => sum + a.answer.split(/\s+/).filter(Boolean).length,
+      0,
+    );
+    const topics = SECTION_TOPICS[section];
+    const mentionedTopics = findMentionedTopics(
+      sectionAnswers.map((a) => a.answer),
+      topics,
+    );
+    const uncoveredTopics = topics.filter((t) => !mentionedTopics.includes(t));
+    const coverageLevel = computeCoverageLevel(
+      answeredCount,
+      totalWords,
+      topics,
+      mentionedTopics,
+    );
+
+    return {
+      section,
+      label: SECTION_LABELS[section],
+      answeredCount,
+      totalWords,
+      coverageLevel,
+      topics,
+      mentionedTopics,
+      uncoveredTopics,
+    };
+  });
+
+  const levels: CoverageLevel[] = sections.map((s) => s.coverageLevel);
+  const hasGaps = sections.some((s) => s.uncoveredTopics.length > 0);
+
+  let overallLevel: CoverageLevel;
+  if (levels.every((l) => l === "thorough")) {
+    overallLevel = "thorough";
+  } else if (levels.every((l) => l === "thorough" || l === "moderate")) {
+    overallLevel = "moderate";
+  } else if (levels.some((l) => l !== "none")) {
+    overallLevel = "thin";
+  } else {
+    overallLevel = "none";
+  }
+
+  return { sections, overallLevel, hasGaps };
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +441,7 @@ export function getInterviewSummary(state: InterviewState): InterviewSummary {
           answer: a.answer,
         };
       }),
-      isComplete: status.isComplete,
+      coverageLevel: status.coverageLevel,
     };
   }
 
@@ -330,196 +452,3 @@ export function getInterviewSummary(state: InterviewState): InterviewSummary {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Internal Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Generate a question for a specific section based on codebase context.
- * Returns null if no meaningful question can be generated.
- */
-function generateSectionQuestion(
-  state: InterviewState,
-  section: PRDSection,
-  nextId: number,
-): InterviewQuestion | null {
-  const answeredCount = state.answers.filter(
-    (a) => a.section === section,
-  ).length;
-  const scan = state.scanResults;
-
-  const q = (text: string, context: string): InterviewQuestion => ({
-    id: `q${nextId}`,
-    section,
-    text,
-    context,
-    depth: 0,
-  });
-
-  switch (section) {
-    case "problem_and_goals": {
-      if (answeredCount === 0) {
-        const fw = scan.structure.frameworks.length > 0 ? scan.structure.frameworks.join(", ") : null;
-        return q(
-          "What problem does this project solve? What's the desired outcome when it's done?",
-          `I found a ${scan.structure.language} project${fw ? ` using ${fw}` : ""}. Help me understand what you're building and why.`,
-        );
-      }
-      return q(
-        "How will you know this project is successful? What does 'done' look like?",
-        "I want to define clear success criteria for the PRD.",
-      );
-    }
-
-    case "user_stories": {
-      if (answeredCount === 0) {
-        const pageRoutes = scan.routes.routes.filter((r) => r.type === "page");
-        const apiRoutes = scan.routes.routes.filter((r) => r.type === "api");
-        const hasRoutes = pageRoutes.length > 0;
-        const hasAPI = apiRoutes.length > 0;
-        const routeContext = hasRoutes
-          ? `I see ${pageRoutes.length} page(s) and ${apiRoutes.length} API route(s).`
-          : hasAPI
-            ? `I see ${apiRoutes.length} API route(s) but no pages.`
-            : "I don't see existing routes yet.";
-        return q(
-          "Who are the primary users of this feature? What do they need to accomplish?",
-          `${routeContext} Understanding the users will help me structure milestones around their journeys.`,
-        );
-      }
-      return q(
-        "Are there secondary users or admin workflows to consider?",
-        "Capturing all user types early prevents scope creep later.",
-      );
-    }
-
-    case "technical_approach": {
-      const fw = scan.structure.frameworks;
-      const fwLabel = fw.length > 0 ? fw.join(", ") : null;
-      const models = scan.dataAPIs.dataModels;
-      const hasDB = models.length > 0;
-      const dbLabel = hasDB
-        ? models.slice(0, 3).map((m) => m.name).join(", ")
-        : "";
-
-      if (answeredCount === 0) {
-        return q(
-          "Are there specific technical decisions already made? Any constraints on architecture, APIs, or data storage?",
-          `Current stack: ${scan.structure.language}${fwLabel ? `/${fwLabel}` : ""}${hasDB ? `, data models: [${dbLabel}]` : ""}. I'll build the technical approach around existing decisions.`,
-        );
-      }
-      return null; // One answer usually sufficient for technical approach
-    }
-
-    case "scope": {
-      const configFiles = scan.structure.configFiles;
-      if (answeredCount === 0) {
-        return q(
-          "What's explicitly OUT of scope? Are there any sacred files or areas of the codebase that should not be touched?",
-          configFiles.length > 0
-            ? `Key config files I found: ${configFiles.slice(0, 8).join(", ")}. Knowing what's off-limits helps me write safer milestones.`
-            : "Defining boundaries early prevents scope creep.",
-        );
-      }
-      return null;
-    }
-
-    case "milestones": {
-      if (answeredCount === 0) {
-        return q(
-          "How would you break this work into deliverable chunks? Any natural phases or dependencies between pieces?",
-          "I'll structure Linear milestones around your phasing. Each milestone should be independently shippable.",
-        );
-      }
-      return null;
-    }
-  }
-}
-
-/**
- * Find opportunities for follow-up questions based on recent answers.
- * Looks for keywords/patterns that suggest deeper exploration would be valuable.
- */
-function findFollowUpOpportunities(
-  state: InterviewState,
-): Array<{
-  section: PRDSection;
-  text: string;
-  context: string;
-  depth: number;
-}> {
-  const opportunities: Array<{
-    section: PRDSection;
-    text: string;
-    context: string;
-    depth: number;
-  }> = [];
-
-  // Only consider the last 3 answers for follow-ups
-  const recentAnswers = state.answers.slice(-3);
-
-  for (const answer of recentAnswers) {
-    const question = state.questions.find((q) => q.id === answer.questionId);
-    if (!question) continue;
-
-    // Don't follow up on follow-ups beyond depth 2
-    if (question.depth >= 2) continue;
-
-    // Don't generate follow-ups for questions we've already followed up on
-    const hasFollowUp = state.questions.some(
-      (q) =>
-        q.depth > question.depth &&
-        q.section === question.section &&
-        state.questions.indexOf(q) > state.questions.indexOf(question),
-    );
-    if (hasFollowUp) continue;
-
-    const lower = answer.answer.toLowerCase();
-
-    // Detect mentions of migration/breaking changes — worth digging into
-    if (
-      (lower.includes("migrat") || lower.includes("breaking")) &&
-      question.section !== "scope"
-    ) {
-      opportunities.push({
-        section: "scope",
-        text: "You mentioned migration/breaking changes. What existing data or APIs need to be preserved? Any backward compatibility requirements?",
-        context: `Based on your answer about ${SECTION_LABELS[question.section]}.`,
-        depth: question.depth + 1,
-      });
-    }
-
-    // Detect mentions of multiple user types — worth expanding user stories
-    if (
-      (lower.includes("admin") ||
-        lower.includes("different user") ||
-        lower.includes("roles")) &&
-      answer.section === "user_stories"
-    ) {
-      opportunities.push({
-        section: "user_stories",
-        text: "You mentioned different user types/roles. Can you walk me through the key workflow for each type?",
-        context: "Multiple user types often need separate milestone planning.",
-        depth: question.depth + 1,
-      });
-    }
-
-    // Detect mentions of external services — worth clarifying integration scope
-    if (
-      (lower.includes("api") ||
-        lower.includes("third-party") ||
-        lower.includes("external") ||
-        lower.includes("integration")) &&
-      answer.section === "technical_approach"
-    ) {
-      opportunities.push({
-        section: "technical_approach",
-        text: "You mentioned external integrations. Which services are critical path vs nice-to-have? Any rate limits or auth concerns?",
-        context: "External dependencies often need their own milestone.",
-        depth: question.depth + 1,
-      });
-    }
-  }
-
-  return opportunities;
-}
