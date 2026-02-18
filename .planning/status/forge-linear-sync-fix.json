@@ -5,6 +5,6 @@
   "createdAt": "2026-02-18",
   "linearProjectId": "5ff82858-73ff-4ffc-9c11-bc106407896c",
   "milestones": {
-    "1": { "status": "pending" }
+    "1": { "status": "complete", "completedAt": "2026-02-18" }
   }
 }
