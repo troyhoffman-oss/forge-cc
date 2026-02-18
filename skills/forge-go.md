@@ -455,23 +455,24 @@ The "Linear Issues" section with `Closes` keywords enables Linear's GitHub integ
 
 **Codex Review Gate:**
 
-After `gh pr create` succeeds, poll for Codex review comments:
+After `gh pr create` succeeds, poll for Codex review comments using the deterministic CLI command:
 
-1. **Poll loop:** Every 60 seconds, check for new PR review comments:
-   ```bash
-   gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
-   ```
+```bash
+npx forge codex-poll --owner {owner} --repo {repo} --pr {pr_number}
+```
 
-2. **Duration:** Poll for up to 8 minutes (8 checks at 60-second intervals).
+This command polls every 60 seconds for up to 8 minutes (8 checks) and outputs a JSON array of comments to stdout. Progress is printed to stderr.
 
-3. **If comments found:** For each unresolved comment:
+1. **Run the command** — it blocks until comments are found or all 8 polls are exhausted.
+
+2. **Parse the JSON output.** If the array is non-empty, for each comment:
    - Spawn a fix agent (team member) with the comment text, file path, and line number
    - The fix agent either makes the code fix or posts a justified reply explaining why the current code is correct
-   - After fixes are pushed, poll one more cycle for new comments from re-review
+   - After fixes are pushed, run `npx forge codex-poll` one more cycle for new comments from re-review
 
-4. **Completion criteria:** The milestone completes when the PR has 0 unresolved review comments.
+3. **Completion criteria:** The milestone completes when the PR has 0 unresolved review comments.
 
-5. **Timeout:** If no Codex comments appear after 8 minutes, proceed — Codex may not be configured for this repository.
+4. **Empty array:** If no Codex comments appear after 8 minutes, proceed — Codex may not be configured for this repository.
 
 Then shut down the agent team and print:
 
