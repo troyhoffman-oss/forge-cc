@@ -289,14 +289,24 @@ export async function syncMilestoneComplete(
       projectId: options.projectId,
     });
 
-    // Resolve state UUID for "In Review"
-    const teamId = options.teamId ?? allIssues[0]?.teamId;
-    let stateId: string | undefined;
-    if (teamId) {
+    // Resolve state UUIDs per team (state IDs are team-scoped)
+    const stateIdByTeam = new Map<string, string>();
+    if (options.teamId) {
       try {
-        stateId = await resolveStateId(client, teamId, "In Review");
+        const id = await resolveStateId(client, options.teamId, "In Review");
+        stateIdByTeam.set(options.teamId, id);
       } catch {
-        // State resolution failed — skip issue transitions
+        // State resolution failed for this team
+      }
+    }
+    for (const issue of allIssues) {
+      if (issue.teamId && !stateIdByTeam.has(issue.teamId)) {
+        try {
+          const id = await resolveStateId(client, issue.teamId, "In Review");
+          stateIdByTeam.set(issue.teamId, id);
+        } catch {
+          // State resolution failed for this team — will fall back to name
+        }
       }
     }
 
@@ -304,7 +314,8 @@ export async function syncMilestoneComplete(
     for (const issue of allIssues) {
       if (issue.state !== "In Review" && issue.state !== "Done") {
         try {
-          await client.updateIssue(issue.id, stateId ? { stateId } : { state: "In Review" });
+          const issueStateId = issue.teamId ? stateIdByTeam.get(issue.teamId) : undefined;
+          await client.updateIssue(issue.id, issueStateId ? { stateId: issueStateId } : { state: "In Review" });
           updatedCount++;
         } catch {
           // Some issues may not support this transition — skip them
@@ -444,14 +455,16 @@ export async function syncProjectDone(
       projectId: options.projectId,
     });
 
-    // Resolve state UUID for "Done"
-    const teamId = allIssues[0]?.teamId;
-    let stateId: string | undefined;
-    if (teamId) {
-      try {
-        stateId = await resolveStateId(client, teamId, "Done");
-      } catch {
-        // State resolution failed — fall back to name
+    // Resolve state UUIDs per team (state IDs are team-scoped)
+    const stateIdByTeam = new Map<string, string>();
+    for (const issue of allIssues) {
+      if (issue.teamId && !stateIdByTeam.has(issue.teamId)) {
+        try {
+          const id = await resolveStateId(client, issue.teamId, "Done");
+          stateIdByTeam.set(issue.teamId, id);
+        } catch {
+          // State resolution failed for this team — will fall back to name
+        }
       }
     }
 
@@ -459,7 +472,8 @@ export async function syncProjectDone(
     for (const issue of allIssues) {
       if (issue.state !== "Done" && issue.state !== "Canceled") {
         try {
-          await client.updateIssue(issue.id, stateId ? { stateId } : { state: "Done" });
+          const issueStateId = issue.teamId ? stateIdByTeam.get(issue.teamId) : undefined;
+          await client.updateIssue(issue.id, issueStateId ? { stateId: issueStateId } : { state: "Done" });
           updatedCount++;
         } catch {
           // Some issues may not support this transition — skip them
