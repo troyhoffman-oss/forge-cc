@@ -3,7 +3,7 @@
 ## What This Is
 Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, workflow skills (`/forge:triage`, `/forge:spec`, `/forge:go`, `/forge:setup`, `/forge:update`), and Linear lifecycle management. Single npm package.
 
-**Package:** `forge-cc` **v0.1.37**
+**Package:** `forge-cc` **v0.1.38**
 **Tech:** TypeScript (ES2022, strict), Node.js, MCP SDK, Commander, Playwright, Zod, Vitest
 
 ## Quick Reference

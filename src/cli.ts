@@ -628,13 +628,16 @@ program
           const iteration = i + 1;
           console.log(`\n=== ${entry.slug} — Iteration ${iteration} (${prdPending} milestones remaining) ===\n`);
 
+          const spawnEnv = { ...process.env };
+          delete spawnEnv.CLAUDECODE;
           const result = spawnSync(
             "claude",
-            ["--dangerously-skip-permissions"],
+            ["-p", "--dangerously-skip-permissions"],
             {
               input: prompt,
               stdio: ["pipe", "inherit", "inherit"],
               cwd: projectDir,
+              env: spawnEnv,
             },
           );
 
@@ -725,13 +728,16 @@ program
       const iteration = i + 1;
       console.log(`\n=== Iteration ${iteration} (${pending} milestones remaining) ===\n`);
 
+      const spawnEnv = { ...process.env };
+      delete spawnEnv.CLAUDECODE;
       const result = spawnSync(
         "claude",
-        ["--dangerously-skip-permissions"],
+        ["-p", "--dangerously-skip-permissions"],
         {
           input: prompt,
           stdio: ["pipe", "inherit", "inherit"],
           cwd: projectDir,
+          env: spawnEnv,
         },
       );
 
