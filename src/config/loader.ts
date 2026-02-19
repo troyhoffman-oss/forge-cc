@@ -5,6 +5,7 @@ import type { ForgeConfig } from "../types.js";
 
 const TOOL_GATE_MAP: Record<string, string> = {
   typescript: "types",
+  "@biomejs/biome": "lint",
   biome: "lint",
   vitest: "tests",
   jest: "tests",
@@ -59,8 +60,7 @@ export async function loadConfig(
       const packageJson = JSON.parse(pkgContent) as Record<string, unknown>;
       const detected = detectGates(packageJson);
       if (detected.length > 0) {
-        const merged = new Set([...config.gates, ...detected]);
-        config.gates = [...merged];
+        config.gates = detected;
       }
     } catch {
       // No package.json or unreadable — skip auto-detect

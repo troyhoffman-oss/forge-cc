@@ -70,6 +70,7 @@ async function generateForgeConfig(projectDir: string): Promise<boolean> {
   // Auto-detect gates from package.json
   const gateMap: Record<string, string> = {
     typescript: "types",
+    "@biomejs/biome": "lint",
     biome: "lint",
     vitest: "tests",
     jest: "tests",

@@ -73,10 +73,26 @@ function spawnClaude(prompt: string, cwd: string): Promise<number> {
 }
 
 async function runVerifyInWorktree(wtPath: string): Promise<PipelineResult> {
-  const { stdout } = await execFileAsync("node", [cliPath, "verify", "--json"], {
-    cwd: wtPath,
-  });
-  return JSON.parse(stdout) as PipelineResult;
+  try {
+    const { stdout } = await execFileAsync("node", [cliPath, "verify", "--json"], {
+      cwd: wtPath,
+    });
+    return JSON.parse(stdout) as PipelineResult;
+  } catch (err: unknown) {
+    // execFile rejects on non-zero exit, but stdout still contains the JSON result
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "stdout" in err &&
+      typeof (err as { stdout: unknown }).stdout === "string"
+    ) {
+      const stdout = (err as { stdout: string }).stdout;
+      if (stdout.trim()) {
+        return JSON.parse(stdout) as PipelineResult;
+      }
+    }
+    throw err;
+  }
 }
 
 export async function runRalphLoop(opts: {
