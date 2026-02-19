@@ -9,10 +9,17 @@ import { writeVerifyCache } from './state/cache.js';
 import { readStatus, discoverStatuses, findNextPending } from './state/status.js';
 import { ForgeLinearClient } from './linear/client.js';
 import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone } from './linear/sync.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf8'));
 
 program
   .name('forge')
-  .version('1.0.0')
+  .version(pkg.version)
   .description('Forge — verification harness for Claude Code agents');
 
 program
