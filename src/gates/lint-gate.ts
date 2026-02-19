@@ -2,34 +2,46 @@ import { spawn } from "node:child_process";
 import type { GateError, GateResult } from "../types.js";
 import type { Gate } from "./index.js";
 
-/** Parse biome check output into structured errors. */
+/** Biome JSON reporter diagnostic shape. */
+interface BiomeDiagnostic {
+  category?: string;
+  severity?: string;
+  description?: string;
+  message?: string;
+  location?: {
+    path?: { file?: string };
+    span?: { start: number; end: number };
+    sourceCode?: string;
+  };
+  advices?: { advices?: Array<{ log?: [string, string] }> };
+}
+
+/** Parse biome check --reporter=json output into structured errors. */
 function parseBiomeOutput(output: string): GateError[] {
-  const errors: GateError[] = [];
-  // Biome diagnostic format: file:line:col category LEVEL message
-  // e.g. src/foo.ts:10:5 lint/style/noVar  FIXABLE  ERROR  Use 'let' or 'const' instead of 'var'.
-  // Also handles: file.ts:line:col  lint/rule  ━━━━━  then message on following lines
-  // Simplified parser: look for lines with file:line:col pattern
-  const regex = /^\s*(.+?):(\d+):(\d+)\s+(.+)$/gm;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(output)) !== null) {
-    const rest = match[4].trim();
-    // Extract rule name if present (e.g. lint/style/noVar)
-    const ruleMatch = /^([\w/]+)\s+(.*)$/.exec(rest);
-    errors.push({
-      file: match[1],
-      line: parseInt(match[2], 10),
-      column: parseInt(match[3], 10),
-      message: ruleMatch ? ruleMatch[2] : rest,
-      rule: ruleMatch ? ruleMatch[1] : undefined,
-    });
+  try {
+    const report = JSON.parse(output) as { diagnostics?: BiomeDiagnostic[] };
+    if (!report.diagnostics) return [];
+    return report.diagnostics
+      .filter((d) => d.severity === "error" || d.severity === "warning")
+      .map((d) => ({
+        file: d.location?.path?.file ?? "",
+        line: 0, // JSON reporter doesn't provide line numbers directly; span offsets are byte-based
+        column: 0,
+        message: d.description ?? d.message ?? "Unknown lint error",
+        rule: d.category,
+      }));
+  } catch {
+    // If JSON parsing fails, return a single error with the raw output
+    return output.trim()
+      ? [{ file: "", line: 0, message: `Biome output parse error: ${output.slice(0, 200)}` }]
+      : [];
   }
-  return errors;
 }
 
 function runBiome(projectDir: string): Promise<GateResult> {
   return new Promise((resolve) => {
     const start = Date.now();
-    const child = spawn("npx", ["biome", "check", "."], {
+    const child = spawn("npx", ["biome", "check", "--reporter=json", "."], {
       cwd: projectDir,
       shell: true,
       stdio: ["ignore", "pipe", "pipe"],
