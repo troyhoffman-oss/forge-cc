@@ -32,8 +32,9 @@
       "completedAt": "2026-02-18"
     },
     "6": {
-      "status": "pending",
-      "linearMilestoneId": "24a49c0c-a1db-4d5c-88b5-6d6a58b0d7d6"
+      "status": "complete",
+      "linearMilestoneId": "24a49c0c-a1db-4d5c-88b5-6d6a58b0d7d6",
+      "completedAt": "2026-02-18"
     },
     "7": {
       "status": "pending",
