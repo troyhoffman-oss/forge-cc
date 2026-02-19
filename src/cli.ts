@@ -130,14 +130,21 @@ linearSync
   .requiredOption('--milestone <n>', 'Milestone number')
   .action(async (opts: { slug: string; milestone: string }) => {
     const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) return;
+    if (!apiKey) {
+      console.log('[forge] LINEAR_API_KEY not set, skipping Linear sync');
+      return;
+    }
     try {
       const projectDir = process.cwd();
       const status = await readStatus(projectDir, opts.slug);
-      if (!status.linearTeamId) return;
+      if (!status.linearTeamId) {
+        console.log('[forge] No linearTeamId in status file, skipping Linear sync');
+        return;
+      }
       const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
       const config = await loadConfig(projectDir);
       await syncMilestoneStart(client, config, status, opts.milestone);
+      console.log(`[forge] linear-sync start complete for ${opts.slug} ${opts.milestone}`);
     } catch (err) {
       console.warn('[forge] linear-sync start failed:', err);
     }
@@ -152,14 +159,21 @@ linearSync
   .option('--pr-url <url>', 'PR URL to include in comments')
   .action(async (opts: { slug: string; milestone: string; last?: boolean; prUrl?: string }) => {
     const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) return;
+    if (!apiKey) {
+      console.log('[forge] LINEAR_API_KEY not set, skipping Linear sync');
+      return;
+    }
     try {
       const projectDir = process.cwd();
       const status = await readStatus(projectDir, opts.slug);
-      if (!status.linearTeamId) return;
+      if (!status.linearTeamId) {
+        console.log('[forge] No linearTeamId in status file, skipping Linear sync');
+        return;
+      }
       const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
       const config = await loadConfig(projectDir);
       await syncMilestoneComplete(client, config, status, opts.milestone, !!opts.last);
+      console.log(`[forge] linear-sync complete finished for ${opts.slug} ${opts.milestone}`);
     } catch (err) {
       console.warn('[forge] linear-sync complete failed:', err);
     }
@@ -171,16 +185,53 @@ linearSync
   .requiredOption('--slug <slug>', 'PRD slug')
   .action(async (opts: { slug: string }) => {
     const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) return;
+    if (!apiKey) {
+      console.log('[forge] LINEAR_API_KEY not set, skipping Linear sync');
+      return;
+    }
     try {
       const projectDir = process.cwd();
       const status = await readStatus(projectDir, opts.slug);
-      if (!status.linearTeamId) return;
+      if (!status.linearTeamId) {
+        console.log('[forge] No linearTeamId in status file, skipping Linear sync');
+        return;
+      }
       const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
       const config = await loadConfig(projectDir);
       await syncProjectDone(client, config, status);
+      console.log(`[forge] linear-sync done complete for ${opts.slug}`);
     } catch (err) {
       console.warn('[forge] linear-sync done failed:', err);
+    }
+  });
+
+linearSync
+  .command('list-issues')
+  .description('List all Linear issue identifiers for a PRD slug')
+  .requiredOption('--slug <slug>', 'PRD slug')
+  .action(async (opts: { slug: string }) => {
+    const apiKey = process.env.LINEAR_API_KEY;
+    if (!apiKey) {
+      console.log('[forge] LINEAR_API_KEY not set, skipping Linear sync');
+      return;
+    }
+    try {
+      const projectDir = process.cwd();
+      const status = await readStatus(projectDir, opts.slug);
+      if (!status.linearProjectId) {
+        console.log('[forge] No linearProjectId in status file');
+        return;
+      }
+      if (!status.linearTeamId) {
+        console.log('[forge] No linearTeamId in status file, skipping list-issues');
+        return;
+      }
+      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
+      const issues = await client.listIssuesByProject(status.linearProjectId);
+      const identifiers = issues.map((i) => i.identifier);
+      console.log(JSON.stringify(identifiers));
+    } catch (err) {
+      console.warn('[forge] linear-sync list-issues failed:', err);
     }
   });
 

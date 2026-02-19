@@ -80,6 +80,27 @@ export class ForgeLinearClient {
     }
   }
 
+  /** List issues belonging to a project. Returns identifier (e.g. "MSIG-123") and title. */
+  async listIssuesByProject(
+    projectId: string,
+  ): Promise<Array<{ id: string; identifier: string; title: string }>> {
+    try {
+      const result = await this.client.issues({
+        filter: {
+          project: { id: { eq: projectId } },
+        },
+      });
+      return result.nodes.map((i) => ({
+        id: i.id,
+        identifier: i.identifier,
+        title: i.title,
+      }));
+    } catch (err) {
+      console.warn("[forge] Failed to list issues by project:", err);
+      return [];
+    }
+  }
+
   /** List projects filtered by team. */
   async listProjects(
     teamId: string,

@@ -4,7 +4,7 @@ Execute milestones from your PRD with real agent teams (TeamCreate/SendMessage),
 
 ## Instructions
 
-Follow these steps exactly. The execution engine at `src/go/executor.ts` provides the programmatic logic — this skill drives the agent orchestration.
+Follow these steps exactly. This skill drives the full agent orchestration — there is no backing TypeScript engine. The forge CLI provides verification (`forge verify`), state management (`forge status`), and Linear sync (`forge linear-sync`) as deterministic commands.
 
 ### Step 1 — Orient + Choose Mode
 
@@ -62,7 +62,7 @@ Verify the execution environment is ready:
 
    > You're on the main branch. Switch to your feature branch first: `git checkout {branch}`
 
-2. **Milestone exists:** Read ONLY the current milestone section from the PRD (progressive disclosure — NOT the full PRD). Use the executor's `readCurrentMilestone()` approach — match `### Milestone N:` header and extract until the next milestone header.
+2. **Milestone exists:** Read ONLY the current milestone section from the PRD (progressive disclosure — NOT the full PRD). Match the `### Milestone N:` header and extract until the next milestone header.
 
 3. **Not already complete:** Check the status file to confirm this milestone is not already marked complete. If it is, advance to the next pending milestone.
 
@@ -102,20 +102,20 @@ This establishes the visual baseline for regression detection.
 
 **The visual gate MUST run if configured — do not skip based on your assessment of whether changes affect the UI.** Parser changes, data fixes, and test-only changes can surface unexpected visual regressions. The only valid reason to skip is: `.forge.json` does NOT include `visual` in gates AND does NOT specify a `devServerUrl`.
 
-### Step 2.5 — Session Isolation (Automatic)
+### Step 2.5 — Session Isolation (Future Enhancement)
 
-The execution engine automatically creates a git worktree for isolated execution. This happens transparently — you don't need to manage it manually.
+> **Note:** Session isolation via git worktrees is not yet implemented in the skill flow. The current implementation runs in the main working directory. The design below describes the planned behavior for a future version.
 
-**What happens behind the scenes:**
+**Planned behavior:**
 1. A worktree is created at `../.forge-wt/<repo>/<session-id>/` based on the feature branch
 2. A session is registered in `.forge/sessions.json`
 3. All wave execution happens inside the worktree directory
 4. After completion, changes are merged back to the feature branch
 5. The worktree and session are cleaned up
 
-**Why:** Multiple users or terminals can run `/forge:go` simultaneously without corrupting each other's work. Each session gets an isolated copy of the codebase.
+**Why (when implemented):** Multiple users or terminals can run `/forge:go` simultaneously without corrupting each other's work. Each session gets an isolated copy of the codebase.
 
-**If worktree creation fails:** The engine falls back to running in the main working directory (original behavior). A warning is printed but execution continues.
+**Current behavior:** Execution runs in the main working directory. Avoid running multiple `/forge:go` sessions concurrently until worktree isolation is implemented.
 
 ### Step 3 — Create Agent Team + Execute Waves
 
@@ -156,6 +156,8 @@ Parse the milestone section from the PRD. Each milestone contains waves with age
    - Creates: file1, file2
    - Modifies: file3
 ```
+
+**If no wave definitions exist:** For milestones with fewer than 3 issues, treat the entire milestone as a single wave with one agent. For milestones with 3+ distinct issues, design waves that group related issues and respect dependencies (e.g., foundational work in Wave 1, dependent work in Wave 2, integration/testing in Wave 3).
 
 #### 3c. Execute Each Wave
 
@@ -320,8 +322,8 @@ When mechanical verification fails after a wave (or after reviewer fixes):
    ## Verification Failed After {N} Iterations
 
    ### Remaining Errors:
-   - types: src/go/executor.ts:42 — Type 'string' is not assignable to type 'number'
-   - lint: src/go/executor.ts:55 — Unused variable 'foo'
+   - types: src/gates/types.ts:42 — Type 'string' is not assignable to type 'number'
+   - lint: src/gates/lint.ts:55 — Unused variable 'foo'
 
    The self-healing loop could not resolve all errors.
    Please fix the remaining issues manually, then run `/forge:go` again.
@@ -385,7 +387,12 @@ Pass `--last` if this is the last milestone. Pass `--pr-url {url}` if a PR was c
 - If NOT last milestone: adds progress comments to milestone issues
 - If last milestone: transitions all project issues and the project to "In Review", adds PR link comments
 
-It degrades gracefully — if no API key or config, it exits silently.
+The CLI prints informational output about what it did or why it skipped:
+- Missing API key: `[forge] LINEAR_API_KEY not set, skipping Linear sync`
+- Missing teamId: `[forge] No linearTeamId in status file, skipping Linear sync`
+- On success: `[forge] Transitioning N issues to {state}`, `[forge] Updated project {id} to {state}`
+
+These messages are informational, not errors. The skill should continue execution regardless of the output.
 
 If no Linear project ID is found in either location, skip this step silently.
 
@@ -554,7 +561,7 @@ If a Linear project ID is found:
 npx forge linear-sync start --slug {slug} --milestone {number}
 ```
 
-This command programmatically transitions milestone issues to "In Progress" and the project to "In Progress". It degrades gracefully — if no API key or config, it exits silently.
+This command programmatically transitions milestone issues to "In Progress" and the project to "In Progress". The CLI prints informational output (e.g., `[forge] Transitioning N issues to In Progress` or `[forge] LINEAR_API_KEY not set, skipping Linear sync`). These are informational messages, not errors — continue execution regardless.
 
 If no Linear project ID is found, skip silently.
 
@@ -562,14 +569,14 @@ If no Linear project ID is found, skip silently.
 
 - **No PRD:** Abort with message to run `/forge:spec` first.
 - **No status files:** Same as no PRD — abort with message to run `/forge:spec` first.
-- **No waves in milestone:** The milestone section may not have structured wave definitions (e.g., it was written by hand without the spec engine). In this case, treat the entire milestone as a single wave with one agent whose task is the milestone's goal.
+- **No waves in milestone:** The milestone section may not have structured wave definitions (e.g., it was written by hand without the spec engine). For milestones with fewer than 3 issues, treat the entire milestone as a single wave with one agent whose task is the milestone's goal. For milestones with 3+ distinct issues, design waves that group related issues and respect dependencies.
 - **Agent failure:** If an agent in a wave fails (exits with error, times out), record the failure, include the error in the wave result, and proceed to verification. The self-healing loop may fix the issue.
 - **Branch diverged:** If `git push` fails due to divergence, attempt `git pull --rebase` first. If that fails, stop and ask the user.
 - **Interrupted execution:** If execution is interrupted mid-wave, the status files are NOT updated. Running `/forge:go` again will retry the same milestone from the beginning. Completed agents' work will be in the working tree — the new run's verification will detect what's already working. Shut down any remaining team members before retrying.
 - **Empty milestone section:** If the PRD has a milestone header but no content, abort with:
   > Milestone {N} has no wave definitions. Update the PRD with agent assignments before running /forge:go.
 - **Already on correct milestone:** If the status file's current milestone matches the target, proceed normally (this is the expected case).
-- **Worktree conflict:** If the worktree directory already exists (e.g., from a crashed session), the engine attempts `npx forge cleanup` first. If that fails, it falls back to main directory execution.
+- **Worktree conflict (future):** When session isolation is implemented, if the worktree directory already exists (e.g., from a crashed session), run `npx forge cleanup` first. If that fails, fall back to main directory execution.
 - **Linear auth fails:** Warn but continue execution. Linear sync is not blocking — the milestone should still execute and complete without Linear.
 - **Team creation fails:** If TeamCreate fails, fall back to the legacy Task-based agent spawning (fire-and-forget without SendMessage). Log a warning that review and consensus will be skipped.
 - **Reviewer timeout:** If the reviewer does not respond within 5 minutes, log a warning and proceed without review findings. Do not block wave progression on a stalled reviewer.

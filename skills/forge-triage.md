@@ -2,9 +2,28 @@
 
 Turn sticky notes, rambling thoughts, and unstructured ideas into organized Linear projects. Paste anything — bullet points, paragraphs, stream of consciousness — and this skill extracts distinct projects, deduplicates against your existing Linear backlog, and creates them after your confirmation.
 
+**This skill uses Linear MCP tools directly** (`mcp__linear__*`) for all Linear operations. Unlike `/forge:go` and `/forge:spec` (which call forge CLI commands), triage is a conversational skill that requires interactive feedback at every step — direct MCP tool access is the correct pattern here.
+
+## Prerequisites
+
+This skill requires **Linear MCP tools** to be configured in your Claude environment. If the tools are not available, Step 0 will detect this and provide setup instructions. The required tools are:
+
+- `mcp__linear__list_projects` — fetch existing projects for dedup
+- `mcp__linear__list_teams` — resolve team for project creation
+- `mcp__linear__create_project` — create confirmed projects
+
 ## Instructions
 
 Follow these steps exactly. Do not skip confirmation.
+
+### Step 0 — Resolve Team Configuration
+
+Read `.forge.json` from the project root. Check for the `linearTeam` field:
+
+- **If `linearTeam` is set** (non-empty string): store it as the configured team key. This will be used to auto-resolve the team in Step 5 and to scope project listing in Step 3.
+- **If `linearTeam` is empty or `.forge.json` does not exist**: no team is pre-configured. The skill will prompt for team selection in Step 5 if needed.
+
+This check is silent — do not print output unless there is an error reading the config.
 
 ### Step 1 — Collect Input
 
@@ -34,11 +53,13 @@ Rules for extraction:
 
 ### Step 3 — Deduplicate Against Linear
 
-Fetch existing projects from Linear:
+Fetch existing projects from Linear, scoped to the configured team:
 
 ```
-Use mcp__linear__list_projects to get all existing projects.
+Use mcp__linear__list_projects to get existing projects.
 ```
+
+If a `linearTeam` was resolved in Step 0, filter the returned projects to those belonging to the configured team. This prevents false duplicate matches against projects from other teams.
 
 For each extracted project, compare its name and description against existing projects. A project is a potential duplicate if:
 - The name is very similar (e.g., "Mobile Redesign" vs "Mobile App Redesign")
@@ -46,9 +67,9 @@ For each extracted project, compare its name and description against existing pr
 
 Mark duplicates with status `DUPLICATE` and reference the existing project name. Mark new projects with status `NEW`.
 
-If `mcp__linear__list_projects` fails (auth issue, Linear not configured), warn the user:
+If `mcp__linear__list_projects` fails (auth issue, Linear not configured, MCP tools unavailable), warn the user:
 
-> Could not connect to Linear to check for duplicates. Make sure your Linear MCP tools are configured. I'll proceed without dedup — you can review for duplicates manually.
+> Could not connect to Linear to check for duplicates. Make sure your Linear MCP tools are configured in your Claude environment (see [Linear MCP setup docs](https://linear.app/docs)). I'll proceed without dedup — you can review for duplicates manually.
 
 Then skip dedup and mark all projects as `NEW`.
 
@@ -83,7 +104,21 @@ Wait for the user's response. Apply any edits, removals, or clarifications. If t
 
 ### Step 5 — Create in Linear
 
-First, get the team ID (you only need to do this once):
+**Resolve the team:**
+
+If `linearTeam` was set in Step 0, resolve it to a team ID:
+
+```
+Use mcp__linear__list_teams to get available teams.
+```
+
+Match the configured `linearTeam` value against the returned teams by key or name. If a match is found, use that team automatically. If no match is found, warn:
+
+> The configured team "{linearTeam}" was not found in Linear. Available teams are listed below — pick one, or update `linearTeam` in `.forge.json`.
+
+Then present the available teams for selection.
+
+If `linearTeam` was NOT configured in Step 0:
 
 ```
 Use mcp__linear__list_teams to get available teams.
@@ -91,16 +126,25 @@ Use mcp__linear__list_teams to get available teams.
 
 If there is only one team, use it automatically. If there are multiple teams, ask the user which team to use.
 
+**Create projects:**
+
 For each confirmed NEW project (skip items marked DUPLICATE that the user did not override):
 
 ```
 Use mcp__linear__create_project with:
   - name: the project name
   - description: the project description
+  - teamIds: [the resolved team ID]
   - state: "backlog"
 ```
 
 If a project creation fails, report the error and continue with the remaining projects. Do not abort the entire batch for a single failure.
+
+If ALL project creations fail (e.g., auth expired, MCP tools not responding), print:
+
+> Linear project creation failed. Check that your Linear MCP tools are configured and your API key is valid. You can create these projects manually in Linear:
+>
+> {list each project name and description}
 
 After all projects are created, print a summary:
 
@@ -129,5 +173,7 @@ After creation, print:
 - **Single idea**: Create one project. The workflow still applies (confirm before creating).
 - **10+ ideas**: Process all of them. Group aggressively to avoid near-duplicates.
 - **All duplicates**: Report that all ideas already exist in Linear. Suggest reviewing existing projects.
-- **Linear auth fails**: Warn the user, skip dedup, but still attempt creation. If creation also fails, provide manual instructions.
+- **Linear MCP tools not configured**: Warn the user with setup instructions at the first point of failure (Step 3 or Step 5). Still extract and present projects — the user can create them manually.
+- **Linear auth fails mid-flow**: If dedup succeeds (Step 3) but creation fails (Step 5), print the project list in a copy-friendly format so the user can create them manually.
 - **Vague ideas**: Extract them with a clarification flag. Let the user decide whether to keep, clarify, or remove.
+- **Multiple teams with no config**: If `linearTeam` is not set in `.forge.json` and multiple teams exist, present a team picker. Suggest the user run `/forge:setup` or set `linearTeam` in `.forge.json` for future runs.

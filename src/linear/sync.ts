@@ -29,13 +29,25 @@ export async function syncMilestoneStart(
 
   // Transition milestone issues to inProgress
   const issueIds = ms.linearIssueIds ?? [];
-  for (const issueId of issueIds) {
-    await client.updateIssueState(issueId, stateId);
+  if (issueIds.length === 0) {
+    console.warn(
+      `[forge] No linearIssueIds for milestone "${milestone}" — skipping issue transitions`,
+    );
+  } else {
+    console.log(
+      `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.inProgress}"`,
+    );
+    for (const issueId of issueIds) {
+      await client.updateIssueState(issueId, stateId);
+    }
   }
 
-  // Transition project to inProgress (reuse stateId from above)
+  // Transition project to inProgress
   const projectId = status.linearProjectId;
   if (projectId) {
+    console.log(
+      `[forge] Updating project ${projectId} to "${config.linearStates.inProgress}"`,
+    );
     await client.updateProjectState(projectId, stateId);
   }
 }
@@ -70,8 +82,17 @@ export async function syncMilestoneComplete(
 
   // Transition milestone issues to done
   const issueIds = ms.linearIssueIds ?? [];
-  for (const issueId of issueIds) {
-    await client.updateIssueState(issueId, doneStateId);
+  if (issueIds.length === 0) {
+    console.warn(
+      `[forge] No linearIssueIds for milestone "${milestone}" — skipping issue transitions`,
+    );
+  } else {
+    console.log(
+      `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.done}"`,
+    );
+    for (const issueId of issueIds) {
+      await client.updateIssueState(issueId, doneStateId);
+    }
   }
 
   // If last milestone, transition project to inReview
@@ -81,6 +102,9 @@ export async function syncMilestoneComplete(
       const reviewStateId = await client.resolveStateId(
         teamId,
         config.linearStates.inReview,
+      );
+      console.log(
+        `[forge] Updating project ${projectId} to "${config.linearStates.inReview}" (last milestone)`,
       );
       await client.updateProjectState(projectId, reviewStateId);
     }
@@ -107,16 +131,30 @@ export async function syncProjectDone(
   );
 
   // Transition all issues across all milestones to done
-  for (const ms of Object.values(status.milestones)) {
+  let totalIssues = 0;
+  for (const [name, ms] of Object.entries(status.milestones)) {
     const issueIds = ms.linearIssueIds ?? [];
+    if (issueIds.length === 0) {
+      console.warn(
+        `[forge] No linearIssueIds for milestone "${name}" — skipping issue transitions`,
+      );
+      continue;
+    }
+    totalIssues += issueIds.length;
     for (const issueId of issueIds) {
       await client.updateIssueState(issueId, doneStateId);
     }
   }
+  console.log(
+    `[forge] Transitioned ${totalIssues} issue(s) across all milestones to "${config.linearStates.done}"`,
+  );
 
   // Transition project to done
   const projectId = status.linearProjectId;
   if (projectId) {
+    console.log(
+      `[forge] Updating project ${projectId} to "${config.linearStates.done}"`,
+    );
     await client.updateProjectState(projectId, doneStateId);
   }
 }
