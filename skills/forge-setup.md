@@ -46,25 +46,13 @@ Review the output. If `.forge.json` was created, read it and show the auto-detec
 If this is a Fresh Setup (or the user wants to reconfigure), ask about gate selection:
 
 <AskUserQuestion>
-question: "Which core gates should be active? (Recommended: all three)"
-header: "Core gates"
+question: "Which gates should be active? (Recommended: all three)"
+header: "Gates"
 multiSelect: true
 options:
   - "types — TypeScript type checking (tsc --noEmit) (Recommended)"
-  - "lint — ESLint / Biome linting (Recommended)"
+  - "lint — Biome linting (Recommended)"
   - "tests — Vitest / Jest test runner (Recommended)"
-  - "prd — PRD completeness check"
-</AskUserQuestion>
-
-<AskUserQuestion>
-question: "Enable any advanced gates? These require extra setup."
-header: "Advanced gates"
-multiSelect: true
-options:
-  - "visual — Playwright screenshot regression"
-  - "runtime — Start the app and check for crashes"
-  - "review — AI code review (runs during forge verify)"
-  - "codex — Codex PR review polling (runs after PR creation)"
 </AskUserQuestion>
 
 If the user's selections differ from the auto-detected gates in `.forge.json`, update the `gates` array in `.forge.json` to match their choices.
@@ -79,39 +67,15 @@ Run the doctor CLI to check for missing dependencies:
 npx forge doctor
 ```
 
-Review the output. If any checks show errors, help the user resolve them. If Playwright is missing and the user selected visual/runtime gates, offer to install it:
-
-<AskUserQuestion>
-question: "Playwright is not installed but visual/runtime gates require it. Install now?"
-options:
-  - "Yes — install Playwright + Chromium"
-  - "No — skip for now (visual and runtime gates will be unavailable)"
-</AskUserQuestion>
-
-If yes:
-
-```bash
-npm install -g playwright && npx playwright install chromium
-```
+Review the output. If any checks show errors, help the user resolve them.
 
 ### Step 5 — Verification
 
-Run the setup-safe gates to verify everything is working:
-
-| Gate | Why it's deferred |
-|------|-------------------|
-| `prd` | No PRD file exists until `/forge:spec` runs |
-| `visual` | Dev server may not be running |
-| `runtime` | Dev server may not be running |
-| `codex` | Post-PR only |
-
-Build the `--gate` flag from the user's selected gates, keeping **only** the setup-safe ones (`types`, `lint`, `tests`, `review`):
+Run verification to confirm everything works:
 
 ```bash
-npx forge verify --gate types,lint,tests
+npx forge verify
 ```
-
-(Include only gates the user selected that are in the setup-safe set.)
 
 **CRITICAL: NEVER remove a gate from `.forge.json` to make verification pass.** Deferred gates will be verified later during `/forge:go`.
 
