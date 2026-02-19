@@ -20,7 +20,7 @@
 
 ## What is forge-cc?
 
-forge-cc is a Claude Code plugin that turns your AI coding agent into an autonomous development team. You describe what you want to build. Forge breaks it into milestones, spins up parallel agent teams, verifies every line of code, creates the PR, gets it reviewed, and merges it -- all without you touching git.
+forge-cc is a Claude Code plugin that turns your AI coding agent into an autonomous development team. You describe what you want to build. Forge breaks it into milestones, spins up parallel agent teams in isolated worktrees, verifies every line of code through automated gates, and creates the PR -- all without you touching git.
 
 ```
 npm install -g forge-cc
@@ -30,31 +30,30 @@ npm install -g forge-cc
 
 ## The Workflow
 
-Four commands take you from raw idea to production-ready, merged code.
+Five skill commands take you from raw idea to production-ready, merged code.
 
 ```
- ┌──────────────────────────────────────────────────────────────────────────────────┐
- │                                                                                  │
- │   YOU HAVE AN IDEA            FORGE DOES THE REST                                │
- │                                                                                  │
- │   "We need auth,        ┌────────────┐  ┌────────────┐  ┌────────────┐          │
- │    a dashboard,         │            │  │            │  │            │          │
- │    and email            │  TRIAGE    ├──►   SPEC     ├──►    GO      │          │
- │    notifications"       │            │  │            │  │            │          │
- │                         └─────┬──────┘  └─────┬──────┘  └─────┬──────┘          │
- │                               │               │               │                 │
- │                         Creates Linear   Scans codebase   Agent teams            │
- │                         projects from    + interviews     build each             │
- │                         brain dump       you + generates  milestone              │
- │                                          PRD + milestones in parallel            │
- │                                                               │                 │
- │                                                               ▼                 │
- │                                                     ┌────────────────┐          │
- │                                                     │  VERIFY + PR   │          │
- │                                                     │  + CODE REVIEW │          │
- │                                                     └────────────────┘          │
- │                                                                                  │
- └──────────────────────────────────────────────────────────────────────────────────┘
+ +-----------------------------------------------------------------------------------+
+ |                                                                                   |
+ |   YOU HAVE AN IDEA            FORGE DOES THE REST                                 |
+ |                                                                                   |
+ |   "We need auth,        +-----------+  +-----------+  +-----------+               |
+ |    a dashboard,         |           |  |           |  |           |               |
+ |    and email            |  TRIAGE   +-->   SPEC    +-->    GO     |               |
+ |    notifications"       |           |  |           |  |           |               |
+ |                         +-----+-----+  +-----+-----+  +-----+-----+              |
+ |                               |              |              |                     |
+ |                         Creates Linear   Scans codebase   Agent teams             |
+ |                         projects from    + interviews     build each              |
+ |                         brain dump       you + generates  milestone               |
+ |                                          PRD + milestones in worktrees            |
+ |                                                              |                    |
+ |                                                              v                    |
+ |                                                    +----------------+             |
+ |                                                    |  VERIFY + PR   |             |
+ |                                                    +----------------+             |
+ |                                                                                   |
+ +-----------------------------------------------------------------------------------+
 ```
 
 ### `/forge:triage` -- Brain Dump to Backlog
@@ -70,70 +69,67 @@ Pick a project from Linear. Forge scans your codebase in parallel (structure, ro
 This is the engine. Each milestone is executed by an autonomous agent team:
 
 ```
- ┌─────────────────────────────────────────────────────────────────────┐
- │  EXECUTIVE  (orchestrator)                                         │
- │  Plans waves, assigns tasks, resolves escalations                  │
- ├─────────────────────────────────────────────────────────────────────┤
- │  REVIEWER  (persistent across all waves)                           │
- │  Reviews diff against PRD after each wave                          │
- │  Findings go through consensus protocol with builders              │
- ├────────────────────┬────────────────────┬───────────────────────────┤
- │  BUILDER 1         │  BUILDER 2         │  BUILDER N ...            │
- │  Parallel agents   │  Parallel agents   │  Each gets a task,        │
- │  within each wave  │  within each wave  │  writes + tests code      │
- └────────────────────┴────────────────────┴───────────────────────────┘
+ +---------------------------------------------------------------------+
+ |  EXECUTIVE  (orchestrator)                                          |
+ |  Plans waves, assigns tasks, resolves escalations                   |
+ +---------------------------------------------------------------------+
+ |  REVIEWER  (persistent across all waves)                            |
+ |  Reviews diff against PRD after each wave                           |
+ |  Findings go through consensus protocol with builders               |
+ +-------------------+-------------------+-----------------------------+
+ |  BUILDER 1        |  BUILDER 2        |  BUILDER N ...              |
+ |  Parallel agents  |  Parallel agents  |  Each gets a task,          |
+ |  within each wave |  within each wave |  writes + tests code        |
+ +-------------------+-------------------+-----------------------------+
+ |  NOTETAKER  (optional, for 3+ waves or 4+ agents)                   |
+ |  Tracks decisions, file ownership, cross-agent dependencies         |
+ +---------------------------------------------------------------------+
 ```
 
 **What happens during execution:**
 
 ```
-  Wave 1  ─►  Verify  ─►  Review  ─►  Fix  ─►  Wave 2  ─►  ...  ─►  PR  ─►  Merge
-    │            │           │          │
-    │            │           │          └─ Fix agents spawn for accepted findings
-    │            │           └─ Reviewer + builders reach consensus on issues
-    │            └─ Types + lint + tests run automatically (self-healing loop)
-    └─ Parallel builder agents execute independent tasks
+  Wave 1  ->  Verify  ->  Review  ->  Fix  ->  Wave 2  ->  ...  ->  PR
+    |            |           |          |
+    |            |           |          +-- Fix agents spawn for accepted findings
+    |            |           +-- Reviewer + builders reach consensus on issues
+    |            +-- Types + lint + tests run automatically (self-healing loop)
+    +-- Parallel builder agents execute independent tasks
 ```
 
-After the final wave passes all gates + review, forge creates the PR, waits for Codex review comments, and spawns fix agents for any findings. The PR is left for the user to merge.
+The agent team architecture is skill-driven (defined in `/forge:go` markdown), not baked into the TypeScript codebase. This makes the orchestration pattern easy to modify.
 
-### `npx forge run` -- Auto-Chain Everything
+### `npx forge run` -- Auto-Chain Milestones
 
-Run all remaining milestones autonomously. Each gets a fresh Claude session (no context rot), with stall detection that stops on failure. Independent milestones run in parallel.
+Run all remaining milestones for a PRD autonomously via the Ralph loop. Each milestone gets a fresh Claude session (no context degradation), spawned in an isolated worktree. On verification failure, the loop retries up to `maxIterations` times before stopping.
+
+### `/forge:setup` and `/forge:update`
+
+`/forge:setup` initializes a project: auto-detects your stack, creates `.forge.json`, installs skills and hooks, and scaffolds planning directories. `/forge:update` checks for newer forge-cc versions and upgrades.
 
 ---
 
 ## Verification Gates
 
-Not just "run tests." Forge runs **8 verification gates** that catch what tests alone can't:
+Forge runs **3 verification gates** that catch issues before code ships:
 
 ```
- ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
- │  TYPES   │  │   LINT   │  │  TESTS   │  │  VISUAL  │
- │ tsc      │  │ biome    │  │ vitest/  │  │ 3-viewport│
- │ --noEmit │  │ check    │  │ jest     │  │ screenshots│
- └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘
-      │              │              │              │
-      ▼              ▼              ▼              ▼
- ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
- │ RUNTIME  │  │   PRD    │  │  REVIEW  │  │  CODEX   │
- │ endpoint │  │ acceptance│  │ AI code  │  │ post-PR  │
- │ checks   │  │ criteria │  │ review   │  │ review   │
- └──────────┘  └──────────┘  └──────────┘  └──────────┘
+ +----------+     +----------+     +----------+
+ |  TYPES   |     |   LINT   |     |  TESTS   |
+ |  tsc     |     |  biome   |     |  vitest/ |
+ | --noEmit |     |  check   |     |  jest    |
+ +----------+     +----------+     +----------+
 ```
 
 | Gate | What it catches |
 |------|----------------|
-| **types** | Compilation errors, type mismatches |
-| **lint** | Style violations, dead imports, code smells |
-| **tests** | Broken behavior, regressions |
-| **visual** | UI regressions across desktop, tablet, and mobile viewports |
-| **runtime** | Crashed endpoints, wrong status codes, malformed responses |
-| **prd** | Missing features, acceptance criteria drift |
-| **review** | Logic errors, missing edge cases, architectural issues |
-| **codex** | Post-PR findings from GitHub's Codex reviewer |
+| **types** | Compilation errors, type mismatches (`tsc --noEmit`) |
+| **lint** | Style violations, dead imports, code smells (`biome check`) |
+| **tests** | Broken behavior, regressions (`vitest` or `jest`) |
 
-**Self-healing:** When a gate fails, forge parses the errors into structured remediation (file, line, message, fix hint) and spawns a fix agent. This loops up to 5 times before stopping -- most failures resolve automatically.
+Gates run sequentially with configurable per-gate timeouts (default 2 minutes each). Results are cached to `.forge/last-verify.json`.
+
+**Self-healing (Ralph loop):** When a gate fails during `forge run`, the errors are fed back to Claude as structured context -- file path, line number, error message. Claude fixes the issues and re-runs verification. This loops up to `maxIterations` (default 5) times before stopping. Most failures resolve automatically.
 
 ---
 
@@ -142,14 +138,16 @@ Not just "run tests." Forge runs **8 verification gates** that catch what tests 
 Forge manages your Linear project lifecycle end-to-end. Every state transition happens automatically as work progresses:
 
 ```
- Linear State:    Backlog  ──►  Planned  ──►  In Progress  ──►  In Review  ──►  Done
-                     │             │               │                │              │
- Forge Action:    triage       /forge:spec      /forge:go       PR created     user merges
-                  creates      generates PRD,   executes        after final    when ready
-                  projects     syncs milestones milestone       verification
+ Linear State:    Backlog  -->  Planned  -->  In Progress  -->  In Review  -->  Done
+                     |             |               |                |              |
+ Forge Action:    triage       /forge:spec      /forge:go       /forge:go       user merges,
+                  creates      generates PRD,   starts           last milestone  runs
+                  projects     syncs milestones milestone        completes       linear-sync done
 ```
 
-Set `FORGE_LINEAR_API_KEY` in your environment to enable. Forge creates projects, milestones, and issues during spec, transitions them through states during execution, and marks them done when the PR merges.
+State names are configurable via `linearStates` in `.forge.json` (default: "Planned", "In Progress", "In Review", "Done").
+
+Set `LINEAR_API_KEY` in your environment to enable. Forge creates projects, milestones, and issues during spec, transitions them through states during execution, and marks them done when the user merges the PR.
 
 ---
 
@@ -158,18 +156,18 @@ Set `FORGE_LINEAR_API_KEY` in your environment to enable. Forge creates projects
 You never touch git. Forge handles the entire branch lifecycle:
 
 ```
- main ─────────────────────────────────────────────────────► main (updated)
-   │                                                            ▲
-   └──► feat/auth ──► worktree 1 ──► wave 1..N ──► PR ──► merge + cleanup
-   │                                                 │
-   └──► feat/dashboard ──► worktree 2 ──► (parallel) ┘
+ main -----------------------------------------------------------> main (updated)
+   |                                                                    ^
+   +---> feat/my-project ---> worktree m1 ---> wave 1..N ---> merge ---+
+                          |                                     |
+                          +---> worktree m2 ---> (sequential)---+
 ```
 
-**Session isolation** -- Each milestone runs in its own git worktree (`../.forge-wt/<repo>/<session>/`). Parallel agents can't corrupt each other's git index. Multiple milestones can execute simultaneously on the same repo.
+**Worktree isolation** -- Each milestone runs in its own git worktree at `../.forge-wt/<repo>/<slug>-m<N>/`. Parallel agents within a wave share the worktree, but separate milestones get separate worktrees. Merges back to the feature branch use `--ff-only`.
 
-**Automatic cleanup** -- When a milestone finishes, its worktree and branch are deleted. When a PR merges, `npx forge cleanup` prunes the local branch. Crashed sessions are detected by PID and cleaned up. Protected branches (`main`, `master`) are never touched.
+**Minimal footprint** -- Worktree management is 3 functions (~50 lines): `createWorktree`, `mergeWorktree`, `removeWorktree`. No session registry, no parallel scheduler, no sessions.json.
 
-**Cross-platform** -- Windows path limits handled with 8-char hex session IDs. Atomic file writes use retry-on-rename for Windows file locking.
+**Automatic cleanup** -- When a milestone finishes (pass or fail), its worktree is removed. Protected branches (`main`, `master`) are never committed to directly.
 
 ---
 
@@ -182,11 +180,14 @@ npm install -g forge-cc
 # 2. Set up your project
 npx forge setup
 
-# 3. Start building
-# /forge:triage  →  /forge:spec  →  /forge:go
+# 3. (Optional) Set Linear API key for project management
+export LINEAR_API_KEY="lin_api_..."
+
+# 4. Start building
+# /forge:triage  ->  /forge:spec  ->  /forge:go
 ```
 
-`forge setup` auto-detects your stack (TypeScript, Biome, test runner), creates `.forge.json`, installs enforcement hooks, and scaffolds planning directories. Run `npx forge doctor` anytime to check your environment.
+`forge setup` auto-detects your stack (TypeScript, Biome, test runner), creates `.forge.json`, installs enforcement hooks, syncs skill files to `~/.claude/commands/forge/`, and updates your `CLAUDE.md`. Run `npx forge doctor` anytime to check your environment.
 
 ### Configuration
 
@@ -196,50 +197,89 @@ npx forge setup
 {
   "gates": ["types", "lint", "tests"],
   "maxIterations": 5,
-  "linearProject": "My Project"
+  "linearTeam": "ENG"
 }
 ```
 
 <details>
-<summary><b>Full configuration options</b></summary>
+<summary><b>Full configuration reference</b></summary>
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `gates` | `["types","lint","tests"]` | Which verification gates to run |
-| `maxIterations` | `5` | Max self-healing retry loops |
-| `verifyFreshness` | `600000` | Cache validity (ms, default 10min) |
-| `devServer.command` | -- | Start command for visual/runtime gates |
-| `devServer.port` | -- | Dev server port |
-| `devServer.readyPattern` | -- | Stdout pattern for server ready |
-| `prdPath` | -- | PRD path for acceptance criteria gate |
-| `linearProject` | -- | Linear project name for lifecycle sync |
-| `review.blocking` | `false` | Whether review findings block the pipeline |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `gates` | `string[]` | `["types", "lint", "tests"]` | Which verification gates to run |
+| `gateTimeouts` | `Record<string, number>` | `{}` | Per-gate timeout in ms (default 120000 per gate) |
+| `maxIterations` | `number` | `5` | Max Ralph loop retry iterations |
+| `linearTeam` | `string` | `""` | Linear team key or name for lifecycle sync |
+| `linearStates` | `object` | see below | Custom Linear state names |
+| `verifyFreshness` | `number` | `600000` | Verify cache validity in ms (default 10 min) |
+| `forgeVersion` | `string` | `"1.0.0"` | Version stamp from setup (used by version-check hook) |
 
-**Environment:** Set `FORGE_LINEAR_API_KEY` to enable Linear integration.
+**`linearStates` defaults:**
+
+```json
+{
+  "planned": "Planned",
+  "inProgress": "In Progress",
+  "inReview": "In Review",
+  "done": "Done"
+}
+```
+
+**Environment:** Set `LINEAR_API_KEY` to enable Linear integration.
 
 </details>
 
-### CLI
+---
+
+## CLI Reference
 
 ```bash
-npx forge verify              # Run all gates
-npx forge verify --gate types # Run specific gates
-npx forge status              # Branch, config, last verification
-npx forge doctor              # Environment health check
-npx forge cleanup             # Prune stale worktrees + branches
-npx forge run                 # Auto-chain all milestones
+# Verification
+npx forge verify                    # Run all configured gates
+npx forge verify --gate types,lint  # Run specific gates
+npx forge verify --json             # Output results as JSON
+
+# Milestone execution
+npx forge run --prd <slug>          # Auto-chain all milestones for a PRD
+
+# Status
+npx forge status                    # Show PRD progress across all projects
+
+# Setup & maintenance
+npx forge setup                     # Initialize forge for a project
+npx forge setup --skills-only       # Only sync skill files
+npx forge doctor                    # Environment health check
+npx forge update                    # Check for and install updates
+
+# Linear sync (used by skills, can also be called directly)
+npx forge linear-sync start --slug <slug> --milestone <n>
+npx forge linear-sync complete --slug <slug> --milestone <n> [--last] [--pr-url <url>]
+npx forge linear-sync done --slug <slug>
+npx forge linear-sync list-issues --slug <slug>
 ```
+
+### Skill Commands
+
+Skills are Claude Code slash commands installed to `~/.claude/commands/forge/`:
+
+| Skill | Description |
+|-------|-------------|
+| `/forge:triage` | Brain dump to Linear projects -- extracts, deduplicates, creates |
+| `/forge:spec` | Linear project to PRD with milestones -- scans codebase, interviews, generates |
+| `/forge:go` | Execute milestones with wave-based agent teams -- build, verify, review, PR |
+| `/forge:setup` | Run project scaffolding -- config, hooks, skills, CLAUDE.md |
+| `/forge:update` | Check for updates and upgrade forge-cc |
 
 ### Enforcement Hooks
 
-Forge installs two Claude Code hooks automatically during setup:
+Forge installs two Claude Code hooks during setup:
 
-- **Pre-commit hook** -- Blocks commits that haven't passed verification. Checks branch protection, cache freshness, and gate results.
-- **Version check hook** -- Non-blocking notice when a newer forge-cc version is available.
+- **Pre-commit hook** (`pre-commit-verify.js`) -- Blocks commits that haven't passed verification. Checks branch protection (no direct commits to main/master), verify cache freshness, and `result === 'PASSED'` in `.forge/last-verify.json`.
+- **Version check hook** (`version-check.js`) -- Non-blocking notice when a newer forge-cc version is available or when project setup is stale.
 
 ### MCP Server
 
-Expose gates as MCP tools for programmatic access:
+Expose the verification pipeline as an MCP tool for programmatic access:
 
 ```json
 {
@@ -252,6 +292,15 @@ Expose gates as MCP tools for programmatic access:
 }
 ```
 
+**Tool:** `forge_run_pipeline`
+
+| Input | Type | Description |
+|-------|------|-------------|
+| `projectDir` | `string?` | Project directory (defaults to cwd) |
+| `gates` | `string[]?` | Filter to specific gates |
+
+Returns the full pipeline result as JSON (result status, per-gate pass/fail, errors with file/line/message).
+
 ---
 
 ## How It's Different
@@ -259,16 +308,48 @@ Expose gates as MCP tools for programmatic access:
 | Without forge | With forge |
 |--------------|-----------|
 | Agent writes code, you review everything | Agent teams build, verify, review, and fix their own code |
-| Manual git branching, PRs, merges | Automatic branches, worktrees, and PRs |
-| "Tests pass" = done | 8 gates including visual regression, PRD compliance, and AI code review |
+| Manual git branching, PRs, merges | Automatic worktrees, branches, and PRs |
+| "Tests pass" = done | 3 gates: types + lint + tests, with self-healing retry loop |
 | One agent, one task, serial | Parallel agent teams with wave-based execution |
 | Context rot across long sessions | Fresh session per milestone, no degradation |
-| Linear updated manually | Bidirectional sync -- forge moves issues through your pipeline |
+| Linear updated manually | Automatic state transitions through your pipeline |
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><b>Common issues</b></summary>
+
+### `forge run` fails when invoked from within Claude Code
+
+Forge strips the `CLAUDECODE` environment variable before spawning `claude` subprocesses. Claude Code uses this variable to detect nested sessions and blocks them. If `forge run` hangs or exits immediately, ensure you're running it from a terminal, not from inside an active Claude Code session. When invoked via the `/forge:go` skill, this is handled automatically.
+
+### Pre-commit hook blocks commits
+
+The pre-commit hook requires a passing verification cached in `.forge/last-verify.json`. Run `npx forge verify` to populate the cache. The cache expires after `verifyFreshness` ms (default 10 minutes).
+
+### Linear sync runs but does nothing
+
+If `forge linear-sync` produces no output, check:
+1. `LINEAR_API_KEY` is set in your environment
+2. Your `.planning/status/<slug>.json` has `linearTeamId` and `linearProjectId` populated (these are set during `/forge:spec`)
+3. Run `npx forge doctor` to validate the API key and team configuration
+
+### `forge run` on Windows
+
+On Windows, to locate the globally installed `forge-cc` package programmatically, use `process.env.APPDATA + '/npm/node_modules/forge-cc'`. Don't use bash path traversal -- backslash escaping breaks (the `\n` in `npm\node_modules` is interpreted as a newline).
+
+### Doctor says checks failed
+
+Run `npx forge doctor` to see which checks fail. Required: Node.js >= 18 and git. Optional: `gh` CLI (for PR workflows), `LINEAR_API_KEY` (for Linear integration).
+
+</details>
 
 ---
 
 <details>
-<summary><h2>Agent & Contributor Reference</h2></summary>
+<summary><h2>Architecture & Contributor Reference</h2></summary>
 
 ### Project Structure
 
@@ -278,21 +359,79 @@ forge-cc/
     cli.ts              # CLI entry (npx forge)
     server.ts           # MCP server (stdio transport)
     types.ts            # Core types
-    gates/              # Verification gates + remediation
-    config/             # .forge.json schema + auto-detection
-    linear/             # Linear API client + lifecycle
-    hooks/              # Pre-commit enforcement
-    reporter/           # Human + JSON output formatting
-    state/              # Session state reader/writer
-    spec/               # Spec engine (scanner, interview, generator)
-    go/                 # Execution engine (verify loop, auto-chain, finalize)
-    setup/              # Project scaffolding templates
-    worktree/           # Worktree manager, session registry, state merge
-    utils/              # Platform utilities (atomic writes, paths)
-  skills/               # Claude Code skill definitions
-  hooks/                # Installable hook files
+    doctor.ts           # Environment health checks
+    setup.ts            # Project scaffolding
+    config/
+      loader.ts         # .forge.json reader + auto-detection
+      schema.ts         # Zod schema for .forge.json
+    gates/
+      index.ts          # Gate registry + pipeline runner
+      types-gate.ts     # TypeScript gate (tsc --noEmit)
+      lint-gate.ts      # Lint gate (biome check)
+      tests-gate.ts     # Tests gate (vitest/jest)
+    linear/
+      client.ts         # @linear/sdk wrapper (team-scoped)
+      sync.ts           # Linear state transitions
+    runner/
+      loop.ts           # Ralph loop executor
+      prompt.ts         # Prompt builder + PRD section extractor
+      update.ts         # Version check
+    state/
+      status.ts         # PRD status CRUD
+      cache.ts          # Verify cache writer
+    worktree/
+      manager.ts        # createWorktree, mergeWorktree, removeWorktree
+  skills/               # Claude Code skill definitions (markdown)
+  hooks/                # Installable hooks (pre-commit, version-check)
   tests/                # Test suite (vitest)
 ```
+
+### Design Decisions
+
+**Skill-driven orchestration.** The agent team architecture (executive, reviewer, builders, notetaker) is defined in skill markdown files, not in TypeScript. This means the orchestration pattern can be modified by editing a markdown file -- no code changes, no builds.
+
+**File system as memory.** Milestones communicate through `.planning/status/<slug>.json` files and the PRD itself. No in-memory state is passed between milestones. This enables the "fresh process per milestone" pattern that avoids context degradation.
+
+**Minimal worktree management.** Three functions, ~50 lines. No session registry, no parallel DAG scheduler. Worktrees are created at `../.forge-wt/<repo>/<slug>-m<N>/` and cleaned up after each milestone.
+
+**Gate pipeline, not gate tree.** Gates run sequentially, not in parallel. This is intentional -- types must pass before lint makes sense, lint before tests. Per-gate timeouts (default 2 minutes) prevent hangs.
+
+### Extension Points
+
+**Adding a gate:** Create a new file in `src/gates/` implementing the `Gate` interface (`name: string`, `run: (projectDir: string) => Promise<GateResult>`). Register it in `src/cli.ts` and `src/server.ts` with `registerGate()`.
+
+**Custom Linear states:** Override the default state names in `.forge.json`:
+
+```json
+{
+  "linearStates": {
+    "planned": "Todo",
+    "inProgress": "Doing",
+    "inReview": "Review",
+    "done": "Complete"
+  }
+}
+```
+
+**Custom gate timeouts:** Set per-gate timeouts in milliseconds:
+
+```json
+{
+  "gateTimeouts": {
+    "tests": 300000
+  }
+}
+```
+
+### Key Lessons Learned
+
+These lessons were learned during forge-cc's own development and are baked into the workflow:
+
+- **Milestone sizing matters.** Every milestone must be completable in one agent context window. If it's too large, split it. The `/forge:spec` skill enforces this.
+- **No compaction chaining.** Never rely on Claude Code's context compaction for multi-milestone execution. Fresh processes per milestone (via `forge run`) are the correct pattern -- the file system is the only memory between iterations.
+- **Restage at wave boundaries.** Parallel builder agents can disrupt each other's git index. Restage all files at wave boundaries.
+- **Verify between waves.** Run `tsc --noEmit` between every wave, not just at the end. Catches cross-agent integration issues early.
+- **Silent failure is a bug.** CLI commands that touch external systems must print what they did or why they skipped. No-output-as-success is not acceptable.
 
 ### Development
 
@@ -300,34 +439,11 @@ forge-cc/
 npm install          # Dependencies
 npm run build        # Build
 npm test             # Tests
-npm run dev          # Watch mode
+npx tsc --noEmit     # Type check
 npx forge verify     # Self-verify
 ```
 
-**Stack:** TypeScript (ES2022 strict), Node.js 18+, MCP SDK, Commander, Playwright, Zod, Vitest
-
-### Agent Team Architecture
-
-During `/forge:go`, forge creates a 3-tier agent team:
-
-- **Executive** -- The orchestrator. Plans waves, assigns tasks, manages state, resolves deadlocks.
-- **Reviewer** -- Persistent Opus agent. Examines diff after each wave against PRD acceptance criteria. Sends structured findings (file/line/message/remediation). Participates in consensus protocol with builders.
-- **Builders** -- Parallel Opus agents, one per task. Full-capability (file editing, git, shell). Can spawn subagents for research. Stage only their files.
-- **Notetaker** -- Optional, spawned for 3+ waves or 4+ agents per wave. Tracks decisions, file ownership, cross-agent dependencies.
-
-**Consensus protocol:** Reviewer sends findings to builders. Builders respond agree/disagree/propose alternative. Up to 2 rounds of back-and-forth. Deadlocks escalate to executive.
-
-### Gate Pipeline Details
-
-Gates run in configured order. If all core gates (types, lint, tests) fail, remaining gates are skipped. Each gate has a 2-minute timeout. Results are cached per-branch to `.forge/verify-cache/<branch>.json`.
-
-The self-healing loop parses failures into structured remediation templates -- each error includes file path, line number, error message, and a specific fix hint. Fix agents receive only the errors to fix, keeping context minimal and focused.
-
-### Worktree Internals
-
-Each session creates a worktree at `../.forge-wt/<repo>/<session-id>/` branching from the feature branch. Active sessions are tracked in `.forge/sessions.json`. On completion, the worktree branch merges back to the feature branch, then the worktree and its branch are deleted.
-
-The parallel scheduler analyzes milestone `dependsOn` fields, builds a DAG, detects cycles, and groups independent milestones into parallel waves that execute simultaneously in separate worktrees.
+**Stack:** TypeScript (ES2022 strict), Node.js 18+, MCP SDK, Commander, Zod, Vitest
 
 </details>
 

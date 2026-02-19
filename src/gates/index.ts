@@ -1,126 +1,78 @@
-import type { GateResult, PipelineInput, PipelineResult } from "../types.js";
-import { closeBrowser } from "../utils/browser.js";
-import { verifyTypes } from "./types-gate.js";
-import { verifyLint } from "./lint-gate.js";
-import { verifyTests } from "./tests-gate.js";
-import { verifyVisual } from "./visual-gate.js";
-import { verifyRuntime } from "./runtime-gate.js";
-import { verifyPrd } from "./prd-gate.js";
-import { verifyReview } from "./review-gate.js";
+import type { ForgeConfig, GateResult, PipelineResult } from "../types.js";
 
-/** Gate registry -- maps gate name to its function */
-export const gateRegistry: Record<string, (input: PipelineInput) => Promise<GateResult>> = {
-  types: (input) => verifyTypes(input.appDir ?? input.projectDir),
-  lint: (input) => verifyLint(input.appDir ?? input.projectDir),
-  tests: (input) => verifyTests(input.appDir ?? input.projectDir, { configRoot: input.projectDir }),
-  visual: (input) => verifyVisual(input.appDir ?? input.projectDir, input.pages ?? [], {
-    devServerCommand: input.devServerCommand,
-    devServerPort: input.devServerPort,
-  }),
-  runtime: (input) => verifyRuntime(input.appDir ?? input.projectDir, input.apiEndpoints ?? [], {
-    devServerCommand: input.devServerCommand,
-    devServerPort: input.devServerPort,
-  }),
-  prd: (input) => verifyPrd(input.projectDir, input.prdPath ?? "", input.baseBranch),
-  review: (input) => verifyReview(input.projectDir, {
-    prdPath: input.prdPath,
-    baseBranch: input.baseBranch,
-    blocking: input.reviewBlocking,
-  }),
-};
+/** A single verification gate. */
+export interface Gate {
+  name: string;
+  run: (projectDir: string) => Promise<GateResult>;
+}
 
-/** Run the full verification pipeline */
-export async function runPipeline(input: PipelineInput): Promise<PipelineResult> {
-  const {
-    gates: requestedGates,
-    maxIterations = 3,
-  } = input;
+const registry = new Map<string, Gate>();
 
-  // Determine which gates to run
-  const gatesToRun = requestedGates ?? ["types", "lint", "tests"];
+/** Register a gate in the global registry. */
+export function registerGate(gate: Gate): void {
+  registry.set(gate.name, gate);
+}
+
+/** List all registered gate names in insertion order. */
+export function listGates(): string[] {
+  return [...registry.keys()];
+}
+
+/** Clear all registered gates (for testing). */
+export function clearGates(): void {
+  registry.clear();
+}
+
+/** Run the verification pipeline: execute configured gates sequentially with per-gate timeouts. */
+export async function runPipeline(
+  config: ForgeConfig,
+  projectDir: string,
+): Promise<PipelineResult> {
+  const start = Date.now();
   const results: GateResult[] = [];
+  const defaultTimeout = 120_000;
 
-  try {
-    for (const gateName of gatesToRun) {
-      const gateFn = gateRegistry[gateName];
-      if (!gateFn) {
-        // Gates like "codex" are post-PR only and handled outside the pipeline.
-        // Treat them as a skip with a warning, not a hard failure.
-        results.push({
-          gate: gateName,
-          passed: true,
-          errors: [],
-          warnings: [`Gate "${gateName}" is not in the verify pipeline — skipped`],
-          duration_ms: 0,
-        });
-        continue;
-      }
-
-      const result = await runGateSafe(gateName, () => gateFn(input));
-      results.push(result);
-
-      // Early exit: if all core gates (types, lint, tests) fail, skip remaining
-      const coreGates = results.filter(r => ["types", "lint", "tests"].includes(r.gate));
-      if (coreGates.length === 3 && coreGates.every(r => !r.passed)) {
-        // Add skipped gates
-        for (const remaining of gatesToRun.slice(gatesToRun.indexOf(gateName) + 1)) {
-          results.push({
-            gate: remaining,
-            passed: false,
-            errors: [],
-            warnings: ["Skipped due to core gate failures"],
-            duration_ms: 0,
-          });
-        }
-        break;
-      }
+  for (const gateName of config.gates) {
+    const gate = registry.get(gateName);
+    if (!gate) {
+      results.push({
+        gate: gateName,
+        passed: false,
+        errors: [{ file: "", line: 0, message: `Gate "${gateName}" not registered` }],
+        durationMs: 0,
+      });
+      continue;
     }
-  } finally {
-    try { await closeBrowser(); } catch { /* non-fatal */ }
+
+    const timeout = config.gateTimeouts[gateName] ?? defaultTimeout;
+    const gateStart = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const result = await Promise.race([
+        gate.run(projectDir),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error(`Gate "${gateName}" timed out after ${timeout}ms`)), timeout);
+        }),
+      ]);
+      results.push(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      results.push({
+        gate: gateName,
+        passed: false,
+        errors: [{ file: "", line: 0, message }],
+        durationMs: Date.now() - gateStart,
+      });
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
-  const passed = results.every(g => g.passed);
-
+  const allPassed = results.every((r) => r.passed);
   return {
-    passed,
-    iteration: 1,
-    maxIterations,
+    result: allPassed ? "PASSED" : "FAILED",
     gates: results,
-    report: "", // Reporter agent in Wave 2 will handle this
+    durationMs: Date.now() - start,
   };
 }
-
-const GATE_TIMEOUT_MS = 120_000; // 2 minutes per gate
-
-async function runGateSafe(name: string, fn: () => Promise<GateResult>): Promise<GateResult> {
-  const start = Date.now();
-  try {
-    const result = await Promise.race([
-      fn(),
-      new Promise<never>((_, reject) =>
-        globalThis.setTimeout(() => reject(new Error(`Gate "${name}" timed out after ${GATE_TIMEOUT_MS / 1000}s`)), GATE_TIMEOUT_MS),
-      ),
-    ]);
-    return result;
-  } catch (err) {
-    const duration = Date.now() - start;
-    const message = err instanceof Error ? err.message : String(err);
-    const isTimeout = message.includes("timed out");
-    return {
-      gate: name,
-      passed: false,
-      errors: [{ message: isTimeout ? message : `Gate "${name}" crashed: ${message}` }],
-      warnings: [],
-      duration_ms: duration,
-    };
-  }
-}
-
-// Re-export individual gates for direct use
-export { verifyTypes } from "./types-gate.js";
-export { verifyLint } from "./lint-gate.js";
-export { verifyTests } from "./tests-gate.js";
-export { verifyVisual, captureBeforeSnapshots, clearBeforeSnapshots } from "./visual-gate.js";
-export { verifyRuntime } from "./runtime-gate.js";
-export { verifyPrd } from "./prd-gate.js";
-export { verifyReview } from "./review-gate.js";

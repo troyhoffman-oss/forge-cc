@@ -35,30 +35,30 @@ Wait for the user's selection before continuing.
 
 ### Step 2 — Scan the Codebase
 
-Run 3 parallel codebase scan agents using the Task tool. Each agent should use the scanner module at `src/spec/scanners.ts`:
+Run 3 parallel codebase scan agents using the Task tool (subagent_type: Explore):
 
 **Agent 1 — Structure Scanner:**
 ```
-Scan the project directory for framework, language, config files, dependencies, and key files.
-Use the scanStructure() function from the scanner module.
-Report the StructureScanResult.
+Use Glob and Read tools to scan for: package.json, tsconfig.json, .env*, config files, key directories (src/, app/, pages/, lib/).
+Report: framework, language, dependencies, project structure, build tools.
 ```
 
 **Agent 2 — Routes/UI Scanner:**
 ```
-Scan for route files, pages, API routes, layouts, and routing framework.
-Use the scanRoutes() function from the scanner module.
-Report the RoutesScanResult.
+Use Glob and Grep tools to scan for: route files, pages, layouts, navigation components, route definitions.
+Look in common locations: src/app/, src/pages/, src/routes/, app/, pages/.
+Grep for route patterns (e.g., "createBrowserRouter", "Route", "router.", "app.get", "app.post").
+Report: routing framework, page count, API route count, layout structure.
 ```
 
 **Agent 3 — Data/APIs Scanner:**
 ```
-Scan for API endpoints, database files, env files, external services, and schema files.
-Use the scanDataAPIs() function from the scanner module.
-Report the DataAPIsScanResult.
+Use Glob and Grep tools to scan for: API endpoints, database files (schema.prisma, migrations/, models/), env files (.env*), external service configs, ORM setup, SDK clients.
+Grep for patterns like "fetch(", "axios", "prisma.", "mongoose.", "createClient".
+Report: database type, API patterns, external integrations, auth setup.
 ```
 
-Combine the results into a `ScanAllResult`. Print a brief summary:
+Combine the results into a plain-text summary. Print a brief overview:
 
 ```
 ## Codebase Scan Complete
@@ -75,7 +75,7 @@ If the current working directory does not look like a project (no package.json, 
 
 ### Step 3 — LLM-Driven Adaptive Interview
 
-You (the LLM) drive the interview. The interview engine (`src/spec/interview.ts`) is a state tracker and coverage analyzer — you decide what to ask and when to stop. Use `createInterview()` to initialize state, `addQuestion()` to register each question you ask, `recordAnswer()` to record responses, and `getCoverageAnalysis()` to assess coverage gaps.
+You (the LLM) drive the interview directly. Track coverage mentally across the 5 sections. No TypeScript state tracking — you are the state tracker.
 
 The interview covers 5 sections:
 
@@ -87,16 +87,14 @@ The interview covers 5 sections:
 
 **Interview Loop — You Drive:**
 
-1. Initialize interview state with `createInterview(projectName, scanResults)`
-2. Start with a broad opening question for Problem & Goals, informed by scan results
-3. After each answer:
+1. Start with a broad opening question for Problem & Goals, informed by scan results
+2. After each answer:
    - Assess coverage gaps mentally (which topics are uncovered? which answers were vague?)
    - Generate the next question based on: scan results, all prior Q&A, what's still ambiguous
    - Probe deeper on vague or short answers — don't accept "TBD" or one-liners for important topics
    - Move to the next section when the current one has thorough coverage
    - Revisit earlier sections if later answers reveal new info
-4. Register each question with `addQuestion(state, section, text, context, depth)` for tracking
-5. Record each answer with `recordAnswer(state, questionId, answer)`
+3. Continue until all 5 sections have adequate coverage
 
 **Question Principles — Encode These:**
 
@@ -153,7 +151,7 @@ Progress: Problem & Goals [thorough] | User Stories [moderate] | Technical [thin
 
 **Draft Updates:**
 
-- **Update the PRD draft every 2-3 answers** (use `shouldUpdateDraft(state)` to check, `markDraftUpdated(state)` after writing). Write to `.planning/prds/{project-slug}.md`. Tell the user:
+- **Update the PRD draft every 2-3 answers.** Write to `.planning/prds/{project-slug}.md`. Tell the user:
 
 > Updated PRD draft at `.planning/prds/{slug}.md` — you can review it anytime.
 
@@ -172,7 +170,7 @@ This numbered-text format is explicitly prohibited. Always use AskUserQuestion f
 
 ### Step 4 — Generate PRD
 
-Using all gathered interview answers and codebase scan results, generate the final PRD. Use the generator module at `src/spec/generator.ts`:
+Using all gathered interview answers and codebase scan results, generate the final PRD directly. The LLM synthesizes all interview data into the PRD — no external generator module needed.
 
 The PRD should follow this structure:
 
@@ -222,7 +220,7 @@ Write the final PRD to `.planning/prds/{project-slug}.md`.
 
 After writing the PRD file, **execute BOTH steps below — do not skip either**:
 
-1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending". **You MUST include `linearProjectId`** — this is the Linear project UUID from the project selected in Step 1. Without it, `/forge:go` cannot sync Linear issue or project state and will silently skip all Linear operations. Copy the exact project ID string — do not omit this field:
+1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending". **You MUST include `linearProjectId` and `linearTeamId`** — these are the Linear project UUID and team UUID from the project selected in Step 1. Without `linearProjectId`, `/forge:go` cannot sync Linear issue or project state and will silently skip all Linear operations. Without `linearTeamId`, `forge linear-sync` silently skips all operations. Copy the exact IDs — do not omit these fields:
    ```json
    {
      "project": "{project name}",
@@ -230,10 +228,10 @@ After writing the PRD file, **execute BOTH steps below — do not skip either**:
      "branch": "feat/{slug}",
      "createdAt": "{today}",
      "linearProjectId": "{Linear project UUID from Step 1}",
+     "linearTeamId": "{team UUID — resolved in Step 5, but placeholder here}",
      "milestones": {
        "1": { "status": "pending" },
-       "2": { "status": "pending" },
-       ...
+       "2": { "status": "pending" }
      }
    }
    ```
@@ -269,6 +267,8 @@ Use mcp__linear__list_teams to get available teams.
 
 If there is only one team, use it automatically. If multiple, ask the user which team.
 
+**Store the team ID** — it will be written to the status file after sync.
+
 For each milestone in the PRD:
 
 ```
@@ -277,6 +277,8 @@ Use mcp__linear__create_milestone with:
   - name: milestone name
   - description: milestone goal
 ```
+
+**Record the returned milestone ID** for each milestone.
 
 For each issue under that milestone:
 
@@ -289,7 +291,11 @@ Use mcp__linear__create_issue with:
   - milestoneId: the milestone ID just created
 ```
 
-**After all milestones and issues are created, transition the project to "Planned" — this is a separate mandatory step, do not skip it:**
+**Record the returned issue IDs** for each milestone.
+
+**After all milestones and issues are created, do THREE things:**
+
+1. **Transition the project to "Planned":**
 
 ```
 Use mcp__linear__update_project to set the project state to "planned".
@@ -297,7 +303,26 @@ Use mcp__linear__update_project to set the project state to "planned".
 
 **The project is a separate entity from its milestones and issues.** Creating milestones and issues does NOT automatically update the project state. You must explicitly call `mcp__linear__update_project`. Without this transition, `/forge:go` will find the project still in "Backlog" and the state machine will reject the "In Progress" transition.
 
-Print a summary:
+2. **Update the status file** at `.planning/status/<slug>.json` with the Linear IDs:
+
+```json
+{
+  "project": "{project name}",
+  "slug": "{slug}",
+  "branch": "feat/{slug}",
+  "createdAt": "{today}",
+  "linearProjectId": "{Linear project UUID from Step 1}",
+  "linearTeamId": "{team UUID from this step}",
+  "milestones": {
+    "1": { "status": "pending", "linearMilestoneId": "{id}", "linearIssueIds": ["{id1}", "{id2}"] },
+    "2": { "status": "pending", "linearMilestoneId": "{id}", "linearIssueIds": ["{id1}", "{id2}"] }
+  }
+}
+```
+
+**`linearTeamId` is MANDATORY.** Without it, `forge linear-sync` silently skips all operations. **`linearMilestoneId` and `linearIssueIds` per milestone are MANDATORY.** These enable `/forge:go` to transition issues as milestones are completed.
+
+3. **Print a summary:**
 
 ```
 ## Synced to Linear

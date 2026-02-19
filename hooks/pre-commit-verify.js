@@ -68,8 +68,8 @@ function checkPreCommit(hookData) {
   try {
     const cache = JSON.parse(readFileSync(cachePath, "utf-8"));
 
-    // Check 3: Did verification pass?
-    if (!cache.passed) {
+    // Check 3: Did verification pass? (v2 format: cache.result === 'PASSED')
+    if (cache.result !== 'PASSED') {
       return {
         decision: "block",
         reason:

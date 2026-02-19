@@ -1,83 +1,85 @@
-import { execSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { GateError, GateResult } from "../types.js";
-import { buildLintRemediation } from "./remediation.js";
+import type { Gate } from "./index.js";
 
-/**
- * Biome diagnostics often look like:
- *   path/to/file.ts:10:5 lint/rule ...
- * or header lines with ━━ separators
- */
-const BIOME_LOC_RE = /^(.+?):(\d+):\d+\s+(.+)$/;
+/** Biome JSON reporter diagnostic shape. */
+interface BiomeDiagnostic {
+  category?: string;
+  severity?: string;
+  description?: string;
+  message?: string;
+  location?: {
+    path?: { file?: string };
+    span?: { start: number; end: number };
+    sourceCode?: string;
+  };
+  advices?: { advices?: Array<{ log?: [string, string] }> };
+}
 
-export async function verifyLint(projectDir: string): Promise<GateResult> {
-  const start = Date.now();
-  const errors: GateError[] = [];
-  const warnings: string[] = [];
-
+/** Parse biome check --reporter=json output into structured errors. */
+function parseBiomeOutput(output: string): GateError[] {
   try {
-    execSync("npx biome check", {
-      cwd: projectDir,
-      stdio: "pipe",
-      timeout: 60_000,
-    });
-
-    return { gate: "lint", passed: true, errors, warnings, duration_ms: Date.now() - start };
-  } catch (err: unknown) {
-    const stdout =
-      err instanceof Error && "stdout" in err
-        ? String((err as { stdout: Buffer }).stdout)
-        : "";
-    const stderr =
-      err instanceof Error && "stderr" in err
-        ? String((err as { stderr: Buffer }).stderr)
-        : "";
-
-    const output = `${stdout}\n${stderr}`;
-    const rawErrors: GateError[] = [];
-
-    for (const line of output.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      if (
-        trimmed.includes(" ━━") ||
-        trimmed.toLowerCase().includes("error") ||
-        trimmed.includes("×")
-      ) {
-        const match = BIOME_LOC_RE.exec(trimmed);
-        if (match) {
-          rawErrors.push({
-            file: match[1],
-            line: Number.parseInt(match[2], 10),
-            message: match[3],
-          });
-        } else {
-          rawErrors.push({ message: trimmed });
-        }
-      }
-    }
-
-    // Cap at 50 errors to avoid massive output
-    const cappedErrors = rawErrors.slice(0, 50);
-    if (rawErrors.length > 50) {
-      cappedErrors.push({ message: `... and ${rawErrors.length - 50} more errors` });
-    }
-
-    if (cappedErrors.length === 0) {
-      cappedErrors.push({ message: "biome check exited with non-zero status but no errors were parsed" });
-    }
-
-    // Enrich errors with remediation hints
-    for (const error of cappedErrors) {
-      error.remediation = buildLintRemediation(error);
-    }
-
-    return {
-      gate: "lint",
-      passed: false,
-      errors: cappedErrors,
-      warnings,
-      duration_ms: Date.now() - start,
-    };
+    const report = JSON.parse(output) as { diagnostics?: BiomeDiagnostic[] };
+    if (!report.diagnostics) return [];
+    return report.diagnostics
+      .filter((d) => d.severity === "error" || d.severity === "warning")
+      .map((d) => ({
+        file: d.location?.path?.file ?? "",
+        line: 0, // JSON reporter doesn't provide line numbers directly; span offsets are byte-based
+        column: 0,
+        message: d.description ?? d.message ?? "Unknown lint error",
+        rule: d.category,
+      }));
+  } catch {
+    // If JSON parsing fails, return a single error with the raw output
+    return output.trim()
+      ? [{ file: "", line: 0, message: `Biome output parse error: ${output.slice(0, 200)}` }]
+      : [];
   }
 }
+
+function runBiome(projectDir: string): Promise<GateResult> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const child = spawn("npx", ["biome", "check", "--reporter=json", "."], {
+      cwd: projectDir,
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    child.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    child.on("close", (code) => {
+      const output = stdout + stderr;
+      const errors = parseBiomeOutput(output);
+      resolve({
+        gate: "lint",
+        passed: code === 0,
+        errors,
+        durationMs: Date.now() - start,
+      });
+    });
+
+    child.on("error", (err) => {
+      resolve({
+        gate: "lint",
+        passed: false,
+        errors: [{ file: "", line: 0, message: err.message }],
+        durationMs: Date.now() - start,
+      });
+    });
+  });
+}
+
+export const lintGate: Gate = {
+  name: "lint",
+  run: runBiome,
+};

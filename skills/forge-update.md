@@ -6,19 +6,19 @@ Check for updates and install the latest version of forge-cc.
 
 ### Step 1 — Check Versions
 
-Run these commands to get version info:
+Run the forge update CLI to check for a newer version:
 
 ```bash
-# Current installed version
-forge --version
-
-# Latest available version
-npm view forge-cc version
+npx forge update
 ```
 
-Parse both versions. If the command fails, handle gracefully:
-- If `forge` is not found: print "forge-cc is not installed globally. Install with: `npm install -g forge-cc`"
-- If npm view fails (offline): print "Could not reach npm registry. Check your internet connection."
+Also get the exact installed version:
+
+```bash
+npx forge --version
+```
+
+If `forge` is not found, print: "forge-cc is not installed. Install with: `npm install -g forge-cc`"
 
 ### Step 2 — Compare and Report
 
@@ -42,39 +42,33 @@ If an update is available, run:
 npm install -g forge-cc@latest
 ```
 
-This does two things automatically:
-1. Installs the new version globally
-2. The `postinstall` hook runs `forge setup --skills-only`, which syncs all skills to `~/.claude/commands/forge/`
+The `postinstall` hook automatically runs `forge setup --skills-only` to sync all skills to `~/.claude/commands/forge/`.
 
 Verify the update succeeded:
 
 ```bash
-forge --version
+npx forge --version
 ```
 
-If the version matches the latest, the update is complete. If it doesn't match, check if the user needs to restart their terminal or if there's a local `node_modules` shadowing the global install.
+If the version matches the latest, the update is complete. If not, check if the user needs to restart their terminal or if a local `node_modules` is shadowing the global install.
 
 ### Step 4 — Verify Skills Synced
 
-Confirm skills were updated by listing the target directory:
+Confirm skills were updated:
 
 ```bash
 ls ~/.claude/commands/forge/
 ```
 
-If the directory is empty or missing, the postinstall hook may have failed silently. Run the manual fallback:
+If the directory is empty or missing, the postinstall hook may have failed. Run the manual fallback:
 
 ```bash
-forge setup --skills-only
+npx forge setup --skills-only
 ```
 
 ### Step 5 — Post-Update Check
 
-After updating, check if the current project's forge files need refreshing:
-
-1. Check if `.forge.json` exists in the current directory
-2. If it does (this is a forge project), suggest: "Run `/forge:setup` with Refresh mode to update project files to the latest templates."
-3. If it doesn't, just confirm the update.
+If `.forge.json` exists in the current directory, suggest: "Run `/forge:setup` with Refresh mode to update project files to the latest templates."
 
 Print final summary:
 

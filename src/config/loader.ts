@@ -1,74 +1,71 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { forgeConfigSchema } from "./schema.js";
-import type { ForgeConfig, TestingConfig } from "../types.js";
+import type { ForgeConfig } from "../types.js";
 
-export function loadConfig(projectDir: string): ForgeConfig {
-  const configPath = join(projectDir, ".forge.json");
+const TOOL_GATE_MAP: Record<string, string> = {
+  typescript: "types",
+  "@biomejs/biome": "lint",
+  biome: "lint",
+  vitest: "tests",
+  jest: "tests",
+};
 
-  if (existsSync(configPath)) {
-    try {
-      const raw = JSON.parse(readFileSync(configPath, "utf-8"));
-      return forgeConfigSchema.parse(raw);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn(`Warning: Failed to parse .forge.json (${message}). Falling back to auto-detect.`);
-    }
-  }
-
-  // Auto-detect from package.json
-  return autoDetectConfig(projectDir);
-}
-
-function detectTestDir(projectDir: string): string {
-  for (const dir of ["tests", "__tests__", "test"]) {
-    if (existsSync(join(projectDir, dir))) {
-      return dir;
-    }
-  }
-  return "tests";
-}
-
-function detectTestingConfig(projectDir: string, allDeps: Record<string, string>): TestingConfig | undefined {
-  const runner = allDeps.vitest ? "vitest" : allDeps.jest ? "jest" : null;
-  if (!runner) return undefined;
-
-  return {
-    enforce: false,
-    runner,
-    testDir: detectTestDir(projectDir),
-    sourceDir: "src",
-    structural: true,
-    categories: [],
+function detectGates(packageJson: Record<string, unknown>): string[] {
+  const deps = {
+    ...(packageJson.dependencies as Record<string, string> | undefined),
+    ...(packageJson.devDependencies as Record<string, string> | undefined),
   };
+  const gates = new Set<string>();
+  for (const [pkg, gate] of Object.entries(TOOL_GATE_MAP)) {
+    if (pkg in deps) {
+      gates.add(gate);
+    }
+  }
+  return [...gates];
 }
 
-function autoDetectConfig(projectDir: string): ForgeConfig {
-  const gates: string[] = [];
-  let testing: TestingConfig | undefined;
+export async function loadConfig(
+  projectDir: string = process.cwd(),
+): Promise<ForgeConfig> {
+  let raw: Record<string, unknown> | undefined;
+  let hasExplicitGates = false;
 
   try {
-    const pkgPath = join(projectDir, "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-
-    const allDeps: Record<string, string> = {
-      ...pkg.dependencies,
-      ...pkg.devDependencies,
-    };
-
-    if (allDeps.typescript) gates.push("types");
-    if (allDeps["@biomejs/biome"] || allDeps.biome) gates.push("lint");
-    if (pkg.scripts?.test) gates.push("tests");
-
-    testing = detectTestingConfig(projectDir, allDeps);
-  } catch {
-    // No package.json or invalid — use defaults
-    gates.push("types", "lint", "tests");
+    const content = await readFile(join(projectDir, ".forge.json"), "utf-8");
+    raw = JSON.parse(content) as Record<string, unknown>;
+    hasExplicitGates = "gates" in raw;
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      // No config file — use defaults
+    } else {
+      throw err;
+    }
   }
 
-  if (gates.length === 0) {
-    gates.push("types", "lint", "tests");
+  const config = forgeConfigSchema.parse(raw ?? {});
+
+  // Auto-detect gates from package.json when no explicit gates set
+  if (!hasExplicitGates) {
+    try {
+      const pkgContent = await readFile(
+        join(projectDir, "package.json"),
+        "utf-8",
+      );
+      const packageJson = JSON.parse(pkgContent) as Record<string, unknown>;
+      const detected = detectGates(packageJson);
+      if (detected.length > 0) {
+        config.gates = detected;
+      }
+    } catch {
+      // No package.json or unreadable — skip auto-detect
+    }
   }
 
-  return forgeConfigSchema.parse({ gates, testing });
+  return config;
 }

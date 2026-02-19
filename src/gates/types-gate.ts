@@ -1,70 +1,66 @@
-import { execSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import type { GateError, GateResult } from "../types.js";
-import { buildTypeRemediation } from "./remediation.js";
+import type { Gate } from "./index.js";
 
-/** Regex to parse tsc error lines: src/foo.ts(10,5): error TS2322: ... */
-const TSC_ERROR_RE = /^(.+?)\((\d+),\d+\):\s*(.+)$/;
-
-export async function verifyTypes(projectDir: string): Promise<GateResult> {
-  const start = Date.now();
+/** Parse tsc output lines into structured errors. */
+function parseTscOutput(output: string): GateError[] {
   const errors: GateError[] = [];
-  const warnings: string[] = [];
+  // tsc error format: file(line,col): error TSxxxx: message
+  const regex = /^(.+?)\((\d+),(\d+)\):\s+error\s+TS\d+:\s+(.+)$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(output)) !== null) {
+    errors.push({
+      file: match[1],
+      line: parseInt(match[2], 10),
+      column: parseInt(match[3], 10),
+      message: match[4],
+    });
+  }
+  return errors;
+}
 
-  try {
-    execSync("npx tsc --noEmit", {
+function runTsc(projectDir: string): Promise<GateResult> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const child = spawn("npx", ["tsc", "--noEmit"], {
       cwd: projectDir,
-      stdio: "pipe",
-      timeout: 120_000,
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
-    return {
-      gate: "types",
-      passed: true,
-      errors,
-      warnings,
-      duration_ms: Date.now() - start,
-    };
-  } catch (err: unknown) {
-    const output =
-      err instanceof Error && "stdout" in err
-        ? String((err as { stdout: Buffer }).stdout)
-        : "";
+    let stdout = "";
+    let stderr = "";
 
-    for (const line of output.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+    child.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    child.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
 
-      if (trimmed.toLowerCase().includes("warning")) {
-        warnings.push(trimmed);
-      } else if (trimmed.includes("error TS")) {
-        const match = TSC_ERROR_RE.exec(trimmed);
-        if (match) {
-          errors.push({
-            file: match[1],
-            line: Number.parseInt(match[2], 10),
-            message: match[3],
-          });
-        } else {
-          errors.push({ message: trimmed });
-        }
-      }
-    }
+    child.on("close", (code) => {
+      const output = stdout + stderr;
+      const errors = parseTscOutput(output);
+      resolve({
+        gate: "types",
+        passed: code === 0,
+        errors,
+        durationMs: Date.now() - start,
+      });
+    });
 
-    if (errors.length === 0) {
-      errors.push({ message: "tsc exited with non-zero status but no TS errors were parsed" });
-    }
-
-    // Enrich errors with remediation hints
-    for (const error of errors) {
-      error.remediation = buildTypeRemediation(error);
-    }
-
-    return {
-      gate: "types",
-      passed: false,
-      errors,
-      warnings,
-      duration_ms: Date.now() - start,
-    };
-  }
+    child.on("error", (err) => {
+      resolve({
+        gate: "types",
+        passed: false,
+        errors: [{ file: "", line: 0, message: err.message }],
+        durationMs: Date.now() - start,
+      });
+    });
+  });
 }
+
+export const typesGate: Gate = {
+  name: "types",
+  run: runTsc,
+};
