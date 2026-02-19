@@ -414,6 +414,16 @@ Worktree directories: `../.forge-wt/<repo>/<milestone-slug>/`
 
 **Verification:** `tsc --noEmit` compiles. All specified tests pass. MCP server responds to tool calls. `forge setup` generates valid config. `forge doctor` runs all checks.
 
+> **[M4 Agent Notes — 2026-02-18]**
+>
+> **Pre-commit hook cache format mismatch:** A v1 pre-commit hook already exists at `hooks/pre-commit-verify.js`. It checks `cache.passed` (boolean), but v2's `writeVerifyCache` (from M2) writes `cache.result: 'PASSED' | 'FAILED'` (string). The v2 `VerifyCache` type in `src/types.ts` has no `passed` field. When implementing the pre-commit hook, either: (a) rewrite it to check `cache.result === 'PASSED'`, or (b) add a `passed` boolean to the cache writer for backward compatibility. Option (a) is cleaner since this is a v2 rewrite.
+>
+> **Version check hook duplication:** A v1 version-check hook also exists at `hooks/version-check.js` (uses `execSync` + npm CLI). M4 built `src/runner/update.ts` (uses `fetch()` + file cache at `.forge/version-check.json`). M5 should consolidate — the `src/runner/update.ts` approach is better (async, cached, no blocking npm CLI call). The hook can be simplified to just read the cache file.
+>
+> **`src/server.ts` does not exist yet** — it's declared in `package.json` exports (`"./server": "./dist/server.js"`) but was never built in M1-M3. Must be created from scratch in this milestone.
+>
+> **Lint gate fixed:** The `[biome json reporter]` lesson (switch from regex to `--reporter=json`) was resolved during M4 cleanup. `src/gates/lint-gate.ts` now uses JSON parsing. Integration tests in M6 will not hit false positives from the old regex parser.
+
 ### Milestone 6: Skills & Integration Testing
 **dependsOn:** 3, 4, 5
 **Goal:** All skill files rewritten as thin orchestrators calling forge CLI commands. End-to-end integration verified.
@@ -434,6 +444,16 @@ Worktree directories: `../.forge-wt/<repo>/<milestone-slug>/`
 
 **Verification:** `tsc --noEmit` compiles. All specified tests pass. Each skill file is syntactically valid markdown. Full workflow test: verify → status → linear-sync chain.
 
+> **[M4 Agent Notes — 2026-02-18]**
+>
+> **Skill "rewrites" — be surgical, not destructive.** The current `/forge:go` skill (`skills/forge-go.md`) was used to execute M4 and is battle-tested. It already calls `forge linear-sync start|complete`, `forge verify`, and manages agent teams correctly. A full rewrite risks breaking working orchestration. Recommendation: **diff each skill against its v2 CLI commands**, update references that point to v1 patterns, and verify — don't rewrite from scratch. The triage/spec skills may need more substantial updates since they were written for v1's Linear integration. The setup/update skills are trivial wrappers and can be rewritten safely.
+>
+> **`forge run` integration test needs a mock `claude` CLI.** The real `claude` binary won't be available in CI or in all dev environments. Create a simple mock script (e.g., `tests/fixtures/mock-claude.sh` or a Node.js script) that reads stdin, writes a dummy response to stdout, and exits 0. Point the test at it by overriding the spawn target. The `CLAUDECODE` env var must also be stripped — see `src/runner/loop.ts:53` for the pattern.
+>
+> **Linear mock for integration tests.** The `forge linear-sync` commands degrade gracefully when `LINEAR_API_KEY` is unset (they exit silently). Integration tests can run without a mock Linear server — just ensure the env var is unset and verify the CLI exits cleanly. For deeper testing, mock `ForgeLinearClient` at the module level (same pattern used in `tests/runner/loop.test.ts`).
+>
+> **Existing skill files inventory:** `skills/forge-go.md`, `skills/forge-spec.md`, `skills/forge-triage.md`, `skills/forge-setup.md`, `skills/forge-update.md`, `skills/README.md`. All exist and are populated.
+
 ### Milestone 7: Documentation
 **dependsOn:** 6
 **Goal:** Professional README with value propositions, workflow walkthrough, and Linear integration guide. Production-quality documentation for the 1.0.0 release.
@@ -447,3 +467,7 @@ Worktree directories: `../.forge-wt/<repo>/<milestone-slug>/`
 - [ ] Add architecture overview: module map, design decisions, extension points (adding gates, custom Linear states)
 
 **Verification:** README renders correctly in GitHub. All documented commands exist and work. No broken links or references to v1 code.
+
+> **[M4 Agent Notes — 2026-02-18]**
+>
+> **No concerns.** M7 is straightforward documentation. The codebase should be fully functional after M6. One note: document the `CLAUDECODE` env var behavior for users who want to run `forge run` from within a Claude Code terminal — it works because `loop.ts` strips the env var automatically, but it's worth mentioning in the troubleshooting section.
