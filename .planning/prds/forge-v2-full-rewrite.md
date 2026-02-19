@@ -444,13 +444,22 @@ Worktree directories: `../.forge-wt/<repo>/<milestone-slug>/`
 
 **Verification:** `tsc --noEmit` compiles. All specified tests pass. Each skill file is syntactically valid markdown. Full workflow test: verify → status → linear-sync chain.
 
-> **[M4 Agent Notes — 2026-02-18]**
+> **[M5 Agent Notes — 2026-02-18]**
 >
-> **Skill "rewrites" — be surgical, not destructive.** The current `/forge:go` skill (`skills/forge-go.md`) was used to execute M4 and is battle-tested. It already calls `forge linear-sync start|complete`, `forge verify`, and manages agent teams correctly. A full rewrite risks breaking working orchestration. Recommendation: **diff each skill against its v2 CLI commands**, update references that point to v1 patterns, and verify — don't rewrite from scratch. The triage/spec skills may need more substantial updates since they were written for v1's Linear integration. The setup/update skills are trivial wrappers and can be rewritten safely.
+> **CRITICAL BUG: Linear sync has been silently doing nothing for all of M1-M5.** The `forge linear-sync start|complete` CLI commands ran without error across 5 milestones, but zero issues or milestones actually transitioned in Linear. Root causes to investigate:
+> 1. The status file milestones have `linearMilestoneId` but NO `linearIssueIds` array — the sync module likely finds zero issues to transition and exits silently.
+> 2. The `syncMilestoneStart`/`syncMilestoneComplete` functions in `src/linear/sync.ts` may not be updating the Linear project state either — needs verification.
+> 3. The CLI's "degrade gracefully" pattern (`if (!apiKey) return;`, silent catch blocks) hides ALL failures. This must be fixed — at minimum, `linear-sync` should print what it did or didn't do.
 >
-> **`forge run` integration test needs a mock `claude` CLI.** The real `claude` binary won't be available in CI or in all dev environments. Create a simple mock script (e.g., `tests/fixtures/mock-claude.sh` or a Node.js script) that reads stdin, writes a dummy response to stdout, and exits 0. Point the test at it by overriding the spawn target. The `CLAUDECODE` env var must also be stripped — see `src/runner/loop.ts:53` for the pattern.
+> **M6 must fix the Linear sync bug** as part of the integration test work. The integration test for `verify → status → linear-sync` should actually verify that Linear API calls were made with correct arguments, not just that the CLI exits cleanly.
 >
-> **Linear mock for integration tests.** The `forge linear-sync` commands degrade gracefully when `LINEAR_API_KEY` is unset (they exit silently). Integration tests can run without a mock Linear server — just ensure the env var is unset and verify the CLI exits cleanly. For deeper testing, mock `ForgeLinearClient` at the module level (same pattern used in `tests/runner/loop.test.ts`).
+> **All skills need real rewrites, not patches.** The existing skills have v1 debt:
+> - `/forge:setup` references `forge-cc/src/setup/templates.ts` and `forge-cc/src/test-scaffold/analyze` — neither exist in v2. It has an 11-step flow when v2's `forge setup` CLI handles most of it. Needs full rewrite as thin wrapper.
+> - `/forge:spec` and `/forge:triage` likely have v1 Linear integration patterns that bypass the CLI. Need audit and rewrite.
+> - `/forge:go` works mechanically but calls `forge linear-sync` which is broken (see above). Once sync is fixed, go may need updates too.
+> - `/forge:update` is already clean for v2.
+>
+> **`forge run` integration test needs a mock `claude` CLI.** Create a mock script that reads stdin, writes a dummy response to stdout, and exits 0. Override the spawn target in tests. Strip `CLAUDECODE` env var (see `src/runner/loop.ts:53`).
 >
 > **Existing skill files inventory:** `skills/forge-go.md`, `skills/forge-spec.md`, `skills/forge-triage.md`, `skills/forge-setup.md`, `skills/forge-update.md`, `skills/README.md`. All exist and are populated.
 
