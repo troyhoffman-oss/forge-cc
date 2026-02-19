@@ -49,8 +49,13 @@ function parseMilestoneName(key: string): string {
 
 function spawnClaude(prompt: string, cwd: string): Promise<number> {
   return new Promise((resolve, reject) => {
+    // Strip CLAUDECODE env var to allow spawning claude from within a Claude Code session
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+
     const child = spawn("claude", ["-p", "-", "--dangerously-skip-permissions"], {
       cwd,
+      env,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
