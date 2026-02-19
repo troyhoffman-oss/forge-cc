@@ -113,8 +113,10 @@ program
 program
   .command('setup')
   .description('Initialize forge for a project')
-  .action(() => {
-    console.log('Not yet implemented');
+  .option('--skills-only', 'Only sync skill files')
+  .action(async (opts: { skillsOnly?: boolean }) => {
+    const { runSetup } = await import('./setup.js');
+    await runSetup({ projectDir: process.cwd(), skillsOnly: opts.skillsOnly });
   });
 
 const linearSync = program
@@ -185,8 +187,15 @@ linearSync
 program
   .command('doctor')
   .description('Check environment')
-  .action(() => {
-    console.log('Not yet implemented');
+  .action(async () => {
+    const { runDoctor } = await import('./doctor.js');
+    const result = await runDoctor(process.cwd());
+    for (const check of result.checks) {
+      const icon = check.status === 'ok' ? '\u2713' : check.status === 'warn' ? '!' : '\u2717';
+      console.log(`  ${icon} ${check.name}: ${check.message}`);
+    }
+    console.log(result.ok ? '\nEnvironment ready.' : '\nSome checks failed.');
+    process.exit(result.ok ? 0 : 1);
   });
 
 program
