@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir, copyFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, copyFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -49,8 +49,14 @@ async function installSkills(): Promise<string[]> {
   const installed: string[] = [];
   for (const file of files) {
     if (!file.endsWith(".md") || file === "README.md") continue;
-    await copyFile(join(skillsSource, file), join(targetDir, file));
-    installed.push(file);
+    // Strip "forge-" prefix so forge-go.md → go.md (shows as forge:go)
+    const targetName = file.replace(/^forge-/, "");
+    await copyFile(join(skillsSource, file), join(targetDir, targetName));
+    // Clean up old prefixed copy if it exists (prevents duplicates)
+    if (targetName !== file) {
+      try { await unlink(join(targetDir, file)); } catch { /* already gone */ }
+    }
+    installed.push(targetName);
   }
   return installed;
 }

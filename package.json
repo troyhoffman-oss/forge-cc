@@ -1,6 +1,6 @@
 {
   "name": "forge-cc",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Forge — verification harness for Claude Code agents",
   "type": "module",
   "license": "MIT",
