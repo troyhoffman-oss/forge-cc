@@ -61,8 +61,10 @@ program
 program
   .command('run')
   .description('Execute milestones via Ralph loop')
-  .action(() => {
-    console.log('Not yet implemented');
+  .requiredOption('--prd <slug>', 'PRD slug to execute')
+  .action(async (opts: { prd: string }) => {
+    const { runRalphLoop } = await import('./runner/loop.js');
+    await runRalphLoop({ slug: opts.prd, projectDir: process.cwd() });
   });
 
 program
@@ -189,9 +191,10 @@ program
 
 program
   .command('update')
-  .description('Update forge to latest version')
-  .action(() => {
-    console.log('Not yet implemented');
+  .description('Check for and install forge updates')
+  .action(async () => {
+    const { checkForUpdate } = await import('./runner/update.js');
+    await checkForUpdate(process.cwd());
   });
 
 program.parse();
