@@ -6,6 +6,9 @@ import { typesGate } from './gates/types-gate.js';
 import { lintGate } from './gates/lint-gate.js';
 import { testsGate } from './gates/tests-gate.js';
 import { writeVerifyCache } from './state/cache.js';
+import { readStatus, discoverStatuses, findNextPending } from './state/status.js';
+import { ForgeLinearClient } from './linear/client.js';
+import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone } from './linear/sync.js';
 
 program
   .name('forge')
@@ -65,8 +68,44 @@ program
 program
   .command('status')
   .description('Show PRD progress')
-  .action(() => {
-    console.log('Not yet implemented');
+  .action(async () => {
+    const projectDir = process.cwd();
+    const statuses = await discoverStatuses(projectDir);
+    if (statuses.length === 0) {
+      console.log('No PRD status files found.');
+      return;
+    }
+    const pending = findNextPending(statuses);
+    const pendingMap = new Map(pending.map((p) => [p.slug, p.milestone]));
+
+    // Calculate column widths
+    const rows = statuses.map((s) => {
+      const keys = Object.keys(s.milestones);
+      const complete = keys.filter((k) => s.milestones[k].status === 'complete').length;
+      const total = keys.length;
+      const next = pendingMap.get(s.slug);
+      const linearState = s.linearProjectId ? 'linked' : '-';
+      return {
+        project: s.project,
+        branch: s.branch,
+        progress: `${complete}/${total}`,
+        next: complete === total ? '(done)' : next ?? '-',
+        linear: linearState,
+      };
+    });
+
+    const headers = { project: 'Project', branch: 'Branch', progress: 'Progress', next: 'Next', linear: 'Linear' };
+    const cols = (Object.keys(headers) as Array<keyof typeof headers>).map((key) => {
+      const max = Math.max(headers[key].length, ...rows.map((r) => r[key].length));
+      return { key, width: max };
+    });
+
+    const headerLine = cols.map((c) => headers[c.key].padEnd(c.width)).join('  ');
+    console.log(headerLine);
+    console.log(cols.map((c) => '-'.repeat(c.width)).join('  '));
+    for (const row of rows) {
+      console.log(cols.map((c) => row[c.key].padEnd(c.width)).join('  '));
+    }
   });
 
 program
@@ -83,22 +122,62 @@ const linearSync = program
 linearSync
   .command('start')
   .description('Start a milestone sync')
-  .action(() => {
-    console.log('Not yet implemented');
+  .requiredOption('--slug <slug>', 'PRD slug')
+  .requiredOption('--milestone <n>', 'Milestone number')
+  .action(async (opts: { slug: string; milestone: string }) => {
+    const apiKey = process.env.LINEAR_API_KEY;
+    if (!apiKey) return;
+    try {
+      const projectDir = process.cwd();
+      const status = await readStatus(projectDir, opts.slug);
+      if (!status.linearTeamId) return;
+      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
+      const config = await loadConfig(projectDir);
+      await syncMilestoneStart(client, config, status, opts.milestone);
+    } catch (err) {
+      console.warn('[forge] linear-sync start failed:', err);
+    }
   });
 
 linearSync
   .command('complete')
   .description('Complete a milestone sync')
-  .action(() => {
-    console.log('Not yet implemented');
+  .requiredOption('--slug <slug>', 'PRD slug')
+  .requiredOption('--milestone <n>', 'Milestone number')
+  .option('--last', 'This is the last milestone')
+  .option('--pr-url <url>', 'PR URL to include in comments')
+  .action(async (opts: { slug: string; milestone: string; last?: boolean; prUrl?: string }) => {
+    const apiKey = process.env.LINEAR_API_KEY;
+    if (!apiKey) return;
+    try {
+      const projectDir = process.cwd();
+      const status = await readStatus(projectDir, opts.slug);
+      if (!status.linearTeamId) return;
+      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
+      const config = await loadConfig(projectDir);
+      await syncMilestoneComplete(client, config, status, opts.milestone, !!opts.last);
+    } catch (err) {
+      console.warn('[forge] linear-sync complete failed:', err);
+    }
   });
 
 linearSync
   .command('done')
-  .description('Mark milestone sync as done')
-  .action(() => {
-    console.log('Not yet implemented');
+  .description('Mark project as done in Linear')
+  .requiredOption('--slug <slug>', 'PRD slug')
+  .action(async (opts: { slug: string }) => {
+    const apiKey = process.env.LINEAR_API_KEY;
+    if (!apiKey) return;
+    try {
+      const projectDir = process.cwd();
+      const status = await readStatus(projectDir, opts.slug);
+      if (!status.linearTeamId) return;
+      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
+      const config = await loadConfig(projectDir);
+      await syncProjectDone(client, config, status);
+    } catch (err) {
+      console.warn('[forge] linear-sync done failed:', err);
+    }
   });
 
 program
