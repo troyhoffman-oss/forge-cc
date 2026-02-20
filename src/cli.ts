@@ -235,6 +235,10 @@ linear
       console.error(JSON.stringify({ error: 'Invalid JSON for --issues' }));
       process.exit(1);
     }
+    if (!Array.isArray(parsed)) {
+      console.error(JSON.stringify({ error: '--issues must be a JSON array' }));
+      process.exit(1);
+    }
     const client = new ForgeLinearClient({ apiKey, teamId: opts.team });
     const issues = parsed.map((i) => ({
       title: i.title,

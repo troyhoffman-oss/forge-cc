@@ -302,8 +302,10 @@ export class ForgeLinearClient {
     try {
       const payload = await this.client.updateIssueBatch(ids, input);
       const issues = payload.issues;
-      const updated = issues ? issues.length : 0;
-      return { success: true, data: { updated, failed: [] } };
+      const updatedIds = issues ? issues.map((i) => i.id) : [];
+      const updatedSet = new Set(updatedIds);
+      const failed = ids.filter((id) => !updatedSet.has(id));
+      return { success: true, data: { updated: updatedIds.length, failed } };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

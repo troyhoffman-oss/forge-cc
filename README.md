@@ -142,7 +142,7 @@ Forge manages your Linear project lifecycle end-to-end. Every state transition h
                      |             |               |                |              |
  Forge Action:    triage       /forge:spec      /forge:go       /forge:go       user merges,
                   creates      generates PRD,   starts           last milestone  runs
-                  projects     syncs milestones milestone        completes       linear-sync done
+                  projects     syncs milestones milestone        completes       linear sync-done
 ```
 
 State names are configurable via `linearStates` in `.forge.json` (default: "Planned", "In Progress", "In Review", "Done").
@@ -251,11 +251,11 @@ npx forge setup --skills-only       # Only sync skill files
 npx forge doctor                    # Environment health check
 npx forge update                    # Check for and install updates
 
-# Linear sync (used by skills, can also be called directly)
-npx forge linear-sync start --slug <slug> --milestone <n>
-npx forge linear-sync complete --slug <slug> --milestone <n> [--last]
-npx forge linear-sync done --slug <slug>
-npx forge linear-sync list-issues --slug <slug>
+# Linear commands (used by skills, can also be called directly)
+npx forge linear sync-start --slug <slug> --milestone <n>
+npx forge linear sync-complete --slug <slug> --milestone <n> [--last]
+npx forge linear sync-done --slug <slug>
+npx forge linear list-issues --slug <slug>
 ```
 
 ### Skill Commands
@@ -331,7 +331,7 @@ The pre-commit hook requires a passing verification cached in `.forge/last-verif
 
 ### Linear sync runs but does nothing
 
-If `forge linear-sync` produces no output, check:
+If `forge linear sync-*` commands produce no output, check:
 1. `LINEAR_API_KEY` is set in your environment
 2. Your `.planning/status/<slug>.json` has `linearTeamId` and `linearProjectId` populated (these are set during `/forge:spec`)
 3. Run `npx forge doctor` to validate the API key and team configuration

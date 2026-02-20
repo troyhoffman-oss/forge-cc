@@ -756,7 +756,7 @@ describe("ForgeLinearClient.updateIssueBatch", () => {
 
     expect(result).toEqual({
       success: true,
-      data: { updated: 0, failed: [] },
+      data: { updated: 0, failed: ["issue-1"] },
     });
   });
 
