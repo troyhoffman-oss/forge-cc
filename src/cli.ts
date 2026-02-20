@@ -7,8 +7,9 @@ import { lintGate } from './gates/lint-gate.js';
 import { testsGate } from './gates/tests-gate.js';
 import { writeVerifyCache } from './state/cache.js';
 import { readStatus, discoverStatuses, findNextPending } from './state/status.js';
-import { ForgeLinearClient, IssueRelationType } from './linear/client.js';
+import { ForgeLinearClient, IssueRelationType, type LinearResult } from './linear/client.js';
 import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone } from './linear/sync.js';
+import type { ForgeConfig, PRDStatus } from './types.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -16,6 +17,45 @@ import { dirname, resolve } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf8'));
+
+function requireApiKey(): string {
+  const apiKey = process.env.LINEAR_API_KEY;
+  if (!apiKey) {
+    console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
+    process.exit(1);
+  }
+  return apiKey;
+}
+
+function handleResult<T>(result: LinearResult<T>): T {
+  if (!result.success) {
+    console.error(JSON.stringify({ error: result.error }));
+    process.exit(1);
+  }
+  return result.data;
+}
+
+async function withSyncContext(
+  slug: string,
+  fn: (ctx: { client: ForgeLinearClient; config: ForgeConfig; status: PRDStatus }) => Promise<void>,
+): Promise<void> {
+  const apiKey = requireApiKey();
+  try {
+    const projectDir = process.cwd();
+    const status = await readStatus(projectDir, slug);
+    if (!status.linearTeamId) {
+      console.error(JSON.stringify({ error: 'No linearTeamId in status file' }));
+      process.exit(1);
+    }
+    const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
+    const config = await loadConfig(projectDir);
+    await fn({ client, config, status });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(JSON.stringify({ error: message }));
+    process.exit(1);
+  }
+}
 
 program
   .name('forge')
@@ -140,23 +180,14 @@ linear
   .option('--description <desc>', 'Project description')
   .option('--priority <n>', 'Priority (0-4)', parseInt)
   .action(async (opts: { name: string; team: string; description?: string; priority?: number }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey });
+    const client = new ForgeLinearClient({ apiKey: requireApiKey() });
     const result = await client.createProject({
       name: opts.name,
       description: opts.description,
       teamIds: [opts.team],
       priority: opts.priority,
     });
-    if (!result.success) {
-      console.error(JSON.stringify({ error: result.error }));
-      process.exit(1);
-    }
-    console.log(JSON.stringify(result.data));
+    console.log(JSON.stringify(handleResult(result)));
   });
 
 linear
@@ -166,22 +197,13 @@ linear
   .requiredOption('--name <name>', 'Milestone name')
   .option('--description <desc>', 'Milestone description')
   .action(async (opts: { project: string; name: string; description?: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey });
+    const client = new ForgeLinearClient({ apiKey: requireApiKey() });
     const result = await client.createMilestone({
       name: opts.name,
       description: opts.description,
       projectId: opts.project,
     });
-    if (!result.success) {
-      console.error(JSON.stringify({ error: result.error }));
-      process.exit(1);
-    }
-    console.log(JSON.stringify(result.data));
+    console.log(JSON.stringify(handleResult(result)));
   });
 
 linear
@@ -194,12 +216,7 @@ linear
   .option('--description <desc>', 'Issue description')
   .option('--priority <n>', 'Priority (0-4)', parseInt)
   .action(async (opts: { team: string; title: string; project?: string; milestone?: string; description?: string; priority?: number }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey, teamId: opts.team });
+    const client = new ForgeLinearClient({ apiKey: requireApiKey(), teamId: opts.team });
     const result = await client.createIssue({
       title: opts.title,
       description: opts.description,
@@ -208,11 +225,7 @@ linear
       projectMilestoneId: opts.milestone,
       priority: opts.priority,
     });
-    if (!result.success) {
-      console.error(JSON.stringify({ error: result.error }));
-      process.exit(1);
-    }
-    console.log(JSON.stringify(result.data));
+    console.log(JSON.stringify(handleResult(result)));
   });
 
 linear
@@ -223,11 +236,7 @@ linear
   .requiredOption('--milestone <id>', 'Milestone ID')
   .requiredOption('--issues <json>', 'JSON array of issues [{title, description?, priority?}]')
   .action(async (opts: { team: string; project: string; milestone: string; issues: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
+    const apiKey = requireApiKey();
     let parsed: Array<{ title: string; description?: string; priority?: number }>;
     try {
       parsed = JSON.parse(opts.issues);
@@ -249,11 +258,7 @@ linear
       priority: i.priority,
     }));
     const result = await client.createIssueBatch(issues);
-    if (!result.success) {
-      console.error(JSON.stringify({ error: result.error }));
-      process.exit(1);
-    }
-    console.log(JSON.stringify(result.data));
+    console.log(JSON.stringify(handleResult(result)));
   });
 
 linear
@@ -263,22 +268,13 @@ linear
   .requiredOption('--related-project <id>', 'Related project ID')
   .requiredOption('--type <type>', 'Relation type (blocks|related)')
   .action(async (opts: { project: string; relatedProject: string; type: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey });
+    const client = new ForgeLinearClient({ apiKey: requireApiKey() });
     const result = await client.createProjectRelation({
       projectId: opts.project,
       relatedProjectId: opts.relatedProject,
       type: opts.type,
     });
-    if (!result.success) {
-      console.error(JSON.stringify({ error: result.error }));
-      process.exit(1);
-    }
-    console.log(JSON.stringify(result.data));
+    console.log(JSON.stringify(handleResult(result)));
   });
 
 linear
@@ -288,11 +284,7 @@ linear
   .requiredOption('--related-issue <id>', 'Related issue ID')
   .requiredOption('--type <type>', 'Relation type (blocks|duplicate|related)')
   .action(async (opts: { issue: string; relatedIssue: string; type: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
+    const apiKey = requireApiKey();
     const validTypes: string[] = Object.values(IssueRelationType);
     if (!validTypes.includes(opts.type)) {
       console.error(JSON.stringify({ error: `Invalid relation type "${opts.type}". Valid: ${validTypes.join(', ')}` }));
@@ -304,11 +296,7 @@ linear
       relatedIssueId: opts.relatedIssue,
       type: opts.type as IssueRelationType,
     });
-    if (!result.success) {
-      console.error(JSON.stringify({ error: result.error }));
-      process.exit(1);
-    }
-    console.log(JSON.stringify(result.data));
+    console.log(JSON.stringify(handleResult(result)));
   });
 
 // --- List commands ---
@@ -317,12 +305,7 @@ linear
   .command('list-teams')
   .description('List all Linear teams')
   .action(async () => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey });
+    const client = new ForgeLinearClient({ apiKey: requireApiKey() });
     const teams = await client.listTeams();
     console.log(JSON.stringify(teams));
   });
@@ -332,12 +315,7 @@ linear
   .description('List projects for a team')
   .requiredOption('--team <teamId>', 'Team ID')
   .action(async (opts: { team: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey });
+    const client = new ForgeLinearClient({ apiKey: requireApiKey() });
     const projects = await client.listProjects(opts.team);
     console.log(JSON.stringify(projects));
   });
@@ -350,27 +328,10 @@ linear
   .requiredOption('--slug <slug>', 'PRD slug')
   .requiredOption('--milestone <n>', 'Milestone number')
   .action(async (opts: { slug: string; milestone: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    try {
-      const projectDir = process.cwd();
-      const status = await readStatus(projectDir, opts.slug);
-      if (!status.linearTeamId) {
-        console.error(JSON.stringify({ error: 'No linearTeamId in status file' }));
-        process.exit(1);
-      }
-      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-      const config = await loadConfig(projectDir);
+    await withSyncContext(opts.slug, async ({ client, config, status }) => {
       await syncMilestoneStart(client, config, status, opts.milestone);
       console.log(`[forge] linear sync-start complete for ${opts.slug} ${opts.milestone}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(JSON.stringify({ error: message }));
-      process.exit(1);
-    }
+    });
   });
 
 linear
@@ -380,27 +341,10 @@ linear
   .requiredOption('--milestone <n>', 'Milestone number')
   .option('--last', 'This is the last milestone')
   .action(async (opts: { slug: string; milestone: string; last?: boolean }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    try {
-      const projectDir = process.cwd();
-      const status = await readStatus(projectDir, opts.slug);
-      if (!status.linearTeamId) {
-        console.error(JSON.stringify({ error: 'No linearTeamId in status file' }));
-        process.exit(1);
-      }
-      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-      const config = await loadConfig(projectDir);
+    await withSyncContext(opts.slug, async ({ client, config, status }) => {
       await syncMilestoneComplete(client, config, status, opts.milestone, !!opts.last);
       console.log(`[forge] linear sync-complete finished for ${opts.slug} ${opts.milestone}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(JSON.stringify({ error: message }));
-      process.exit(1);
-    }
+    });
   });
 
 linear
@@ -408,27 +352,10 @@ linear
   .description('Mark project as done in Linear')
   .requiredOption('--slug <slug>', 'PRD slug')
   .action(async (opts: { slug: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    try {
-      const projectDir = process.cwd();
-      const status = await readStatus(projectDir, opts.slug);
-      if (!status.linearTeamId) {
-        console.error(JSON.stringify({ error: 'No linearTeamId in status file' }));
-        process.exit(1);
-      }
-      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-      const config = await loadConfig(projectDir);
+    await withSyncContext(opts.slug, async ({ client, config, status }) => {
       await syncProjectDone(client, config, status);
       console.log(`[forge] linear sync-done complete for ${opts.slug}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(JSON.stringify({ error: message }));
-      process.exit(1);
-    }
+    });
   });
 
 linear
@@ -436,31 +363,15 @@ linear
   .description('List all Linear issue identifiers for a PRD slug')
   .requiredOption('--slug <slug>', 'PRD slug')
   .action(async (opts: { slug: string }) => {
-    const apiKey = process.env.LINEAR_API_KEY;
-    if (!apiKey) {
-      console.error(JSON.stringify({ error: 'LINEAR_API_KEY not set' }));
-      process.exit(1);
-    }
-    try {
-      const projectDir = process.cwd();
-      const status = await readStatus(projectDir, opts.slug);
+    await withSyncContext(opts.slug, async ({ client, status }) => {
       if (!status.linearProjectId) {
         console.error(JSON.stringify({ error: 'No linearProjectId in status file' }));
         process.exit(1);
       }
-      if (!status.linearTeamId) {
-        console.error(JSON.stringify({ error: 'No linearTeamId in status file' }));
-        process.exit(1);
-      }
-      const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
       const issues = await client.listIssuesByProject(status.linearProjectId);
       const identifiers = issues.map((i) => i.identifier);
       console.log(JSON.stringify(identifiers));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(JSON.stringify({ error: message }));
-      process.exit(1);
-    }
+    });
   });
 
 program

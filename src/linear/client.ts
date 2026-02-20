@@ -5,6 +5,10 @@ export type LinearResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
 
+function wrapError<T>(err: unknown): LinearResult<T> {
+  return { success: false, error: err instanceof Error ? err.message : String(err) };
+}
+
 export interface ForgeLinearClientOptions {
   apiKey: string;
   teamId?: string;
@@ -62,9 +66,7 @@ export class ForgeLinearClient {
       await this.client.updateIssue(issueId, { stateId });
       return { success: true, data: undefined };
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -77,9 +79,7 @@ export class ForgeLinearClient {
       await this.client.updateProject(projectId, { statusId: stateId });
       return { success: true, data: undefined };
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -156,8 +156,7 @@ export class ForgeLinearClient {
         data: { id: resolved.id, url: resolved.url },
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -180,8 +179,7 @@ export class ForgeLinearClient {
       const resolved = await milestone;
       return { success: true, data: { id: resolved.id } };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -207,8 +205,7 @@ export class ForgeLinearClient {
         data: { id: resolved.id, identifier: resolved.identifier },
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -235,8 +232,7 @@ export class ForgeLinearClient {
       }
       return { success: true, data: { ids, identifiers } };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -266,8 +262,7 @@ export class ForgeLinearClient {
       const resolved = await relation;
       return { success: true, data: { id: resolved.id } };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -289,8 +284,7 @@ export class ForgeLinearClient {
       const resolved = await relation;
       return { success: true, data: { id: resolved.id } };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 
@@ -307,8 +301,7 @@ export class ForgeLinearClient {
       const failed = ids.filter((id) => !updatedSet.has(id));
       return { success: true, data: { updated: updatedIds.length, failed } };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      return wrapError(err);
     }
   }
 }
