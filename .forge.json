@@ -1,5 +1,6 @@
 {
   "gates": ["types", "lint", "tests"],
+  "linearTeam": "Forge Plugin",
   "maxIterations": 5,
   "verifyFreshness": 600000
 }
