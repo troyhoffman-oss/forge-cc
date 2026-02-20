@@ -39,7 +39,8 @@
       ]
     },
     "3": {
-      "status": "pending",
+      "status": "complete",
+      "completedAt": "2026-02-20",
       "linearMilestoneId": "d914dd3d-099d-4136-b637-ffa16eaeef3a",
       "linearIssueIds": [
         "0976ca32-c0ac-4ed5-bb3e-2df49579bb1a",
