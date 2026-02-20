@@ -1,6 +1,17 @@
 import type { ForgeConfig, PRDStatus } from "../types.js";
 import type { ForgeLinearClient } from "./client.js";
 
+export interface SyncResult {
+  issuesTransitioned: number;
+  issuesFailed: string[];
+  projectUpdated: boolean;
+  projectError?: string;
+}
+
+function emptySyncResult(): SyncResult {
+  return { issuesTransitioned: 0, issuesFailed: [], projectUpdated: false };
+}
+
 /**
  * Transition milestone issues to inProgress and project to inProgress.
  */
@@ -9,23 +20,25 @@ export async function syncMilestoneStart(
   config: ForgeConfig,
   status: PRDStatus,
   milestone: string,
-): Promise<void> {
+): Promise<SyncResult> {
   const ms = status.milestones[milestone];
   if (!ms) {
     console.warn(`[forge] Milestone "${milestone}" not found in status file`);
-    return;
+    return emptySyncResult();
   }
 
   const teamId = status.linearTeamId;
   if (!teamId) {
     console.warn("[forge] No linearTeamId in status file, skipping sync");
-    return;
+    return emptySyncResult();
   }
 
   const stateId = await client.resolveStateId(
     teamId,
     config.linearStates.inProgress,
   );
+
+  const result = emptySyncResult();
 
   // Transition milestone issues to inProgress
   const issueIds = ms.linearIssueIds ?? [];
@@ -37,8 +50,13 @@ export async function syncMilestoneStart(
     console.log(
       `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.inProgress}"`,
     );
-    for (const issueId of issueIds) {
-      await client.updateIssueState(issueId, stateId);
+    const batchResult = await client.updateIssueBatch(issueIds, { stateId });
+    if (batchResult.success) {
+      result.issuesTransitioned = batchResult.data.updated;
+      result.issuesFailed = batchResult.data.failed;
+    } else {
+      console.warn(`[forge] Batch update failed: ${batchResult.error}`);
+      result.issuesFailed = issueIds;
     }
   }
 
@@ -48,8 +66,16 @@ export async function syncMilestoneStart(
     console.log(
       `[forge] Updating project ${projectId} to "${config.linearStates.inProgress}"`,
     );
-    await client.updateProjectState(projectId, stateId);
+    const projectResult = await client.updateProjectState(projectId, stateId);
+    if (projectResult.success) {
+      result.projectUpdated = true;
+    } else {
+      console.warn(`[forge] Failed to update project ${projectId}: ${projectResult.error}`);
+      result.projectError = projectResult.error;
+    }
   }
+
+  return result;
 }
 
 /**
@@ -62,23 +88,25 @@ export async function syncMilestoneComplete(
   status: PRDStatus,
   milestone: string,
   isLast: boolean,
-): Promise<void> {
+): Promise<SyncResult> {
   const ms = status.milestones[milestone];
   if (!ms) {
     console.warn(`[forge] Milestone "${milestone}" not found in status file`);
-    return;
+    return emptySyncResult();
   }
 
   const teamId = status.linearTeamId;
   if (!teamId) {
     console.warn("[forge] No linearTeamId in status file, skipping sync");
-    return;
+    return emptySyncResult();
   }
 
   const doneStateId = await client.resolveStateId(
     teamId,
     config.linearStates.done,
   );
+
+  const result = emptySyncResult();
 
   // Transition milestone issues to done
   const issueIds = ms.linearIssueIds ?? [];
@@ -90,8 +118,13 @@ export async function syncMilestoneComplete(
     console.log(
       `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.done}"`,
     );
-    for (const issueId of issueIds) {
-      await client.updateIssueState(issueId, doneStateId);
+    const batchResult = await client.updateIssueBatch(issueIds, { stateId: doneStateId });
+    if (batchResult.success) {
+      result.issuesTransitioned = batchResult.data.updated;
+      result.issuesFailed = batchResult.data.failed;
+    } else {
+      console.warn(`[forge] Batch update failed: ${batchResult.error}`);
+      result.issuesFailed = issueIds;
     }
   }
 
@@ -106,9 +139,17 @@ export async function syncMilestoneComplete(
       console.log(
         `[forge] Updating project ${projectId} to "${config.linearStates.inReview}" (last milestone)`,
       );
-      await client.updateProjectState(projectId, reviewStateId);
+      const projectResult = await client.updateProjectState(projectId, reviewStateId);
+      if (projectResult.success) {
+        result.projectUpdated = true;
+      } else {
+        console.warn(`[forge] Failed to update project ${projectId}: ${projectResult.error}`);
+        result.projectError = projectResult.error;
+      }
     }
   }
+
+  return result;
 }
 
 /**
@@ -118,11 +159,11 @@ export async function syncProjectDone(
   client: ForgeLinearClient,
   config: ForgeConfig,
   status: PRDStatus,
-): Promise<void> {
+): Promise<SyncResult> {
   const teamId = status.linearTeamId;
   if (!teamId) {
     console.warn("[forge] No linearTeamId in status file, skipping sync");
-    return;
+    return emptySyncResult();
   }
 
   const doneStateId = await client.resolveStateId(
@@ -130,8 +171,10 @@ export async function syncProjectDone(
     config.linearStates.done,
   );
 
-  // Transition all issues across all milestones to done
-  let totalIssues = 0;
+  const result = emptySyncResult();
+
+  // Collect all issue IDs across all milestones for a single batch call
+  const allIssueIds: string[] = [];
   for (const [name, ms] of Object.entries(status.milestones)) {
     const issueIds = ms.linearIssueIds ?? [];
     if (issueIds.length === 0) {
@@ -140,14 +183,26 @@ export async function syncProjectDone(
       );
       continue;
     }
-    totalIssues += issueIds.length;
-    for (const issueId of issueIds) {
-      await client.updateIssueState(issueId, doneStateId);
-    }
+    allIssueIds.push(...issueIds);
   }
-  console.log(
-    `[forge] Transitioned ${totalIssues} issue(s) across all milestones to "${config.linearStates.done}"`,
-  );
+
+  if (allIssueIds.length > 0) {
+    console.log(
+      `[forge] Transitioning ${allIssueIds.length} issue(s) across all milestones to "${config.linearStates.done}"`,
+    );
+    const batchResult = await client.updateIssueBatch(allIssueIds, { stateId: doneStateId });
+    if (batchResult.success) {
+      result.issuesTransitioned = batchResult.data.updated;
+      result.issuesFailed = batchResult.data.failed;
+    } else {
+      console.warn(`[forge] Batch update failed: ${batchResult.error}`);
+      result.issuesFailed = allIssueIds;
+    }
+  } else {
+    console.log(
+      `[forge] Transitioned 0 issue(s) across all milestones to "${config.linearStates.done}"`,
+    );
+  }
 
   // Transition project to done
   const projectId = status.linearProjectId;
@@ -155,6 +210,14 @@ export async function syncProjectDone(
     console.log(
       `[forge] Updating project ${projectId} to "${config.linearStates.done}"`,
     );
-    await client.updateProjectState(projectId, doneStateId);
+    const projectResult = await client.updateProjectState(projectId, doneStateId);
+    if (projectResult.success) {
+      result.projectUpdated = true;
+    } else {
+      console.warn(`[forge] Failed to update project ${projectId}: ${projectResult.error}`);
+      result.projectError = projectResult.error;
+    }
   }
+
+  return result;
 }

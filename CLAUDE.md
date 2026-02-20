@@ -1,10 +1,10 @@
 # forge-cc — Claude Code Instructions
 
 ## What This Is
-Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, workflow skills (`/forge:triage`, `/forge:spec`, `/forge:go`, `/forge:setup`, `/forge:update`), and Linear lifecycle management. Single npm package.
+Unified dev workflow tool: CLI verification, enforcement hooks, workflow skills (`/forge:triage`, `/forge:spec`, `/forge:go`, `/forge:setup`, `/forge:update`), and Linear lifecycle management. Single npm package.
 
 **Package:** `forge-cc` **v0.1.40**
-**Tech:** TypeScript (ES2022, strict), Node.js, MCP SDK, Commander, Playwright, Zod, Vitest
+**Tech:** TypeScript (ES2022, strict), Node.js, Commander, Playwright, Zod, Vitest
 
 ## Quick Reference
 
@@ -24,7 +24,6 @@ Unified dev workflow tool: CLI verification, enforcement hooks, MCP server, work
 ```
 src/
   cli.ts              # CLI entry — npx forge commands (verify, status, setup, update, cleanup)
-  server.ts           # MCP server (stdio transport)
   types.ts            # Core types
   gates/              # Verification gates (types, lint, tests, visual, runtime, prd)
   config/             # .forge.json schema + loader

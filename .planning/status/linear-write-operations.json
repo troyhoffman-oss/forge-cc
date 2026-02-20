@@ -1,0 +1,55 @@
+{
+  "project": "Linear Write Operations in Forge",
+  "slug": "linear-write-operations",
+  "branch": "feat/linear-write-operations",
+  "createdAt": "2026-02-20",
+  "linearProjectId": "56b6b6cb-41bd-43e6-baa1-38c2d11eccfb",
+  "linearTeamId": "72baaa3d-a5f7-4400-9011-a5e88f5a787b",
+  "milestones": {
+    "1": {
+      "status": "complete",
+      "completedAt": "2026-02-20",
+      "linearIssueIds": [
+        "81830d3d-1f4c-4eee-9992-efcdaa1d1aa5",
+        "8b90dd2b-1d1c-491b-b8c8-4a15d05e73a7",
+        "be7c4e7e-f764-4d94-9705-4488b93c59a5",
+        "e9ada55a-7197-4c6a-ab44-463495372a10",
+        "13bb1c0c-8c44-486d-b77f-5c1be855c67d",
+        "bf62fd27-dc15-4c63-8ef3-565ee5097e2a",
+        "5f58048f-5b9e-4675-ae46-99d8d28dfb62",
+        "5bb07822-2a83-4529-8c26-7200dcf6ce38",
+        "1925aa8c-8c0a-4f34-820e-a282a63203ed",
+        "014319cd-b9a4-4756-9dc5-7b585674ce3c"
+      ]
+    },
+    "2": {
+      "status": "complete",
+      "completedAt": "2026-02-20",
+      "linearMilestoneId": "188b7afb-6d8d-41f1-a807-6aa294c2690b",
+      "linearIssueIds": [
+        "1d131dc5-7244-4502-bdf6-6efa59f73656",
+        "6e586c7e-df96-4ea0-a545-0c668a91bc2d",
+        "6c192474-6cf1-4c4d-a00d-4abab03d9580",
+        "082a624d-048b-4385-8dd5-94d6dfb8c8a1",
+        "1e4d7f3a-db5f-4767-aa2a-d9ae0dbf35f2",
+        "22124372-6ee6-4fd3-9b80-b39c2a229146",
+        "f872ff1a-7fe3-44ee-aa42-c746687dabb0",
+        "6c34bd67-4d77-4fa1-955c-d95daf3fe090",
+        "c0638618-ce24-4510-b432-7ffe144fa399"
+      ]
+    },
+    "3": {
+      "status": "complete",
+      "completedAt": "2026-02-20",
+      "linearMilestoneId": "d914dd3d-099d-4136-b637-ffa16eaeef3a",
+      "linearIssueIds": [
+        "0976ca32-c0ac-4ed5-bb3e-2df49579bb1a",
+        "e4f3680c-bcde-47a0-b7d1-6b7a63c0cfb7",
+        "7204c33c-4f4d-4262-a1b0-d4879d455d01",
+        "3f682693-0e14-49f2-9ef0-ffdb66bc6d4d",
+        "a1a2fc10-8780-41ae-a434-697aad3e5bef",
+        "b6dd559e-982d-4ae5-a87b-4596de017017"
+      ]
+    }
+  }
+}

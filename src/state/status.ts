@@ -6,7 +6,6 @@ import type { PRDStatus } from "../types.js";
 
 const milestoneStatusSchema = z.object({
   status: z.enum(["pending", "in_progress", "complete"]),
-  linearMilestoneId: z.string().optional(),
   linearIssueIds: z.array(z.string()).optional(),
   completedAt: z.string().optional(),
 });

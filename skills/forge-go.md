@@ -4,7 +4,7 @@ Execute milestones from your PRD with real agent teams (TeamCreate/SendMessage),
 
 ## Instructions
 
-Follow these steps exactly. This skill drives the full agent orchestration — there is no backing TypeScript engine. The forge CLI provides verification (`forge verify`), state management (`forge status`), and Linear sync (`forge linear-sync`) as deterministic commands.
+Follow these steps exactly. This skill drives the full agent orchestration — there is no backing TypeScript engine. The forge CLI provides verification (`forge verify`), state management (`forge status`), and Linear sync (`forge linear`) as deterministic commands.
 
 ### Step 1 — Orient + Choose Mode
 
@@ -380,10 +380,10 @@ Check for the Linear project ID in this priority order:
 If a Linear project ID is found:
 
 ```bash
-npx forge linear-sync complete --slug {slug} --milestone {number} [--last] [--pr-url {url}]
+npx forge linear sync-complete --slug {slug} --milestone {number} [--last]
 ```
 
-Pass `--last` if this is the last milestone. Pass `--pr-url {url}` if a PR was created. This command:
+Pass `--last` if this is the last milestone. This command:
 - If NOT last milestone: adds progress comments to milestone issues
 - If last milestone: transitions all project issues and the project to "In Review", adds PR link comments
 
@@ -428,7 +428,7 @@ TeamDelete to clean up team resources.
 **Fetch Linear issue identifiers** (if Linear is configured):
 
 ```bash
-npx forge linear-sync list-issues --slug {slug}
+npx forge linear list-issues --slug {slug}
 ```
 
 This outputs a JSON array of identifiers (e.g., `["MSIG-123", "MSIG-124"]`). If the command returns identifiers, include them in the PR body as a `Closes` line. If no Linear project ID is configured or the command returns nothing, omit the "Linear Issues" section.
@@ -494,9 +494,17 @@ Then shut down the agent team and print:
 - Codex review: {resolved/no comments/not configured}
 
 The PR is ready for review.
-
-**After the PR is merged:** Run `npx forge linear-sync done --slug {slug}` to transition all issues and the project to "Done" in Linear. Or add this to your CI merge pipeline.
 ```
+
+**After merge — Done transition:**
+
+After the user confirms the PR has been merged, run:
+
+```bash
+npx forge linear sync-done --slug {slug}
+```
+
+This transitions all project issues and the project itself to "Done" in Linear. Do NOT run this automatically — wait for explicit user confirmation that the PR has been merged.
 
 **IMPORTANT:** Do NOT merge the PR automatically. Merging is a hard-to-reverse action that requires explicit user confirmation. Always stop here and let the user decide when to merge.
 
@@ -558,7 +566,7 @@ At the START of milestone execution (between Step 2 and Step 3), check for the L
 If a Linear project ID is found:
 
 ```bash
-npx forge linear-sync start --slug {slug} --milestone {number}
+npx forge linear sync-start --slug {slug} --milestone {number}
 ```
 
 This command programmatically transitions milestone issues to "In Progress" and the project to "In Progress". The CLI prints informational output (e.g., `[forge] Transitioning N issues to In Progress` or `[forge] LINEAR_API_KEY not set, skipping Linear sync`). These are informational messages, not errors — continue execution regardless.

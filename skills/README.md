@@ -1,6 +1,6 @@
 # forge-cc Skills
 
-Skills are markdown instruction files that Claude Code discovers and executes. When a user types a skill command (e.g., `/forge:triage`), Claude Code reads the corresponding markdown file and follows its instructions using available tools (MCP tools, Bash, file operations, etc.).
+Skills are markdown instruction files that Claude Code discovers and executes. When a user types a skill command (e.g., `/forge:triage`), Claude Code reads the corresponding markdown file and follows its instructions using available tools (Bash, file operations, etc.).
 
 Skills are prompts, not code. The LLM interprets the instructions and orchestrates tool calls to execute the workflow.
 
@@ -28,6 +28,6 @@ Skills are also distributed via `npm install forge-cc` and can be found in `node
 
 ## Prerequisites
 
-- Claude Code with MCP tools enabled
-- Linear MCP tools configured (`mcp__linear__*`) for triage and spec skills
-- `forge-cc` installed in the project for verification gates (used by go skill)
+- Claude Code installed
+- `LINEAR_API_KEY` set in your environment for Linear integration (used by triage, spec, and go skills)
+- `forge-cc` installed in the project for verification gates and Linear CLI commands

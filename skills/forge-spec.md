@@ -8,11 +8,21 @@ Follow these steps exactly. The interview is adaptive — lead with recommendati
 
 ### Step 1 — Select Linear Project
 
-Fetch incomplete projects from Linear:
+Fetch incomplete projects from Linear. First, resolve the team ID:
 
+```bash
+npx forge linear list-teams
 ```
-Use mcp__linear__list_projects to get all existing projects.
+
+This returns a JSON array of teams: `[{id, name, key}]`. If `linearTeam` is set in `.forge.json`, match by name or key. If there is only one team, use it automatically. If multiple and no config, ask the user which team.
+
+Then fetch projects for that team:
+
+```bash
+npx forge linear list-projects --team <teamId>
 ```
+
+This returns a JSON array of projects: `[{id, name, description, state}]`.
 
 Filter to projects in "Backlog" state (these are triaged but not yet specced). Present them as a numbered list:
 
@@ -220,7 +230,7 @@ Write the final PRD to `.planning/prds/{project-slug}.md`.
 
 After writing the PRD file, **execute BOTH steps below — do not skip either**:
 
-1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending". **You MUST include `linearProjectId` and `linearTeamId`** — these are the Linear project UUID and team UUID from the project selected in Step 1. Without `linearProjectId`, `/forge:go` cannot sync Linear issue or project state and will silently skip all Linear operations. Without `linearTeamId`, `forge linear-sync` silently skips all operations. Copy the exact IDs — do not omit these fields:
+1. **Create status file:** Write `.planning/status/<slug>.json` with all milestones set to "pending". **You MUST include `linearProjectId` and `linearTeamId`** — these are the Linear project UUID and team UUID from the project selected in Step 1. Without `linearProjectId`, `/forge:go` cannot sync Linear issue or project state and will silently skip all Linear operations. Without `linearTeamId`, the forge Linear sync commands (`sync-start`, `sync-complete`, `sync-done`) silently skip all operations. Copy the exact IDs — do not omit these fields:
    ```json
    {
      "project": "{project name}",
@@ -257,53 +267,55 @@ Wait for approval before continuing to Step 5.
 
 ### Step 5 — Sync to Linear
 
-After the user approves the PRD, create milestones and issues in Linear.
+After the user approves the PRD, create milestones and issues in Linear using forge CLI commands.
 
-First, get the team ID:
+**All CLI commands output JSON to stdout.** Parse the JSON output to extract IDs for subsequent commands.
 
+First, get the team ID (if not already resolved in Step 1):
+
+```bash
+npx forge linear list-teams
 ```
-Use mcp__linear__list_teams to get available teams.
-```
 
-If there is only one team, use it automatically. If multiple, ask the user which team.
+This returns `[{id, name, key}]`. If there is only one team, use it automatically. If multiple, ask the user which team.
 
 **Store the team ID** — it will be written to the status file after sync.
 
-For each milestone in the PRD:
+**Create milestones.** For each milestone in the PRD:
 
-```
-Use mcp__linear__create_milestone with:
-  - projectId: the selected project's ID
-  - name: milestone name
-  - description: milestone goal
+```bash
+npx forge linear create-milestone --project <projectId> --name "<milestone name>" --description "<milestone goal>"
 ```
 
-**Record the returned milestone ID** for each milestone.
+This returns `{id}`. **Record the returned milestone ID** for each milestone.
 
-For each issue under that milestone:
+**Create issues.** For each milestone, use batch creation to create all issues at once:
 
-```
-Use mcp__linear__create_issue with:
-  - title: issue title
-  - description: issue description (from PRD)
-  - teamId: the team ID
-  - projectId: the project ID
-  - milestoneId: the milestone ID just created
+```bash
+npx forge linear create-issue-batch --team <teamId> --project <projectId> --milestone <milestoneId> --issues '[{"title": "Issue title", "description": "Issue description", "priority": 2}, {"title": "Another issue", "description": "Description", "priority": 2}]'
 ```
 
-**Record the returned issue IDs** for each milestone.
+This returns `{ids: [...], identifiers: [...]}`. **Record the returned issue IDs** for each milestone.
 
-**After all milestones and issues are created, do THREE things:**
+If batch creation fails (e.g., due to shell quoting issues), fall back to individual issue creation:
 
-1. **Transition the project to "Planned":**
-
-```
-Use mcp__linear__update_project to set the project state to "planned".
+```bash
+npx forge linear create-issue --team <teamId> --title "<title>" --project <projectId> --milestone <milestoneId> --description "<description>" --priority 2
 ```
 
-**The project is a separate entity from its milestones and issues.** Creating milestones and issues does NOT automatically update the project state. You must explicitly call `mcp__linear__update_project`. Without this transition, `/forge:go` will find the project still in "Backlog" and the state machine will reject the "In Progress" transition.
+This returns `{id, identifier}`.
 
-2. **Update the status file** at `.planning/status/<slug>.json` with the Linear IDs:
+**Create issue relations for milestone dependencies.** After all milestones and issues are created, if milestones have `dependsOn` relationships in the PRD, create blocking relations between issues. For each dependency (e.g., Milestone 2 depends on Milestone 1), create a relation from an issue in the blocking milestone to an issue in the dependent milestone:
+
+```bash
+npx forge linear create-issue-relation --issue <blockingIssueId> --related-issue <dependentIssueId> --type blocks
+```
+
+This returns `{id}`. Use the first issue ID from each milestone as the representative for the relation. This connects milestones in Linear's dependency graph so the team can visualize the execution order.
+
+**After all milestones, issues, and relations are created, do TWO things:**
+
+1. **Update the status file** at `.planning/status/<slug>.json` with the Linear IDs:
 
 ```json
 {
@@ -314,24 +326,27 @@ Use mcp__linear__update_project to set the project state to "planned".
   "linearProjectId": "{Linear project UUID from Step 1}",
   "linearTeamId": "{team UUID from this step}",
   "milestones": {
-    "1": { "status": "pending", "linearMilestoneId": "{id}", "linearIssueIds": ["{id1}", "{id2}"] },
-    "2": { "status": "pending", "linearMilestoneId": "{id}", "linearIssueIds": ["{id1}", "{id2}"] }
+    "1": { "status": "pending", "linearIssueIds": ["{id1}", "{id2}"] },
+    "2": { "status": "pending", "linearIssueIds": ["{id1}", "{id2}"] }
   }
 }
 ```
 
-**`linearTeamId` is MANDATORY.** Without it, `forge linear-sync` silently skips all operations. **`linearMilestoneId` and `linearIssueIds` per milestone are MANDATORY.** These enable `/forge:go` to transition issues as milestones are completed.
+**`linearTeamId` is MANDATORY.** Without it, the forge Linear sync commands (`sync-start`, `sync-complete`, `sync-done`) silently skip all operations. **`linearIssueIds` per milestone are MANDATORY.** These enable `/forge:go` to transition issues as milestones are completed.
 
-3. **Print a summary:**
+**Note:** There is no dedicated CLI command to set the project state to "Planned". The project will remain in its current state (typically "Backlog") until `/forge:go` runs `npx forge linear sync-start`, which transitions it to "In Progress". The intermediate "Planned" state is not critical — the presence of milestones and issues signals that the project has been specced.
+
+2. **Print a summary:**
 
 ```
 ## Synced to Linear
 
-- **Project:** {name} (now "Planned")
+- **Project:** {name}
 - **Milestones:** {N} created
 - **Issues:** {M} created across all milestones
+- **Relations:** {R} dependency relations created
 
-View in Linear: {project URL}
+Note: Project will transition to "In Progress" when `/forge:go` runs.
 ```
 
 If any creation fails, report the error and continue with remaining items.
@@ -359,7 +374,7 @@ Linear: {project URL}
 
 ## Edge Cases
 
-- **No Linear connection:** Warn the user. Still generate the PRD locally — skip the Linear sync steps.
+- **No Linear connection:** If `LINEAR_API_KEY` is not set or forge CLI commands fail with auth errors, warn the user. Still generate the PRD locally — skip the Linear sync steps.
 - **Empty codebase:** The interview still works — questions will be more open-ended without scan context. Note this to the user.
 - **User wants to spec a project not in Linear:** Allow it. Skip Step 1 project selection, ask for a project name, and create the Linear project in Step 5 before creating milestones.
 - **User provides info upfront:** If the user includes project details in the same message as `/forge:spec`, use that info to pre-fill interview answers and skip questions that are already answered.

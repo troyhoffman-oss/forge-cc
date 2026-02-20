@@ -43,12 +43,10 @@ function makeStatus(overrides: Partial<PRDStatus> = {}): PRDStatus {
     milestones: {
       "1: Foundation": {
         status: "pending",
-        linearMilestoneId: "ms-1",
         linearIssueIds: ["issue-1", "issue-2"],
       },
       "2: Features": {
         status: "pending",
-        linearMilestoneId: "ms-2",
         linearIssueIds: ["issue-3"],
       },
     },
@@ -67,8 +65,9 @@ function mockLinearClient(): ForgeLinearClient {
       };
       return Promise.resolve(stateMap[stateName] ?? `state-${stateName}-uuid`);
     }),
-    updateIssueState: vi.fn().mockResolvedValue(undefined),
-    updateProjectState: vi.fn().mockResolvedValue(undefined),
+    updateIssueState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
+    updateIssueBatch: vi.fn().mockResolvedValue({ success: true, data: { updated: 2, failed: [] } }),
+    updateProjectState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
     listTeams: vi.fn().mockResolvedValue([]),
     listProjects: vi.fn().mockResolvedValue([]),
     listIssuesByProject: vi.fn().mockResolvedValue([]),
@@ -169,21 +168,25 @@ describe("Integration: verify → status → linear-sync pipeline", () => {
     await syncMilestoneStart(client, config, status, "1: Foundation");
 
     expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "In Progress");
-    expect(client.updateIssueState).toHaveBeenCalledWith("issue-1", "state-inprogress-uuid");
-    expect(client.updateIssueState).toHaveBeenCalledWith("issue-2", "state-inprogress-uuid");
+    expect(client.updateIssueBatch).toHaveBeenCalledWith(
+      ["issue-1", "issue-2"],
+      { stateId: "state-inprogress-uuid" },
+    );
     expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-inprogress-uuid");
 
     // Reset mocks for complete
     vi.mocked(client.resolveStateId).mockClear();
-    vi.mocked(client.updateIssueState).mockClear();
+    vi.mocked(client.updateIssueBatch).mockClear();
     vi.mocked(client.updateProjectState).mockClear();
 
     // syncMilestoneComplete should transition issues to Done
     await syncMilestoneComplete(client, config, status, "1: Foundation", false);
 
     expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "Done");
-    expect(client.updateIssueState).toHaveBeenCalledWith("issue-1", "state-done-uuid");
-    expect(client.updateIssueState).toHaveBeenCalledWith("issue-2", "state-done-uuid");
+    expect(client.updateIssueBatch).toHaveBeenCalledWith(
+      ["issue-1", "issue-2"],
+      { stateId: "state-done-uuid" },
+    );
     // Not last milestone, so project should NOT be updated to inReview
     expect(client.updateProjectState).not.toHaveBeenCalled();
 
@@ -609,18 +612,35 @@ describe("Integration: skill files reference valid forge CLI commands", () => {
     "status",
     "setup",
     "linear-sync",
+    "linear",
     "doctor",
     "update",
     "codex-poll",
     "cleanup",
   ];
 
-  // Also valid subcommands of linear-sync
+  // Also valid subcommands of linear-sync (deprecated, still referenced in skill files)
   const validLinearSubcommands = [
     "start",
     "complete",
     "done",
     "list-issues",
+  ];
+
+  // Valid subcommands of the new `forge linear` command group
+  const validLinearNewSubcommands = [
+    "sync-start",
+    "sync-complete",
+    "sync-done",
+    "list-issues",
+    "create-project",
+    "create-milestone",
+    "create-issue",
+    "create-issue-batch",
+    "create-project-relation",
+    "create-issue-relation",
+    "list-teams",
+    "list-projects",
   ];
 
   it("all skill files exist and are readable", async () => {
@@ -709,6 +729,41 @@ describe("Integration: skill files reference valid forge CLI commands", () => {
         .join("\n");
       expect.fail(
         `Found ${invalidSubs.length} reference(s) to non-existent linear-sync subcommands:\n${details}\n\nValid subcommands: ${validLinearSubcommands.join(", ")}`,
+      );
+    }
+  });
+
+  it("linear subcommands in skill files are valid", async () => {
+    const skillDir = join(process.cwd(), "skills");
+    const entries = await readdir(skillDir);
+    const skillFiles = entries.filter((f) => f.startsWith("forge-") && f.endsWith(".md"));
+
+    const invalidSubs: Array<{ file: string; line: number; subcommand: string }> = [];
+
+    for (const file of skillFiles) {
+      const content = await readFile(join(skillDir, file), "utf-8");
+      const lines = content.split("\n");
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Match `forge linear <sub>` but NOT `forge linear-sync <sub>` (handled by separate test)
+        const subMatches = line.matchAll(/(?:npx\s+)?forge\s+linear\s+([a-z][\w-]*)/g);
+        for (const match of subMatches) {
+          const sub = match[1];
+          if (!validLinearNewSubcommands.includes(sub)) {
+            invalidSubs.push({ file, line: i + 1, subcommand: sub });
+          }
+        }
+      }
+    }
+
+    if (invalidSubs.length > 0) {
+      const details = invalidSubs
+        .map((r) => `  ${r.file}:${r.line} — "forge linear ${r.subcommand}"`)
+        .join("\n");
+      expect.fail(
+        `Found ${invalidSubs.length} reference(s) to non-existent linear subcommands:\n${details}\n\nValid subcommands: ${validLinearNewSubcommands.join(", ")}`,
       );
     }
   });
