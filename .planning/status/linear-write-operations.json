@@ -7,8 +7,8 @@
   "linearTeamId": "72baaa3d-a5f7-4400-9011-a5e88f5a787b",
   "milestones": {
     "1": {
-      "status": "pending",
-      "linearMilestoneId": "31a6dbe5-9a8f-401f-a59a-55908c2a6fab",
+      "status": "complete",
+      "completedAt": "2026-02-20",
       "linearIssueIds": [
         "81830d3d-1f4c-4eee-9992-efcdaa1d1aa5",
         "8b90dd2b-1d1c-491b-b8c8-4a15d05e73a7",
