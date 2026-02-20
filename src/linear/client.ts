@@ -1,4 +1,9 @@
-import { LinearClient } from "@linear/sdk";
+import { LinearClient, IssueRelationType } from "@linear/sdk";
+export { IssueRelationType } from "@linear/sdk";
+
+export type LinearResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: string };
 
 export interface ForgeLinearClientOptions {
   apiKey: string;
@@ -49,11 +54,17 @@ export class ForgeLinearClient {
   }
 
   /** Update an issue's workflow state. */
-  async updateIssueState(issueId: string, stateId: string): Promise<void> {
+  async updateIssueState(
+    issueId: string,
+    stateId: string,
+  ): Promise<LinearResult<void>> {
     try {
       await this.client.updateIssue(issueId, { stateId });
+      return { success: true, data: undefined };
     } catch (err) {
-      console.warn(`[forge] Failed to update issue ${issueId}:`, err);
+      const message =
+        err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
     }
   }
 
@@ -61,11 +72,14 @@ export class ForgeLinearClient {
   async updateProjectState(
     projectId: string,
     stateId: string,
-  ): Promise<void> {
+  ): Promise<LinearResult<void>> {
     try {
       await this.client.updateProject(projectId, { statusId: stateId });
+      return { success: true, data: undefined };
     } catch (err) {
-      console.warn(`[forge] Failed to update project ${projectId}:`, err);
+      const message =
+        err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
     }
   }
 
@@ -120,6 +134,179 @@ export class ForgeLinearClient {
     } catch (err) {
       console.warn("[forge] Failed to list projects:", err);
       return [];
+    }
+  }
+
+  /** Create a new project. */
+  async createProject(input: {
+    name: string;
+    description?: string;
+    teamIds: string[];
+    priority?: number;
+  }): Promise<LinearResult<{ id: string; url: string }>> {
+    try {
+      const payload = await this.client.createProject(input);
+      const project = payload.project;
+      if (!project) {
+        return { success: false, error: "Project creation returned no data" };
+      }
+      const resolved = await project;
+      return {
+        success: true,
+        data: { id: resolved.id, url: resolved.url },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  /** Create a new milestone within a project. */
+  async createMilestone(input: {
+    name: string;
+    description?: string;
+    projectId: string;
+    targetDate?: string;
+  }): Promise<LinearResult<{ id: string }>> {
+    try {
+      const payload = await this.client.createProjectMilestone(input);
+      const milestone = payload.projectMilestone;
+      if (!milestone) {
+        return {
+          success: false,
+          error: "Milestone creation returned no data",
+        };
+      }
+      const resolved = await milestone;
+      return { success: true, data: { id: resolved.id } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  /** Create a single issue. */
+  async createIssue(input: {
+    title: string;
+    description?: string;
+    teamId: string;
+    projectId?: string;
+    projectMilestoneId?: string;
+    priority?: number;
+    stateId?: string;
+  }): Promise<LinearResult<{ id: string; identifier: string }>> {
+    try {
+      const payload = await this.client.createIssue(input);
+      const issue = payload.issue;
+      if (!issue) {
+        return { success: false, error: "Issue creation returned no data" };
+      }
+      const resolved = await issue;
+      return {
+        success: true,
+        data: { id: resolved.id, identifier: resolved.identifier },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  /** Create multiple issues in a single batch request. */
+  async createIssueBatch(
+    issues: Array<{
+      title: string;
+      description?: string;
+      teamId: string;
+      projectId?: string;
+      projectMilestoneId?: string;
+      priority?: number;
+      stateId?: string;
+    }>,
+  ): Promise<LinearResult<{ ids: string[]; identifiers: string[] }>> {
+    try {
+      const payload = await this.client.createIssueBatch({ issues });
+      const created = payload.issues ?? [];
+      const ids: string[] = [];
+      const identifiers: string[] = [];
+      for (const issue of created) {
+        ids.push(issue.id);
+        identifiers.push(issue.identifier);
+      }
+      return { success: true, data: { ids, identifiers } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  /** Create a relation between two projects. */
+  async createProjectRelation(input: {
+    projectId: string;
+    relatedProjectId: string;
+    type: string;
+    anchorType?: string;
+    relatedAnchorType?: string;
+  }): Promise<LinearResult<{ id: string }>> {
+    try {
+      const payload = await this.client.createProjectRelation({
+        projectId: input.projectId,
+        relatedProjectId: input.relatedProjectId,
+        type: input.type,
+        anchorType: input.anchorType ?? input.type,
+        relatedAnchorType: input.relatedAnchorType ?? input.type,
+      });
+      const relation = payload.projectRelation;
+      if (!relation) {
+        return {
+          success: false,
+          error: "Project relation creation returned no data",
+        };
+      }
+      const resolved = await relation;
+      return { success: true, data: { id: resolved.id } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  /** Create a relation between two issues. */
+  async createIssueRelation(input: {
+    issueId: string;
+    relatedIssueId: string;
+    type: IssueRelationType;
+  }): Promise<LinearResult<{ id: string }>> {
+    try {
+      const payload = await this.client.createIssueRelation(input);
+      const relation = payload.issueRelation;
+      if (!relation) {
+        return {
+          success: false,
+          error: "Issue relation creation returned no data",
+        };
+      }
+      const resolved = await relation;
+      return { success: true, data: { id: resolved.id } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  /** Batch-update multiple issues (e.g. transition state). */
+  async updateIssueBatch(
+    ids: string[],
+    input: { stateId: string },
+  ): Promise<LinearResult<{ updated: number; failed: string[] }>> {
+    try {
+      const payload = await this.client.updateIssueBatch(ids, input);
+      const issues = payload.issues;
+      const updated = issues ? issues.length : 0;
+      return { success: true, data: { updated, failed: [] } };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
     }
   }
 }

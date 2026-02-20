@@ -253,7 +253,7 @@ npx forge update                    # Check for and install updates
 
 # Linear sync (used by skills, can also be called directly)
 npx forge linear-sync start --slug <slug> --milestone <n>
-npx forge linear-sync complete --slug <slug> --milestone <n> [--last] [--pr-url <url>]
+npx forge linear-sync complete --slug <slug> --milestone <n> [--last]
 npx forge linear-sync done --slug <slug>
 npx forge linear-sync list-issues --slug <slug>
 ```

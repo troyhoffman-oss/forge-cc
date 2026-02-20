@@ -163,8 +163,7 @@ linearSync
   .requiredOption('--slug <slug>', 'PRD slug')
   .requiredOption('--milestone <n>', 'Milestone number')
   .option('--last', 'This is the last milestone')
-  .option('--pr-url <url>', 'PR URL to include in comments')
-  .action(async (opts: { slug: string; milestone: string; last?: boolean; prUrl?: string }) => {
+  .action(async (opts: { slug: string; milestone: string; last?: boolean }) => {
     const apiKey = process.env.LINEAR_API_KEY;
     if (!apiKey) {
       console.log('[forge] LINEAR_API_KEY not set, skipping Linear sync');

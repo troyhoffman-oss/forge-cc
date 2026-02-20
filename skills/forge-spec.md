@@ -314,13 +314,13 @@ Use mcp__linear__update_project to set the project state to "planned".
   "linearProjectId": "{Linear project UUID from Step 1}",
   "linearTeamId": "{team UUID from this step}",
   "milestones": {
-    "1": { "status": "pending", "linearMilestoneId": "{id}", "linearIssueIds": ["{id1}", "{id2}"] },
-    "2": { "status": "pending", "linearMilestoneId": "{id}", "linearIssueIds": ["{id1}", "{id2}"] }
+    "1": { "status": "pending", "linearIssueIds": ["{id1}", "{id2}"] },
+    "2": { "status": "pending", "linearIssueIds": ["{id1}", "{id2}"] }
   }
 }
 ```
 
-**`linearTeamId` is MANDATORY.** Without it, `forge linear-sync` silently skips all operations. **`linearMilestoneId` and `linearIssueIds` per milestone are MANDATORY.** These enable `/forge:go` to transition issues as milestones are completed.
+**`linearTeamId` is MANDATORY.** Without it, `forge linear-sync` silently skips all operations. **`linearIssueIds` per milestone are MANDATORY.** These enable `/forge:go` to transition issues as milestones are completed.
 
 3. **Print a summary:**
 

@@ -38,7 +38,10 @@ export async function syncMilestoneStart(
       `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.inProgress}"`,
     );
     for (const issueId of issueIds) {
-      await client.updateIssueState(issueId, stateId);
+      const result = await client.updateIssueState(issueId, stateId);
+      if (!result.success) {
+        console.warn(`[forge] Failed to update issue ${issueId}: ${result.error}`);
+      }
     }
   }
 
@@ -48,7 +51,10 @@ export async function syncMilestoneStart(
     console.log(
       `[forge] Updating project ${projectId} to "${config.linearStates.inProgress}"`,
     );
-    await client.updateProjectState(projectId, stateId);
+    const result = await client.updateProjectState(projectId, stateId);
+    if (!result.success) {
+      console.warn(`[forge] Failed to update project ${projectId}: ${result.error}`);
+    }
   }
 }
 
@@ -91,7 +97,10 @@ export async function syncMilestoneComplete(
       `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.done}"`,
     );
     for (const issueId of issueIds) {
-      await client.updateIssueState(issueId, doneStateId);
+      const result = await client.updateIssueState(issueId, doneStateId);
+      if (!result.success) {
+        console.warn(`[forge] Failed to update issue ${issueId}: ${result.error}`);
+      }
     }
   }
 
@@ -106,7 +115,10 @@ export async function syncMilestoneComplete(
       console.log(
         `[forge] Updating project ${projectId} to "${config.linearStates.inReview}" (last milestone)`,
       );
-      await client.updateProjectState(projectId, reviewStateId);
+      const result = await client.updateProjectState(projectId, reviewStateId);
+      if (!result.success) {
+        console.warn(`[forge] Failed to update project ${projectId}: ${result.error}`);
+      }
     }
   }
 }
@@ -142,7 +154,10 @@ export async function syncProjectDone(
     }
     totalIssues += issueIds.length;
     for (const issueId of issueIds) {
-      await client.updateIssueState(issueId, doneStateId);
+      const result = await client.updateIssueState(issueId, doneStateId);
+      if (!result.success) {
+        console.warn(`[forge] Failed to update issue ${issueId}: ${result.error}`);
+      }
     }
   }
   console.log(
@@ -155,6 +170,9 @@ export async function syncProjectDone(
     console.log(
       `[forge] Updating project ${projectId} to "${config.linearStates.done}"`,
     );
-    await client.updateProjectState(projectId, doneStateId);
+    const result = await client.updateProjectState(projectId, doneStateId);
+    if (!result.success) {
+      console.warn(`[forge] Failed to update project ${projectId}: ${result.error}`);
+    }
   }
 }

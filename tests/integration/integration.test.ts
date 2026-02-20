@@ -43,12 +43,10 @@ function makeStatus(overrides: Partial<PRDStatus> = {}): PRDStatus {
     milestones: {
       "1: Foundation": {
         status: "pending",
-        linearMilestoneId: "ms-1",
         linearIssueIds: ["issue-1", "issue-2"],
       },
       "2: Features": {
         status: "pending",
-        linearMilestoneId: "ms-2",
         linearIssueIds: ["issue-3"],
       },
     },
@@ -67,8 +65,8 @@ function mockLinearClient(): ForgeLinearClient {
       };
       return Promise.resolve(stateMap[stateName] ?? `state-${stateName}-uuid`);
     }),
-    updateIssueState: vi.fn().mockResolvedValue(undefined),
-    updateProjectState: vi.fn().mockResolvedValue(undefined),
+    updateIssueState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
+    updateProjectState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
     listTeams: vi.fn().mockResolvedValue([]),
     listProjects: vi.fn().mockResolvedValue([]),
     listIssuesByProject: vi.fn().mockResolvedValue([]),

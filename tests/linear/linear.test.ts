@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ForgeConfig, PRDStatus } from "../../src/types.js";
-import type { ForgeLinearClient } from "../../src/linear/client.js";
+import type { ForgeLinearClient as ForgeLinearClientType } from "../../src/linear/client.js";
 import {
   syncMilestoneStart,
   syncMilestoneComplete,
@@ -36,12 +36,12 @@ function makeStatus(overrides: Partial<PRDStatus> = {}): PRDStatus {
     milestones: {
       M1: {
         status: "in_progress",
-        linearMilestoneId: "ms-1",
+
         linearIssueIds: ["issue-1", "issue-2"],
       },
       M2: {
         status: "pending",
-        linearMilestoneId: "ms-2",
+
         linearIssueIds: ["issue-3"],
       },
     },
@@ -49,7 +49,7 @@ function makeStatus(overrides: Partial<PRDStatus> = {}): PRDStatus {
   };
 }
 
-function mockClient(): ForgeLinearClient {
+function mockClient(): ForgeLinearClientType {
   return {
     resolveStateId: vi.fn().mockImplementation((_teamId: string, stateName: string) => {
       const stateMap: Record<string, string> = {
@@ -64,16 +64,16 @@ function mockClient(): ForgeLinearClient {
       };
       return Promise.resolve(stateMap[stateName] ?? `state-${stateName}-uuid`);
     }),
-    updateIssueState: vi.fn().mockResolvedValue(undefined),
-    updateProjectState: vi.fn().mockResolvedValue(undefined),
+    updateIssueState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
+    updateProjectState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
     listTeams: vi.fn().mockResolvedValue([]),
     listProjects: vi.fn().mockResolvedValue([]),
     listIssuesByProject: vi.fn().mockResolvedValue([]),
-  } as unknown as ForgeLinearClient;
+  } as unknown as ForgeLinearClientType;
 }
 
 describe("Linear sync module", () => {
-  let client: ForgeLinearClient;
+  let client: ForgeLinearClientType;
 
   beforeEach(() => {
     client = mockClient();
@@ -167,7 +167,7 @@ describe("configurable state mapping", () => {
 });
 
 describe("empty linearIssueIds handling", () => {
-  let client: ForgeLinearClient;
+  let client: ForgeLinearClientType;
 
   beforeEach(() => {
     client = mockClient();
@@ -182,7 +182,7 @@ describe("empty linearIssueIds handling", () => {
       milestones: {
         M1: {
           status: "in_progress",
-          linearMilestoneId: "ms-1",
+  
           // No linearIssueIds
         },
       },
@@ -214,7 +214,7 @@ describe("empty linearIssueIds handling", () => {
       milestones: {
         M1: {
           status: "in_progress",
-          linearMilestoneId: "ms-1",
+  
           // No linearIssueIds
         },
       },
@@ -244,8 +244,8 @@ describe("empty linearIssueIds handling", () => {
     const config = makeConfig();
     const status = makeStatus({
       milestones: {
-        M1: { status: "complete", linearMilestoneId: "ms-1" },
-        M2: { status: "complete", linearMilestoneId: "ms-2" },
+        M1: { status: "complete" },
+        M2: { status: "complete" },
       },
     });
 
@@ -326,7 +326,7 @@ describe("missing linearTeamId handling", () => {
 });
 
 describe("console output verification", () => {
-  let client: ForgeLinearClient;
+  let client: ForgeLinearClientType;
 
   beforeEach(() => {
     client = mockClient();
@@ -383,6 +383,535 @@ describe("console output verification", () => {
       expect.stringContaining('Updating project proj-1 to "Done"'),
     );
 
+    logSpy.mockRestore();
+  });
+});
+
+// ============================================================
+// ForgeLinearClient write operations tests
+// ============================================================
+
+// Mock @linear/sdk before importing ForgeLinearClient
+vi.mock("@linear/sdk", () => {
+  const MockLinearClient = vi.fn().mockImplementation(() => ({
+    createProject: vi.fn(),
+    createProjectMilestone: vi.fn(),
+    createIssue: vi.fn(),
+    createIssueBatch: vi.fn(),
+    createProjectRelation: vi.fn(),
+    createIssueRelation: vi.fn(),
+    updateIssue: vi.fn(),
+    updateProject: vi.fn(),
+    updateIssueBatch: vi.fn(),
+    workflowStates: vi.fn(),
+    teams: vi.fn(),
+    issues: vi.fn(),
+    projects: vi.fn(),
+  }));
+  return {
+    LinearClient: MockLinearClient,
+    IssueRelationType: {
+      blocks: "blocks",
+      duplicate: "duplicate",
+      related: "related",
+    },
+  };
+});
+
+// Dynamic import so the mock is in place before the module loads
+const { ForgeLinearClient } = await import("../../src/linear/client.js");
+const { IssueRelationType } = await import("@linear/sdk");
+
+describe("ForgeLinearClient.createProject", () => {
+  it("returns success with id and url on successful creation", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProject.mockResolvedValue({
+      project: Promise.resolve({ id: "proj-1", url: "https://linear.app/proj-1" }),
+    });
+
+    const result = await client.createProject({ name: "Test Project", teamIds: ["team-1"] });
+
+    expect(result).toEqual({
+      success: true,
+      data: { id: "proj-1", url: "https://linear.app/proj-1" },
+    });
+    expect(mockSdk.createProject).toHaveBeenCalledWith({
+      name: "Test Project",
+      teamIds: ["team-1"],
+    });
+  });
+
+  it("returns error when project is null (no data)", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProject.mockResolvedValue({ project: null });
+
+    const result = await client.createProject({ name: "Test", teamIds: ["team-1"] });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Project creation returned no data",
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProject.mockRejectedValue(new Error("Network error"));
+
+    const result = await client.createProject({ name: "Test", teamIds: ["team-1"] });
+
+    expect(result).toEqual({ success: false, error: "Network error" });
+  });
+});
+
+describe("ForgeLinearClient.createMilestone", () => {
+  it("returns success with id on successful creation", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProjectMilestone.mockResolvedValue({
+      projectMilestone: Promise.resolve({ id: "ms-1" }),
+    });
+
+    const result = await client.createMilestone({
+      name: "Milestone 1",
+      projectId: "proj-1",
+    });
+
+    expect(result).toEqual({ success: true, data: { id: "ms-1" } });
+    expect(mockSdk.createProjectMilestone).toHaveBeenCalledWith({
+      name: "Milestone 1",
+      projectId: "proj-1",
+    });
+  });
+
+  it("returns error when milestone is null (no data)", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProjectMilestone.mockResolvedValue({ projectMilestone: null });
+
+    const result = await client.createMilestone({
+      name: "Milestone 1",
+      projectId: "proj-1",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Milestone creation returned no data",
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProjectMilestone.mockRejectedValue(new Error("Auth failed"));
+
+    const result = await client.createMilestone({
+      name: "Milestone 1",
+      projectId: "proj-1",
+    });
+
+    expect(result).toEqual({ success: false, error: "Auth failed" });
+  });
+});
+
+describe("ForgeLinearClient.createIssue", () => {
+  it("returns success with id and identifier on successful creation", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssue.mockResolvedValue({
+      issue: Promise.resolve({ id: "issue-1", identifier: "TEAM-101" }),
+    });
+
+    const result = await client.createIssue({
+      title: "Test Issue",
+      teamId: "team-1",
+    });
+
+    expect(result).toEqual({
+      success: true,
+      data: { id: "issue-1", identifier: "TEAM-101" },
+    });
+  });
+
+  it("returns error when issue is null (no data)", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssue.mockResolvedValue({ issue: null });
+
+    const result = await client.createIssue({
+      title: "Test Issue",
+      teamId: "team-1",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Issue creation returned no data",
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssue.mockRejectedValue(new Error("Rate limited"));
+
+    const result = await client.createIssue({
+      title: "Test Issue",
+      teamId: "team-1",
+    });
+
+    expect(result).toEqual({ success: false, error: "Rate limited" });
+  });
+});
+
+describe("ForgeLinearClient.createIssueBatch", () => {
+  it("returns success with ids and identifiers", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssueBatch.mockResolvedValue({
+      issues: [
+        { id: "issue-1", identifier: "TEAM-101" },
+        { id: "issue-2", identifier: "TEAM-102" },
+      ],
+    });
+
+    const result = await client.createIssueBatch([
+      { title: "Issue 1", teamId: "team-1" },
+      { title: "Issue 2", teamId: "team-1" },
+    ]);
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        ids: ["issue-1", "issue-2"],
+        identifiers: ["TEAM-101", "TEAM-102"],
+      },
+    });
+  });
+
+  it("returns success with empty arrays when issues is null/undefined", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssueBatch.mockResolvedValue({ issues: null });
+
+    const result = await client.createIssueBatch([
+      { title: "Issue 1", teamId: "team-1" },
+    ]);
+
+    expect(result).toEqual({
+      success: true,
+      data: { ids: [], identifiers: [] },
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssueBatch.mockRejectedValue(new Error("Batch too large"));
+
+    const result = await client.createIssueBatch([
+      { title: "Issue 1", teamId: "team-1" },
+    ]);
+
+    expect(result).toEqual({ success: false, error: "Batch too large" });
+  });
+});
+
+describe("ForgeLinearClient.createProjectRelation", () => {
+  it("returns success with relation id", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProjectRelation.mockResolvedValue({
+      projectRelation: Promise.resolve({ id: "rel-1" }),
+    });
+
+    const result = await client.createProjectRelation({
+      projectId: "proj-1",
+      relatedProjectId: "proj-2",
+      type: "related",
+    });
+
+    expect(result).toEqual({ success: true, data: { id: "rel-1" } });
+  });
+
+  it("returns error when relation is null (no data)", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProjectRelation.mockResolvedValue({ projectRelation: null });
+
+    const result = await client.createProjectRelation({
+      projectId: "proj-1",
+      relatedProjectId: "proj-2",
+      type: "related",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Project relation creation returned no data",
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createProjectRelation.mockRejectedValue(new Error("Forbidden"));
+
+    const result = await client.createProjectRelation({
+      projectId: "proj-1",
+      relatedProjectId: "proj-2",
+      type: "related",
+    });
+
+    expect(result).toEqual({ success: false, error: "Forbidden" });
+  });
+});
+
+describe("ForgeLinearClient.createIssueRelation", () => {
+  it("returns success with relation id", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssueRelation.mockResolvedValue({
+      issueRelation: Promise.resolve({ id: "irel-1" }),
+    });
+
+    const result = await client.createIssueRelation({
+      issueId: "issue-1",
+      relatedIssueId: "issue-2",
+      type: IssueRelationType.blocks as any,
+    });
+
+    expect(result).toEqual({ success: true, data: { id: "irel-1" } });
+  });
+
+  it("returns error when relation is null (no data)", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssueRelation.mockResolvedValue({ issueRelation: null });
+
+    const result = await client.createIssueRelation({
+      issueId: "issue-1",
+      relatedIssueId: "issue-2",
+      type: IssueRelationType.related as any,
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "Issue relation creation returned no data",
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.createIssueRelation.mockRejectedValue(new Error("Not found"));
+
+    const result = await client.createIssueRelation({
+      issueId: "issue-1",
+      relatedIssueId: "issue-2",
+      type: IssueRelationType.duplicate as any,
+    });
+
+    expect(result).toEqual({ success: false, error: "Not found" });
+  });
+});
+
+describe("ForgeLinearClient.updateIssueBatch", () => {
+  it("returns success with updated count and empty failed array", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateIssueBatch.mockResolvedValue({
+      issues: [{ id: "issue-1" }, { id: "issue-2" }, { id: "issue-3" }],
+    });
+
+    const result = await client.updateIssueBatch(
+      ["issue-1", "issue-2", "issue-3"],
+      { stateId: "state-done" },
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: { updated: 3, failed: [] },
+    });
+  });
+
+  it("returns updated 0 when issues is null", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateIssueBatch.mockResolvedValue({ issues: null });
+
+    const result = await client.updateIssueBatch(
+      ["issue-1"],
+      { stateId: "state-done" },
+    );
+
+    expect(result).toEqual({
+      success: true,
+      data: { updated: 0, failed: [] },
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateIssueBatch.mockRejectedValue(new Error("Timeout"));
+
+    const result = await client.updateIssueBatch(
+      ["issue-1"],
+      { stateId: "state-done" },
+    );
+
+    expect(result).toEqual({ success: false, error: "Timeout" });
+  });
+});
+
+describe("ForgeLinearClient.updateIssueState", () => {
+  it("returns success result on successful update", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateIssue.mockResolvedValue({});
+
+    const result = await client.updateIssueState("issue-1", "state-done");
+
+    expect(result).toEqual({ success: true, data: undefined });
+    expect(mockSdk.updateIssue).toHaveBeenCalledWith("issue-1", { stateId: "state-done" });
+  });
+
+  it("returns error result on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateIssue.mockRejectedValue(new Error("Issue not found"));
+
+    const result = await client.updateIssueState("issue-1", "state-done");
+
+    expect(result).toEqual({ success: false, error: "Issue not found" });
+  });
+});
+
+describe("ForgeLinearClient.updateProjectState", () => {
+  it("returns success result on successful update", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateProject.mockResolvedValue({});
+
+    const result = await client.updateProjectState("proj-1", "state-review");
+
+    expect(result).toEqual({ success: true, data: undefined });
+    expect(mockSdk.updateProject).toHaveBeenCalledWith("proj-1", { statusId: "state-review" });
+  });
+
+  it("returns error result on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateProject.mockRejectedValue(new Error("Project archived"));
+
+    const result = await client.updateProjectState("proj-1", "state-review");
+
+    expect(result).toEqual({ success: false, error: "Project archived" });
+  });
+});
+
+describe("ForgeLinearClient constructor", () => {
+  it("throws when apiKey is empty", () => {
+    expect(() => new ForgeLinearClient({ apiKey: "" })).toThrow(
+      "LINEAR_API_KEY is required",
+    );
+  });
+});
+
+describe("sync.ts error result logging", () => {
+  it("syncMilestoneStart logs warning when updateIssueState returns failure", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const failClient = mockClient();
+    vi.mocked(failClient.updateIssueState).mockResolvedValue({
+      success: false,
+      error: "Issue update failed",
+    });
+
+    const config = makeConfig();
+    const status = makeStatus();
+
+    await syncMilestoneStart(failClient, config, status, "M1");
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to update issue issue-1: Issue update failed"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to update issue issue-2: Issue update failed"),
+    );
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("syncMilestoneStart logs warning when updateProjectState returns failure", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const failClient = mockClient();
+    vi.mocked(failClient.updateProjectState).mockResolvedValue({
+      success: false,
+      error: "Project update failed",
+    });
+
+    const config = makeConfig();
+    const status = makeStatus();
+
+    await syncMilestoneStart(failClient, config, status, "M1");
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to update project proj-1: Project update failed"),
+    );
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("syncMilestoneComplete logs warning when updateIssueState returns failure", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const failClient = mockClient();
+    vi.mocked(failClient.updateIssueState).mockResolvedValue({
+      success: false,
+      error: "State transition denied",
+    });
+
+    const config = makeConfig();
+    const status = makeStatus();
+
+    await syncMilestoneComplete(failClient, config, status, "M1", true);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to update issue issue-1: State transition denied"),
+    );
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("syncProjectDone logs warning when updateIssueState returns failure", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const failClient = mockClient();
+    vi.mocked(failClient.updateIssueState).mockResolvedValue({
+      success: false,
+      error: "Bulk failure",
+    });
+
+    const config = makeConfig();
+    const status = makeStatus();
+
+    await syncProjectDone(failClient, config, status);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to update issue issue-1: Bulk failure"),
+    );
+
+    warnSpy.mockRestore();
     logSpy.mockRestore();
   });
 });

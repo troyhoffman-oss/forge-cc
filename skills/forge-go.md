@@ -380,10 +380,10 @@ Check for the Linear project ID in this priority order:
 If a Linear project ID is found:
 
 ```bash
-npx forge linear-sync complete --slug {slug} --milestone {number} [--last] [--pr-url {url}]
+npx forge linear-sync complete --slug {slug} --milestone {number} [--last]
 ```
 
-Pass `--last` if this is the last milestone. Pass `--pr-url {url}` if a PR was created. This command:
+Pass `--last` if this is the last milestone. This command:
 - If NOT last milestone: adds progress comments to milestone issues
 - If last milestone: transitions all project issues and the project to "In Review", adds PR link comments
 

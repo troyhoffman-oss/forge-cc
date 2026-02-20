@@ -34,7 +34,6 @@ export interface ForgeConfig {
 /** Per-milestone status tracking. */
 export interface MilestoneStatus {
   status: 'pending' | 'in_progress' | 'complete';
-  linearMilestoneId?: string;
   linearIssueIds?: string[];
   completedAt?: string;
 }
