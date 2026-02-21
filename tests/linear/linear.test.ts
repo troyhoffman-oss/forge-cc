@@ -93,24 +93,12 @@ describe("Linear sync module", () => {
 
   it("syncMilestoneComplete is a no-op (issues left for PR automation)", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const status = makeStatus();
 
-    const result = await syncMilestoneComplete(client, status, "M1", true);
+    const result = await syncMilestoneComplete("M1");
 
-    // Should not call any state resolution or update methods
-    expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
-    expect(client.resolveProjectStatusByCategory).not.toHaveBeenCalled();
-    expect(client.updateIssueBatch).not.toHaveBeenCalled();
-    expect(client.updateProjectState).not.toHaveBeenCalled();
-
-    // Should return empty result
     expect(result.issuesTransitioned).toBe(0);
     expect(result.projectUpdated).toBe(false);
-
-    // Should log that issues are left for PR automation
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('issues left for PR automation'),
-    );
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('issues left for PR automation'));
 
     logSpy.mockRestore();
   });

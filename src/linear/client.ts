@@ -34,51 +34,27 @@ export class ForgeLinearClient {
 
   /** Resolve an issue workflow state UUID by category (e.g. "started", "completed"). */
   async resolveIssueStateByCategory(teamId: string, category: string, nameHint?: string): Promise<string> {
-    try {
-      const states = await this.client.workflowStates({
-        filter: {
-          team: { id: { eq: teamId } },
-          type: { eq: category },
-        },
-      });
-      if (states.nodes.length === 0) {
-        throw new Error(
-          `No workflow states with category "${category}" found for team ${teamId}`,
-        );
-      }
-      if (nameHint) {
-        const match = states.nodes.find((s) => s.name === nameHint);
-        if (match) return match.id;
-      }
-      return states.nodes[0].id;
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("not found")) {
-        throw err;
-      }
-      console.warn(`[forge] Failed to resolve issue state category "${category}":`, err);
-      throw err;
+    const states = await this.client.workflowStates({
+      filter: { team: { id: { eq: teamId } }, type: { eq: category } },
+    });
+    if (states.nodes.length === 0) {
+      throw new Error(`No workflow states with category "${category}" found for team ${teamId}`);
     }
+    if (nameHint) {
+      const match = states.nodes.find((s) => s.name === nameHint);
+      if (match) return match.id;
+    }
+    return states.nodes[0].id;
   }
 
   /** Resolve a project status UUID by category (e.g. "planned", "started", "completed"). */
   async resolveProjectStatusByCategory(category: string): Promise<string> {
-    try {
-      const statuses = await this.client.projectStatuses();
-      const nodes = statuses.nodes;
-      const match = nodes.find((s) => s.type === category);
-      if (!match) {
-        throw new Error(
-          `No project status with category "${category}" found`,
-        );
-      }
-      return match.id;
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("not found")) {
-        throw err;
-      }
-      console.warn(`[forge] Failed to resolve project status category "${category}":`, err);
-      throw err;
+    const { nodes } = await this.client.projectStatuses();
+    const match = nodes.find((s) => s.type === category);
+    if (!match) {
+      throw new Error(`No project status with category "${category}" found`);
     }
+    return match.id;
   }
 
   /** Update an issue's workflow state. */

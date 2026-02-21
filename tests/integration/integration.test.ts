@@ -182,12 +182,8 @@ describe("Integration: verify → status → linear-sync pipeline", () => {
     vi.mocked(client.updateIssueBatch).mockClear();
     vi.mocked(client.updateProjectState).mockClear();
 
-    // syncMilestoneComplete is now a no-op (issues left for PR automation)
-    await syncMilestoneComplete(client, status, "1: Foundation", false);
-
-    expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
-    expect(client.updateIssueBatch).not.toHaveBeenCalled();
-    expect(client.updateProjectState).not.toHaveBeenCalled();
+    // syncMilestoneComplete is a no-op (issues left for PR automation)
+    await syncMilestoneComplete("1: Foundation");
 
     // 5. Verify the chain: pipeline result feeds status update feeds sync
     const finalStatus = await readStatus(projectDir, slug);
@@ -255,25 +251,14 @@ describe("Integration: verify → status → linear-sync pipeline", () => {
   });
 
   it("syncMilestoneComplete on last milestone is a no-op (PR automation handles transitions)", async () => {
-    const projectDir = setupDir();
-    const slug = "test-project";
-    const status = makeStatus();
-    await writeStatusFile(projectDir, slug, status);
-
     const { syncMilestoneComplete } = await vi.importActual<
       typeof import("../../src/linear/sync.js")
     >("../../src/linear/sync.js");
-    const client = mockLinearClient();
-
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    // isLast = true, but syncMilestoneComplete is now a no-op
-    await syncMilestoneComplete(client, status, "2: Features", true);
-
-    expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
-    expect(client.resolveProjectStatusByCategory).not.toHaveBeenCalled();
-    expect(client.updateIssueBatch).not.toHaveBeenCalled();
-    expect(client.updateProjectState).not.toHaveBeenCalled();
+    const result = await syncMilestoneComplete("2: Features");
+    expect(result.issuesTransitioned).toBe(0);
+    expect(result.projectUpdated).toBe(false);
 
     logSpy.mockRestore();
   });

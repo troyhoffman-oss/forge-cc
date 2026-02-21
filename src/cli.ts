@@ -340,10 +340,8 @@ linear
   .requiredOption('--milestone <n>', 'Milestone number')
   .option('--last', 'This is the last milestone')
   .action(async (opts: { slug: string; milestone: string; last?: boolean }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      await syncMilestoneComplete(client, status, opts.milestone, !!opts.last);
-      console.log(`[forge] linear sync-complete finished for ${opts.slug} ${opts.milestone}`);
-    });
+    await syncMilestoneComplete(opts.milestone);
+    console.log(`[forge] linear sync-complete finished for ${opts.slug} ${opts.milestone}`);
   });
 
 linear
