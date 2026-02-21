@@ -107,6 +107,18 @@ export class ForgeLinearClient {
     }
   }
 
+  /** Get the current status category of a project (e.g. "backlog", "planned", "started", "completed"). */
+  async getProjectStatusCategory(projectId: string): Promise<string | null> {
+    try {
+      const project = await this.client.project(projectId);
+      const status = await project.status;
+      return status?.type ?? null;
+    } catch (err) {
+      console.warn(`[forge] Failed to get project status category:`, err);
+      return null;
+    }
+  }
+
   /** List all teams visible to the authenticated user. */
   async listTeams(): Promise<Array<{ id: string; name: string; key: string }>> {
     try {

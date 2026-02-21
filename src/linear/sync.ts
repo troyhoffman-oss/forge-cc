@@ -32,7 +32,7 @@ export async function syncMilestoneStart(
     return emptySyncResult();
   }
 
-  const issueStateId = await client.resolveIssueStateByCategory(teamId, "started");
+  const issueStateId = await client.resolveIssueStateByCategory(teamId, "started", "In Progress");
 
   const result = emptySyncResult();
 
@@ -168,6 +168,13 @@ export async function syncProjectPlanned(
   const projectId = status.linearProjectId;
   if (!projectId) {
     console.warn("[forge] No linearProjectId in status file, skipping sync");
+    return result;
+  }
+
+  // Only promote from backlog — no-op if already planned or beyond
+  const currentCategory = await client.getProjectStatusCategory(projectId);
+  if (currentCategory && currentCategory !== "backlog") {
+    console.log(`[forge] Project already at "${currentCategory}" — skipping planned transition`);
     return result;
   }
 

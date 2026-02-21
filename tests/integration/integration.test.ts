@@ -168,7 +168,7 @@ describe("Integration: verify → status → linear-sync pipeline", () => {
     // syncMilestoneStart should transition issues to started
     await syncMilestoneStart(client, status, "1: Foundation");
 
-    expect(client.resolveIssueStateByCategory).toHaveBeenCalledWith("team-1", "started");
+    expect(client.resolveIssueStateByCategory).toHaveBeenCalledWith("team-1", "started", "In Progress");
     expect(client.updateIssueBatch).toHaveBeenCalledWith(
       ["issue-1", "issue-2"],
       { stateId: "state-started-uuid" },

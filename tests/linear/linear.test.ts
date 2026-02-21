@@ -55,6 +55,7 @@ function mockClient(): ForgeLinearClientType {
       };
       return Promise.resolve(categoryMap[category] ?? `pstatus-${category}-uuid`);
     }),
+    getProjectStatusCategory: vi.fn().mockResolvedValue("backlog"),
     updateIssueState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
     updateIssueBatch: vi.fn().mockResolvedValue({ success: true, data: { updated: 2, failed: [] } }),
     updateProjectState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
@@ -76,8 +77,8 @@ describe("Linear sync module", () => {
 
     await syncMilestoneStart(client, status, "M1");
 
-    // Should resolve "started" category for issues
-    expect(client.resolveIssueStateByCategory).toHaveBeenCalledWith("team-1", "started");
+    // Should resolve "started" category for issues with "In Progress" hint
+    expect(client.resolveIssueStateByCategory).toHaveBeenCalledWith("team-1", "started", "In Progress");
 
     // Should batch-update issues to started
     expect(client.updateIssueBatch).toHaveBeenCalledWith(
@@ -139,6 +140,9 @@ describe("Linear sync module", () => {
 
     await syncProjectPlanned(client, status);
 
+    // Should check current status category
+    expect(client.getProjectStatusCategory).toHaveBeenCalledWith("proj-1");
+
     // Should resolve "planned" category for project and update
     expect(client.resolveProjectStatusByCategory).toHaveBeenCalledWith("planned");
     expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "pstatus-planned-uuid");
@@ -146,6 +150,31 @@ describe("Linear sync module", () => {
     // Should not touch issues
     expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
     expect(client.updateIssueBatch).not.toHaveBeenCalled();
+  });
+
+  it("syncProjectPlanned no-ops when project is already beyond backlog", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(client.getProjectStatusCategory).mockResolvedValue("started");
+    const status = makeStatus();
+
+    const result = await syncProjectPlanned(client, status);
+
+    // Should check current status
+    expect(client.getProjectStatusCategory).toHaveBeenCalledWith("proj-1");
+
+    // Should NOT resolve or update — already beyond backlog
+    expect(client.resolveProjectStatusByCategory).not.toHaveBeenCalled();
+    expect(client.updateProjectState).not.toHaveBeenCalled();
+
+    // Should return empty result
+    expect(result.projectUpdated).toBe(false);
+
+    // Should log skip message
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('already at "started"'),
+    );
+
+    logSpy.mockRestore();
   });
 });
 
@@ -318,6 +347,7 @@ vi.mock("@linear/sdk", () => {
     updateIssueBatch: vi.fn(),
     workflowStates: vi.fn(),
     projectStatuses: vi.fn(),
+    project: vi.fn(),
     teams: vi.fn(),
     issues: vi.fn(),
     projects: vi.fn(),
@@ -623,6 +653,41 @@ describe("ForgeLinearClient.resolveProjectStatusByCategory", () => {
     await expect(
       client.resolveProjectStatusByCategory("planned"),
     ).rejects.toThrow('No project status with category "planned" found');
+  });
+});
+
+describe("ForgeLinearClient.getProjectStatusCategory", () => {
+  it("returns status category from project", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockResolvedValue({
+      status: Promise.resolve({ type: "started", name: "In Progress" }),
+    });
+
+    const result = await client.getProjectStatusCategory("proj-1");
+    expect(result).toBe("started");
+  });
+
+  it("returns null when status is null", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockResolvedValue({
+      status: Promise.resolve(null),
+    });
+
+    const result = await client.getProjectStatusCategory("proj-1");
+    expect(result).toBeNull();
+  });
+
+  it("returns null on API error", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockRejectedValue(new Error("Not found"));
+
+    const result = await client.getProjectStatusCategory("proj-1");
+    expect(result).toBeNull();
+    warnSpy.mockRestore();
   });
 });
 
