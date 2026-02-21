@@ -30,12 +30,6 @@ describe("config", () => {
     expect(config.gates).toEqual(["types", "lint", "tests"]);
     expect(config.maxIterations).toBe(5);
     expect(config.linearTeam).toBe("");
-    expect(config.linearStates).toEqual({
-      planned: "Planned",
-      inProgress: "In Progress",
-      inReview: "In Review",
-      done: "Done",
-    });
     expect(config.verifyFreshness).toBe(600000);
     expect(config.forgeVersion).toBe("1.0.0");
     expect(config.gateTimeouts).toEqual({});

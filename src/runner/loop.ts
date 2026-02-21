@@ -129,7 +129,7 @@ export async function runRalphLoop(opts: {
     if (apiKey && status.linearTeamId) {
       try {
         const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-        await syncMilestoneStart(client, config, status, milestoneKey);
+        await syncMilestoneStart(client, status, milestoneKey);
       } catch {
         // Linear sync is best-effort
       }
@@ -188,19 +188,10 @@ export async function runRalphLoop(opts: {
     await removeWorktree(wtPath, projectDir);
 
     // Update status
-    const milestoneKeys = Object.keys(status.milestones);
-    const isLast = milestoneKeys.indexOf(milestoneKey) === milestoneKeys.length - 1;
     await updateMilestoneStatus(projectDir, slug, milestoneKey, "complete");
 
-    // Linear sync: complete
-    if (apiKey && status.linearTeamId) {
-      try {
-        const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-        await syncMilestoneComplete(client, config, status, milestoneKey, isLast);
-      } catch {
-        // Linear sync is best-effort
-      }
-    }
+    // Linear sync: complete (no-op — issues left for PR automation)
+    await syncMilestoneComplete(milestoneKey);
 
     console.log(`[forge] Milestone ${milestoneNumber} complete.`);
 

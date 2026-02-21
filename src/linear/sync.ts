@@ -1,4 +1,4 @@
-import type { ForgeConfig, PRDStatus } from "../types.js";
+import type { PRDStatus } from "../types.js";
 import type { ForgeLinearClient } from "./client.js";
 
 export interface SyncResult {
@@ -12,12 +12,30 @@ function emptySyncResult(): SyncResult {
   return { issuesTransitioned: 0, issuesFailed: [], projectUpdated: false };
 }
 
+/** Resolve + update project status, mutating result in place. */
+async function transitionProject(
+  client: ForgeLinearClient,
+  result: SyncResult,
+  projectId: string,
+  category: string,
+  label: string,
+): Promise<void> {
+  const statusId = await client.resolveProjectStatusByCategory(category);
+  console.log(`[forge] Updating project ${projectId} to "${label}"`);
+  const r = await client.updateProjectState(projectId, statusId);
+  if (r.success) {
+    result.projectUpdated = true;
+  } else {
+    console.warn(`[forge] Failed to update project ${projectId}: ${r.error}`);
+    result.projectError = r.error;
+  }
+}
+
 /**
- * Transition milestone issues to inProgress and project to inProgress.
+ * Transition milestone issues to "started" and project to "started".
  */
 export async function syncMilestoneStart(
   client: ForgeLinearClient,
-  config: ForgeConfig,
   status: PRDStatus,
   milestone: string,
 ): Promise<SyncResult> {
@@ -33,24 +51,15 @@ export async function syncMilestoneStart(
     return emptySyncResult();
   }
 
-  const stateId = await client.resolveStateId(
-    teamId,
-    config.linearStates.inProgress,
-  );
-
+  const issueStateId = await client.resolveIssueStateByCategory(teamId, "started", "In Progress");
   const result = emptySyncResult();
 
-  // Transition milestone issues to inProgress
   const issueIds = ms.linearIssueIds ?? [];
   if (issueIds.length === 0) {
-    console.warn(
-      `[forge] No linearIssueIds for milestone "${milestone}" — skipping issue transitions`,
-    );
+    console.warn(`[forge] No linearIssueIds for milestone "${milestone}" — skipping issue transitions`);
   } else {
-    console.log(
-      `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.inProgress}"`,
-    );
-    const batchResult = await client.updateIssueBatch(issueIds, { stateId });
+    console.log(`[forge] Transitioning ${issueIds.length} issue(s) to "In Progress"`);
+    const batchResult = await client.updateIssueBatch(issueIds, { stateId: issueStateId });
     if (batchResult.success) {
       result.issuesTransitioned = batchResult.data.updated;
       result.issuesFailed = batchResult.data.failed;
@@ -60,104 +69,28 @@ export async function syncMilestoneStart(
     }
   }
 
-  // Transition project to inProgress
-  const projectId = status.linearProjectId;
-  if (projectId) {
-    console.log(
-      `[forge] Updating project ${projectId} to "${config.linearStates.inProgress}"`,
-    );
-    const projectResult = await client.updateProjectState(projectId, stateId);
-    if (projectResult.success) {
-      result.projectUpdated = true;
-    } else {
-      console.warn(`[forge] Failed to update project ${projectId}: ${projectResult.error}`);
-      result.projectError = projectResult.error;
-    }
+  if (status.linearProjectId) {
+    await transitionProject(client, result, status.linearProjectId, "started", "In Progress");
   }
 
   return result;
 }
 
 /**
- * Transition milestone issues to done.
- * If isLast, transition project to inReview.
+ * No-op — issues are left for PR automation (PR open -> In Review, PR merge -> Completed).
  */
 export async function syncMilestoneComplete(
-  client: ForgeLinearClient,
-  config: ForgeConfig,
-  status: PRDStatus,
   milestone: string,
-  isLast: boolean,
 ): Promise<SyncResult> {
-  const ms = status.milestones[milestone];
-  if (!ms) {
-    console.warn(`[forge] Milestone "${milestone}" not found in status file`);
-    return emptySyncResult();
-  }
-
-  const teamId = status.linearTeamId;
-  if (!teamId) {
-    console.warn("[forge] No linearTeamId in status file, skipping sync");
-    return emptySyncResult();
-  }
-
-  const doneStateId = await client.resolveStateId(
-    teamId,
-    config.linearStates.done,
-  );
-
-  const result = emptySyncResult();
-
-  // Transition milestone issues to done
-  const issueIds = ms.linearIssueIds ?? [];
-  if (issueIds.length === 0) {
-    console.warn(
-      `[forge] No linearIssueIds for milestone "${milestone}" — skipping issue transitions`,
-    );
-  } else {
-    console.log(
-      `[forge] Transitioning ${issueIds.length} issue(s) to "${config.linearStates.done}"`,
-    );
-    const batchResult = await client.updateIssueBatch(issueIds, { stateId: doneStateId });
-    if (batchResult.success) {
-      result.issuesTransitioned = batchResult.data.updated;
-      result.issuesFailed = batchResult.data.failed;
-    } else {
-      console.warn(`[forge] Batch update failed: ${batchResult.error}`);
-      result.issuesFailed = issueIds;
-    }
-  }
-
-  // If last milestone, transition project to inReview
-  if (isLast) {
-    const projectId = status.linearProjectId;
-    if (projectId) {
-      const reviewStateId = await client.resolveStateId(
-        teamId,
-        config.linearStates.inReview,
-      );
-      console.log(
-        `[forge] Updating project ${projectId} to "${config.linearStates.inReview}" (last milestone)`,
-      );
-      const projectResult = await client.updateProjectState(projectId, reviewStateId);
-      if (projectResult.success) {
-        result.projectUpdated = true;
-      } else {
-        console.warn(`[forge] Failed to update project ${projectId}: ${projectResult.error}`);
-        result.projectError = projectResult.error;
-      }
-    }
-  }
-
-  return result;
+  console.log(`[forge] Milestone "${milestone}" complete — issues left for PR automation`);
+  return emptySyncResult();
 }
 
 /**
- * Transition all issues across all milestones to done and project to done.
+ * Transition all issues across all milestones to "completed" (safety net) and project to "completed".
  */
 export async function syncProjectDone(
   client: ForgeLinearClient,
-  config: ForgeConfig,
   status: PRDStatus,
 ): Promise<SyncResult> {
   const teamId = status.linearTeamId;
@@ -166,30 +99,21 @@ export async function syncProjectDone(
     return emptySyncResult();
   }
 
-  const doneStateId = await client.resolveStateId(
-    teamId,
-    config.linearStates.done,
-  );
-
+  const doneStateId = await client.resolveIssueStateByCategory(teamId, "completed");
   const result = emptySyncResult();
 
-  // Collect all issue IDs across all milestones for a single batch call
   const allIssueIds: string[] = [];
   for (const [name, ms] of Object.entries(status.milestones)) {
-    const issueIds = ms.linearIssueIds ?? [];
-    if (issueIds.length === 0) {
-      console.warn(
-        `[forge] No linearIssueIds for milestone "${name}" — skipping issue transitions`,
-      );
-      continue;
+    const ids = ms.linearIssueIds ?? [];
+    if (ids.length === 0) {
+      console.warn(`[forge] No linearIssueIds for milestone "${name}" — skipping issue transitions`);
+    } else {
+      allIssueIds.push(...ids);
     }
-    allIssueIds.push(...issueIds);
   }
 
   if (allIssueIds.length > 0) {
-    console.log(
-      `[forge] Transitioning ${allIssueIds.length} issue(s) across all milestones to "${config.linearStates.done}"`,
-    );
+    console.log(`[forge] Transitioning ${allIssueIds.length} issue(s) across all milestones to "Done"`);
     const batchResult = await client.updateIssueBatch(allIssueIds, { stateId: doneStateId });
     if (batchResult.success) {
       result.issuesTransitioned = batchResult.data.updated;
@@ -199,25 +123,36 @@ export async function syncProjectDone(
       result.issuesFailed = allIssueIds;
     }
   } else {
-    console.log(
-      `[forge] Transitioned 0 issue(s) across all milestones to "${config.linearStates.done}"`,
-    );
+    console.log(`[forge] Transitioned 0 issue(s) across all milestones to "Done"`);
   }
 
-  // Transition project to done
+  if (status.linearProjectId) {
+    await transitionProject(client, result, status.linearProjectId, "completed", "Done");
+  }
+
+  return result;
+}
+
+/**
+ * Promote project from Backlog to Planned (no-op if already beyond backlog).
+ */
+export async function syncProjectPlanned(
+  client: ForgeLinearClient,
+  status: PRDStatus,
+): Promise<SyncResult> {
+  const result = emptySyncResult();
   const projectId = status.linearProjectId;
-  if (projectId) {
-    console.log(
-      `[forge] Updating project ${projectId} to "${config.linearStates.done}"`,
-    );
-    const projectResult = await client.updateProjectState(projectId, doneStateId);
-    if (projectResult.success) {
-      result.projectUpdated = true;
-    } else {
-      console.warn(`[forge] Failed to update project ${projectId}: ${projectResult.error}`);
-      result.projectError = projectResult.error;
-    }
+  if (!projectId) {
+    console.warn("[forge] No linearProjectId in status file, skipping sync");
+    return result;
   }
 
+  const currentCategory = await client.getProjectStatusCategory(projectId);
+  if (currentCategory && currentCategory !== "backlog") {
+    console.log(`[forge] Project already at "${currentCategory}" — skipping planned transition`);
+    return result;
+  }
+
+  await transitionProject(client, result, projectId, "planned", "Planned");
   return result;
 }

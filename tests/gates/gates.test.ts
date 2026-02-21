@@ -23,12 +23,6 @@ function makeConfig(overrides: Partial<ForgeConfig> = {}): ForgeConfig {
     gateTimeouts: {},
     maxIterations: 5,
     linearTeam: "",
-    linearStates: {
-      planned: "Planned",
-      inProgress: "In Progress",
-      inReview: "In Review",
-      done: "Done",
-    },
     verifyFreshness: 600000,
     forgeVersion: "1.0.0",
     ...overrides,

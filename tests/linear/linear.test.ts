@@ -5,25 +5,8 @@ import {
   syncMilestoneStart,
   syncMilestoneComplete,
   syncProjectDone,
+  syncProjectPlanned,
 } from "../../src/linear/sync.js";
-
-function makeConfig(overrides: Partial<ForgeConfig> = {}): ForgeConfig {
-  return {
-    gates: ["types", "lint", "tests"],
-    gateTimeouts: {},
-    maxIterations: 5,
-    linearTeam: "TEAM-1",
-    linearStates: {
-      planned: "Planned",
-      inProgress: "In Progress",
-      inReview: "In Review",
-      done: "Done",
-    },
-    verifyFreshness: 600000,
-    forgeVersion: "1.0.0",
-    ...overrides,
-  };
-}
 
 function makeStatus(overrides: Partial<PRDStatus> = {}): PRDStatus {
   return {
@@ -51,19 +34,28 @@ function makeStatus(overrides: Partial<PRDStatus> = {}): PRDStatus {
 
 function mockClient(): ForgeLinearClientType {
   return {
-    resolveStateId: vi.fn().mockImplementation((_teamId: string, stateName: string) => {
-      const stateMap: Record<string, string> = {
-        "Planned": "state-planned-uuid",
-        "In Progress": "state-inprogress-uuid",
-        "In Review": "state-inreview-uuid",
-        "Done": "state-done-uuid",
-        "Custom Active": "state-custom-active-uuid",
-        "Custom Complete": "state-custom-complete-uuid",
-        "Custom Review": "state-custom-review-uuid",
-        "Custom Finished": "state-custom-finished-uuid",
+    resolveIssueStateByCategory: vi.fn().mockImplementation((_teamId: string, category: string) => {
+      const categoryMap: Record<string, string> = {
+        started: "state-started-uuid",
+        completed: "state-completed-uuid",
+        unstarted: "state-unstarted-uuid",
+        backlog: "state-backlog-uuid",
+        canceled: "state-canceled-uuid",
       };
-      return Promise.resolve(stateMap[stateName] ?? `state-${stateName}-uuid`);
+      return Promise.resolve(categoryMap[category] ?? `state-${category}-uuid`);
     }),
+    resolveProjectStatusByCategory: vi.fn().mockImplementation((category: string) => {
+      const categoryMap: Record<string, string> = {
+        planned: "pstatus-planned-uuid",
+        started: "pstatus-started-uuid",
+        completed: "pstatus-completed-uuid",
+        backlog: "pstatus-backlog-uuid",
+        paused: "pstatus-paused-uuid",
+        canceled: "pstatus-canceled-uuid",
+      };
+      return Promise.resolve(categoryMap[category] ?? `pstatus-${category}-uuid`);
+    }),
+    getProjectStatusCategory: vi.fn().mockResolvedValue("backlog"),
     updateIssueState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
     updateIssueBatch: vi.fn().mockResolvedValue({ success: true, data: { updated: 2, failed: [] } }),
     updateProjectState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
@@ -81,97 +73,96 @@ describe("Linear sync module", () => {
   });
 
   it("syncMilestoneStart calls correct state transitions", async () => {
-    const config = makeConfig();
     const status = makeStatus();
 
-    await syncMilestoneStart(client, config, status, "M1");
+    await syncMilestoneStart(client, status, "M1");
 
-    // Should resolve "In Progress" state
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "In Progress");
+    // Should resolve "started" category for issues with "In Progress" hint
+    expect(client.resolveIssueStateByCategory).toHaveBeenCalledWith("team-1", "started", "In Progress");
 
-    // Should batch-update issues to inProgress
+    // Should batch-update issues to started
     expect(client.updateIssueBatch).toHaveBeenCalledWith(
       ["issue-1", "issue-2"],
-      { stateId: "state-inprogress-uuid" },
+      { stateId: "state-started-uuid" },
     );
 
-    // Should update project to inProgress
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-inprogress-uuid");
+    // Should resolve "started" category for project and update
+    expect(client.resolveProjectStatusByCategory).toHaveBeenCalledWith("started");
+    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "pstatus-started-uuid");
   });
 
-  it("syncMilestoneComplete transitions issues to done and project to inReview when last", async () => {
-    const config = makeConfig();
-    const status = makeStatus();
+  it("syncMilestoneComplete is a no-op (issues left for PR automation)", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await syncMilestoneComplete(client, config, status, "M1", true);
+    const result = await syncMilestoneComplete("M1");
 
-    // Should resolve "Done" for issues
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "Done");
+    expect(result.issuesTransitioned).toBe(0);
+    expect(result.projectUpdated).toBe(false);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('issues left for PR automation'));
 
-    // Should batch-update issues to done
-    expect(client.updateIssueBatch).toHaveBeenCalledWith(
-      ["issue-1", "issue-2"],
-      { stateId: "state-done-uuid" },
-    );
-
-    // Since isLast=true, should resolve "In Review" for project
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "In Review");
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-inreview-uuid");
+    logSpy.mockRestore();
   });
 
-  it("syncProjectDone transitions all issues and project to done", async () => {
-    const config = makeConfig();
+  it("syncProjectDone transitions all issues and project to completed", async () => {
     const status = makeStatus();
 
-    await syncProjectDone(client, config, status);
+    await syncProjectDone(client, status);
 
-    // Should resolve "Done" state
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "Done");
+    // Should resolve "completed" category for issues
+    expect(client.resolveIssueStateByCategory).toHaveBeenCalledWith("team-1", "completed");
 
     // Should batch-update ALL issues across all milestones in a single call
     expect(client.updateIssueBatch).toHaveBeenCalledTimes(1);
     expect(client.updateIssueBatch).toHaveBeenCalledWith(
       ["issue-1", "issue-2", "issue-3"],
-      { stateId: "state-done-uuid" },
+      { stateId: "state-completed-uuid" },
     );
 
-    // Should update project to done
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-done-uuid");
+    // Should resolve "completed" category for project and update
+    expect(client.resolveProjectStatusByCategory).toHaveBeenCalledWith("completed");
+    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "pstatus-completed-uuid");
   });
-});
 
-describe("configurable state mapping", () => {
-  it("resolves custom state names from config", async () => {
-    const client = mockClient();
-    const config = makeConfig({
-      linearStates: {
-        planned: "Custom Active",
-        inProgress: "Custom Active",
-        inReview: "Custom Review",
-        done: "Custom Finished",
-      },
-    });
+  it("syncProjectPlanned transitions project to planned", async () => {
     const status = makeStatus();
 
-    await syncMilestoneStart(client, config, status, "M1");
+    await syncProjectPlanned(client, status);
 
-    // Should use the custom state name from config, not the default
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "Custom Active");
-    expect(client.updateIssueBatch).toHaveBeenCalledWith(
-      ["issue-1", "issue-2"],
-      { stateId: "state-custom-active-uuid" },
+    // Should check current status category
+    expect(client.getProjectStatusCategory).toHaveBeenCalledWith("proj-1");
+
+    // Should resolve "planned" category for project and update
+    expect(client.resolveProjectStatusByCategory).toHaveBeenCalledWith("planned");
+    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "pstatus-planned-uuid");
+
+    // Should not touch issues
+    expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
+    expect(client.updateIssueBatch).not.toHaveBeenCalled();
+  });
+
+  it("syncProjectPlanned no-ops when project is already beyond backlog", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(client.getProjectStatusCategory).mockResolvedValue("started");
+    const status = makeStatus();
+
+    const result = await syncProjectPlanned(client, status);
+
+    // Should check current status
+    expect(client.getProjectStatusCategory).toHaveBeenCalledWith("proj-1");
+
+    // Should NOT resolve or update — already beyond backlog
+    expect(client.resolveProjectStatusByCategory).not.toHaveBeenCalled();
+    expect(client.updateProjectState).not.toHaveBeenCalled();
+
+    // Should return empty result
+    expect(result.projectUpdated).toBe(false);
+
+    // Should log skip message
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('already at "started"'),
     );
 
-    // Reset and test complete with custom names
-    vi.mocked(client.resolveStateId).mockClear();
-    vi.mocked(client.updateIssueBatch).mockClear();
-    vi.mocked(client.updateProjectState).mockClear();
-
-    await syncMilestoneComplete(client, config, status, "M1", true);
-
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "Custom Finished");
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "Custom Review");
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-custom-review-uuid");
+    logSpy.mockRestore();
   });
 });
 
@@ -186,18 +177,17 @@ describe("empty linearIssueIds handling", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const config = makeConfig();
     const status = makeStatus({
       milestones: {
         M1: {
           status: "in_progress",
-  
+
           // No linearIssueIds
         },
       },
     });
 
-    await syncMilestoneStart(client, config, status, "M1");
+    await syncMilestoneStart(client, status, "M1");
 
     // Should warn about missing issue IDs
     expect(warnSpy).toHaveBeenCalledWith(
@@ -208,39 +198,7 @@ describe("empty linearIssueIds handling", () => {
     expect(client.updateIssueBatch).not.toHaveBeenCalled();
 
     // Should still update project state
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-inprogress-uuid");
-
-    warnSpy.mockRestore();
-    logSpy.mockRestore();
-  });
-
-  it("syncMilestoneComplete warns and still transitions project when no issueIds", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const config = makeConfig();
-    const status = makeStatus({
-      milestones: {
-        M1: {
-          status: "in_progress",
-  
-          // No linearIssueIds
-        },
-      },
-    });
-
-    await syncMilestoneComplete(client, config, status, "M1", true);
-
-    // Should warn about missing issue IDs
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('No linearIssueIds for milestone "M1"'),
-    );
-
-    // Should NOT call updateIssueBatch
-    expect(client.updateIssueBatch).not.toHaveBeenCalled();
-
-    // Should still update project to inReview since isLast=true
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-inreview-uuid");
+    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "pstatus-started-uuid");
 
     warnSpy.mockRestore();
     logSpy.mockRestore();
@@ -250,7 +208,6 @@ describe("empty linearIssueIds handling", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const config = makeConfig();
     const status = makeStatus({
       milestones: {
         M1: { status: "complete" },
@@ -258,7 +215,7 @@ describe("empty linearIssueIds handling", () => {
       },
     });
 
-    await syncProjectDone(client, config, status);
+    await syncProjectDone(client, status);
 
     // Should warn for each milestone with no issue IDs
     expect(warnSpy).toHaveBeenCalledWith(
@@ -271,8 +228,8 @@ describe("empty linearIssueIds handling", () => {
     // Should NOT call updateIssueBatch
     expect(client.updateIssueBatch).not.toHaveBeenCalled();
 
-    // Should still update project to done
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-done-uuid");
+    // Should still update project to completed
+    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "pstatus-completed-uuid");
 
     warnSpy.mockRestore();
     logSpy.mockRestore();
@@ -281,78 +238,26 @@ describe("empty linearIssueIds handling", () => {
 
 describe("missing linearTeamId handling", () => {
   it.each([
-    { name: "syncMilestoneStart", fn: (c: any, cfg: any, s: any) => syncMilestoneStart(c, cfg, s, "M1") },
-    { name: "syncMilestoneComplete", fn: (c: any, cfg: any, s: any) => syncMilestoneComplete(c, cfg, s, "M1", false) },
-    { name: "syncProjectDone", fn: (c: any, cfg: any, s: any) => syncProjectDone(c, cfg, s) },
+    { name: "syncMilestoneStart", fn: (c: any, s: any) => syncMilestoneStart(c, s, "M1") },
+    { name: "syncProjectDone", fn: (c: any, s: any) => syncProjectDone(c, s) },
   ])("$name warns and returns when no teamId", async ({ fn }) => {
     const client = mockClient();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    await fn(client, makeConfig(), makeStatus({ linearTeamId: undefined }));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await fn(client, makeStatus({ linearTeamId: undefined }));
     expect(warnSpy).toHaveBeenCalledWith("[forge] No linearTeamId in status file, skipping sync");
-    expect(client.resolveStateId).not.toHaveBeenCalled();
+    expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
     warnSpy.mockRestore();
-  });
-});
-
-describe("console output verification", () => {
-  let client: ForgeLinearClientType;
-
-  beforeEach(() => {
-    client = mockClient();
-  });
-
-  it("syncMilestoneStart logs issue count and project update", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const config = makeConfig();
-    const status = makeStatus();
-
-    await syncMilestoneStart(client, config, status, "M1");
-
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Transitioning 2 issue(s) to "In Progress"'),
-    );
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Updating project proj-1 to "In Progress"'),
-    );
-
     logSpy.mockRestore();
   });
 
-  it("syncMilestoneComplete logs issue count and project update when last", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const config = makeConfig();
-    const status = makeStatus();
-
-    await syncMilestoneComplete(client, config, status, "M1", true);
-
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Transitioning 2 issue(s) to "Done"'),
-    );
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Updating project proj-1 to "In Review"'),
-    );
-
-    logSpy.mockRestore();
-  });
-
-  it("syncProjectDone logs total issue count and project update", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const config = makeConfig();
-    const status = makeStatus();
-
-    await syncProjectDone(client, config, status);
-
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Transitioning 3 issue(s) across all milestones to "Done"'),
-    );
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Updating project proj-1 to "Done"'),
-    );
-
-    logSpy.mockRestore();
+  it("syncProjectPlanned warns when no projectId", async () => {
+    const client = mockClient();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await syncProjectPlanned(client, makeStatus({ linearProjectId: undefined }));
+    expect(warnSpy).toHaveBeenCalledWith("[forge] No linearProjectId in status file, skipping sync");
+    expect(client.resolveProjectStatusByCategory).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });
 
@@ -373,6 +278,8 @@ vi.mock("@linear/sdk", () => {
     updateProject: vi.fn(),
     updateIssueBatch: vi.fn(),
     workflowStates: vi.fn(),
+    projectStatuses: vi.fn(),
+    project: vi.fn(),
     teams: vi.fn(),
     issues: vi.fn(),
     projects: vi.fn(),
@@ -612,30 +519,128 @@ describe("ForgeLinearClient constructor", () => {
   });
 });
 
+describe("ForgeLinearClient.resolveIssueStateByCategory", () => {
+  it("returns first state matching category", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.workflowStates.mockResolvedValue({
+      nodes: [
+        { id: "state-1", name: "In Progress", type: "started" },
+        { id: "state-2", name: "In Development", type: "started" },
+      ],
+    });
+
+    const result = await client.resolveIssueStateByCategory("team-1", "started");
+    expect(result).toBe("state-1");
+  });
+
+  it("prefers nameHint when provided", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.workflowStates.mockResolvedValue({
+      nodes: [
+        { id: "state-1", name: "In Progress", type: "started" },
+        { id: "state-2", name: "In Development", type: "started" },
+      ],
+    });
+
+    const result = await client.resolveIssueStateByCategory("team-1", "started", "In Development");
+    expect(result).toBe("state-2");
+  });
+
+  it("throws when no states match category", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.workflowStates.mockResolvedValue({ nodes: [] });
+
+    await expect(
+      client.resolveIssueStateByCategory("team-1", "started"),
+    ).rejects.toThrow('No workflow states with category "started" found for team team-1');
+  });
+});
+
+describe("ForgeLinearClient.resolveProjectStatusByCategory", () => {
+  it("returns status matching category", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "Backlog", type: "backlog" },
+        { id: "ps-2", name: "Planned", type: "planned" },
+        { id: "ps-3", name: "In Progress", type: "started" },
+      ],
+    });
+
+    const result = await client.resolveProjectStatusByCategory("planned");
+    expect(result).toBe("ps-2");
+  });
+
+  it("throws when no statuses match category", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [{ id: "ps-1", name: "Backlog", type: "backlog" }],
+    });
+
+    await expect(
+      client.resolveProjectStatusByCategory("planned"),
+    ).rejects.toThrow('No project status with category "planned" found');
+  });
+});
+
+describe("ForgeLinearClient.getProjectStatusCategory", () => {
+  it("returns status category from project", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockResolvedValue({
+      status: Promise.resolve({ type: "started", name: "In Progress" }),
+    });
+
+    const result = await client.getProjectStatusCategory("proj-1");
+    expect(result).toBe("started");
+  });
+
+  it("returns null when status is null", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockResolvedValue({
+      status: Promise.resolve(null),
+    });
+
+    const result = await client.getProjectStatusCategory("proj-1");
+    expect(result).toBeNull();
+  });
+
+  it("returns null on API error", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockRejectedValue(new Error("Not found"));
+
+    const result = await client.getProjectStatusCategory("proj-1");
+    expect(result).toBeNull();
+    warnSpy.mockRestore();
+  });
+});
+
 describe("sync.ts error result logging", () => {
   it.each([
     {
       name: "syncMilestoneStart batch fail", mockMethod: "updateIssueBatch" as const,
       errorMsg: "Batch update failed",
-      run: (c: any, cfg: any, s: any) => syncMilestoneStart(c, cfg, s, "M1"),
+      run: (c: any, s: any) => syncMilestoneStart(c, s, "M1"),
       expected: "Batch update failed: Batch update failed",
     },
     {
       name: "syncMilestoneStart project fail", mockMethod: "updateProjectState" as const,
       errorMsg: "Project update failed",
-      run: (c: any, cfg: any, s: any) => syncMilestoneStart(c, cfg, s, "M1"),
+      run: (c: any, s: any) => syncMilestoneStart(c, s, "M1"),
       expected: "Failed to update project proj-1: Project update failed",
-    },
-    {
-      name: "syncMilestoneComplete batch fail", mockMethod: "updateIssueBatch" as const,
-      errorMsg: "State transition denied",
-      run: (c: any, cfg: any, s: any) => syncMilestoneComplete(c, cfg, s, "M1", true),
-      expected: "Batch update failed: State transition denied",
     },
     {
       name: "syncProjectDone batch fail", mockMethod: "updateIssueBatch" as const,
       errorMsg: "Bulk failure",
-      run: (c: any, cfg: any, s: any) => syncProjectDone(c, cfg, s),
+      run: (c: any, s: any) => syncProjectDone(c, s),
       expected: "Batch update failed: Bulk failure",
     },
   ])("$name logs warning", async ({ mockMethod, errorMsg, run, expected }) => {
@@ -643,7 +648,7 @@ describe("sync.ts error result logging", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const failClient = mockClient();
     vi.mocked((failClient as any)[mockMethod]).mockResolvedValue({ success: false, error: errorMsg });
-    await run(failClient, makeConfig(), makeStatus());
+    await run(failClient, makeStatus());
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(expected));
     warnSpy.mockRestore();
     logSpy.mockRestore();

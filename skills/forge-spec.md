@@ -334,7 +334,13 @@ This returns `{id}`. Use the first issue ID from each milestone as the represent
 
 **`linearTeamId` is MANDATORY.** Without it, the forge Linear sync commands (`sync-start`, `sync-complete`, `sync-done`) silently skip all operations. **`linearIssueIds` per milestone are MANDATORY.** These enable `/forge:go` to transition issues as milestones are completed.
 
-**Note:** There is no dedicated CLI command to set the project state to "Planned". The project will remain in its current state (typically "Backlog") until `/forge:go` runs `npx forge linear sync-start`, which transitions it to "In Progress". The intermediate "Planned" state is not critical — the presence of milestones and issues signals that the project has been specced.
+**Promote project to Planned:** After updating the status file, transition the project from Backlog to Planned in Linear:
+
+```bash
+npx forge linear sync-planned --slug {slug}
+```
+
+This is a promote-only transition — if the project is already at "Planned" or higher, it's a no-op.
 
 2. **Print a summary:**
 
@@ -346,7 +352,7 @@ This returns `{id}`. Use the first issue ID from each milestone as the represent
 - **Issues:** {M} created across all milestones
 - **Relations:** {R} dependency relations created
 
-Note: Project will transition to "In Progress" when `/forge:go` runs.
+Note: Project transitioned to "Planned". It will move to "In Progress" when `/forge:go` runs.
 ```
 
 If any creation fails, report the error and continue with remaining items.

@@ -32,29 +32,29 @@ export class ForgeLinearClient {
     this.teamId = opts.teamId;
   }
 
-  /** Resolve a workflow state UUID by its display name for a given team. */
-  async resolveStateId(teamId: string, stateName: string): Promise<string> {
-    try {
-      const states = await this.client.workflowStates({
-        filter: {
-          team: { id: { eq: teamId } },
-          name: { eq: stateName },
-        },
-      });
-      const node = states.nodes[0];
-      if (!node) {
-        throw new Error(
-          `Workflow state "${stateName}" not found for team ${teamId}`,
-        );
-      }
-      return node.id;
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("not found")) {
-        throw err;
-      }
-      console.warn(`[forge] Failed to resolve state "${stateName}":`, err);
-      throw err;
+  /** Resolve an issue workflow state UUID by category (e.g. "started", "completed"). */
+  async resolveIssueStateByCategory(teamId: string, category: string, nameHint?: string): Promise<string> {
+    const states = await this.client.workflowStates({
+      filter: { team: { id: { eq: teamId } }, type: { eq: category } },
+    });
+    if (states.nodes.length === 0) {
+      throw new Error(`No workflow states with category "${category}" found for team ${teamId}`);
     }
+    if (nameHint) {
+      const match = states.nodes.find((s) => s.name === nameHint);
+      if (match) return match.id;
+    }
+    return states.nodes[0].id;
+  }
+
+  /** Resolve a project status UUID by category (e.g. "planned", "started", "completed"). */
+  async resolveProjectStatusByCategory(category: string): Promise<string> {
+    const { nodes } = await this.client.projectStatuses();
+    const match = nodes.find((s) => s.type === category);
+    if (!match) {
+      throw new Error(`No project status with category "${category}" found`);
+    }
+    return match.id;
   }
 
   /** Update an issue's workflow state. */
@@ -80,6 +80,18 @@ export class ForgeLinearClient {
       return { success: true, data: undefined };
     } catch (err) {
       return wrapError(err);
+    }
+  }
+
+  /** Get the current status category of a project (e.g. "backlog", "planned", "started", "completed"). */
+  async getProjectStatusCategory(projectId: string): Promise<string | null> {
+    try {
+      const project = await this.client.project(projectId);
+      const status = await project.status;
+      return status?.type ?? null;
+    } catch (err) {
+      console.warn(`[forge] Failed to get project status category:`, err);
+      return null;
     }
   }
 
