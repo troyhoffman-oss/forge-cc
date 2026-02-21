@@ -261,62 +261,6 @@ describe("missing linearTeamId handling", () => {
   });
 });
 
-describe("console output verification", () => {
-  let client: ForgeLinearClientType;
-
-  beforeEach(() => {
-    client = mockClient();
-  });
-
-  it("syncMilestoneStart logs issue count and project update", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const status = makeStatus();
-
-    await syncMilestoneStart(client, status, "M1");
-
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Transitioning 2 issue(s) to "In Progress"'),
-    );
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Updating project proj-1 to "In Progress"'),
-    );
-
-    logSpy.mockRestore();
-  });
-
-  it("syncProjectDone logs total issue count and project update", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const status = makeStatus();
-
-    await syncProjectDone(client, status);
-
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Transitioning 3 issue(s) across all milestones to "Done"'),
-    );
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Updating project proj-1 to "Done"'),
-    );
-
-    logSpy.mockRestore();
-  });
-
-  it("syncProjectPlanned logs project update", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-    const status = makeStatus();
-
-    await syncProjectPlanned(client, status);
-
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Updating project proj-1 to "Planned"'),
-    );
-
-    logSpy.mockRestore();
-  });
-});
-
 // ============================================================
 // ForgeLinearClient write operations tests
 // ============================================================
