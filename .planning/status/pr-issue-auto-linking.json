@@ -19,7 +19,8 @@
       ]
     },
     "2": {
-      "status": "pending",
+      "status": "complete",
+      "completedAt": "2026-02-20",
       "linearIssueIds": [
         "23a88107-e43c-434d-92f5-ccbf52ef9c4a",
         "57cde756-a7fd-4aa7-98da-ee519da87fa7",
