@@ -129,7 +129,7 @@ export async function runRalphLoop(opts: {
     if (apiKey && status.linearTeamId) {
       try {
         const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-        await syncMilestoneStart(client, config, status, milestoneKey);
+        await syncMilestoneStart(client, status, milestoneKey);
       } catch {
         // Linear sync is best-effort
       }
@@ -196,7 +196,7 @@ export async function runRalphLoop(opts: {
     if (apiKey && status.linearTeamId) {
       try {
         const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-        await syncMilestoneComplete(client, config, status, milestoneKey, isLast);
+        await syncMilestoneComplete(client, status, milestoneKey, isLast);
       } catch {
         // Linear sync is best-effort
       }

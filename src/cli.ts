@@ -8,8 +8,8 @@ import { testsGate } from './gates/tests-gate.js';
 import { writeVerifyCache } from './state/cache.js';
 import { readStatus, discoverStatuses, findNextPending } from './state/status.js';
 import { ForgeLinearClient, IssueRelationType, type LinearResult } from './linear/client.js';
-import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone } from './linear/sync.js';
-import type { ForgeConfig, PRDStatus } from './types.js';
+import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone, syncProjectPlanned } from './linear/sync.js';
+import type { PRDStatus } from './types.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -37,7 +37,7 @@ function handleResult<T>(result: LinearResult<T>): T {
 
 async function withSyncContext(
   slug: string,
-  fn: (ctx: { client: ForgeLinearClient; config: ForgeConfig; status: PRDStatus }) => Promise<void>,
+  fn: (ctx: { client: ForgeLinearClient; status: PRDStatus }) => Promise<void>,
 ): Promise<void> {
   const apiKey = requireApiKey();
   try {
@@ -48,8 +48,7 @@ async function withSyncContext(
       process.exit(1);
     }
     const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-    const config = await loadConfig(projectDir);
-    await fn({ client, config, status });
+    await fn({ client, status });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(JSON.stringify({ error: message }));
@@ -328,8 +327,8 @@ linear
   .requiredOption('--slug <slug>', 'PRD slug')
   .requiredOption('--milestone <n>', 'Milestone number')
   .action(async (opts: { slug: string; milestone: string }) => {
-    await withSyncContext(opts.slug, async ({ client, config, status }) => {
-      await syncMilestoneStart(client, config, status, opts.milestone);
+    await withSyncContext(opts.slug, async ({ client, status }) => {
+      await syncMilestoneStart(client, status, opts.milestone);
       console.log(`[forge] linear sync-start complete for ${opts.slug} ${opts.milestone}`);
     });
   });
@@ -341,8 +340,8 @@ linear
   .requiredOption('--milestone <n>', 'Milestone number')
   .option('--last', 'This is the last milestone')
   .action(async (opts: { slug: string; milestone: string; last?: boolean }) => {
-    await withSyncContext(opts.slug, async ({ client, config, status }) => {
-      await syncMilestoneComplete(client, config, status, opts.milestone, !!opts.last);
+    await withSyncContext(opts.slug, async ({ client, status }) => {
+      await syncMilestoneComplete(client, status, opts.milestone, !!opts.last);
       console.log(`[forge] linear sync-complete finished for ${opts.slug} ${opts.milestone}`);
     });
   });
@@ -352,9 +351,20 @@ linear
   .description('Mark project as done in Linear')
   .requiredOption('--slug <slug>', 'PRD slug')
   .action(async (opts: { slug: string }) => {
-    await withSyncContext(opts.slug, async ({ client, config, status }) => {
-      await syncProjectDone(client, config, status);
+    await withSyncContext(opts.slug, async ({ client, status }) => {
+      await syncProjectDone(client, status);
       console.log(`[forge] linear sync-done complete for ${opts.slug}`);
+    });
+  });
+
+linear
+  .command('sync-planned')
+  .description('Promote project from Backlog to Planned')
+  .requiredOption('--slug <slug>', 'PRD slug')
+  .action(async (opts: { slug: string }) => {
+    await withSyncContext(opts.slug, async ({ client, status }) => {
+      await syncProjectPlanned(client, status);
+      console.log(`[forge] linear sync-planned complete for ${opts.slug}`);
     });
   });
 

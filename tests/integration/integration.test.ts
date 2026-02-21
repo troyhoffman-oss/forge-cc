@@ -20,12 +20,6 @@ function makeConfig(overrides: Partial<ForgeConfig> = {}): ForgeConfig {
     gateTimeouts: {},
     maxIterations: 5,
     linearTeam: "TEAM-1",
-    linearStates: {
-      planned: "Planned",
-      inProgress: "In Progress",
-      inReview: "In Review",
-      done: "Done",
-    },
     verifyFreshness: 600000,
     forgeVersion: "1.0.0",
     ...overrides,
@@ -56,14 +50,21 @@ function makeStatus(overrides: Partial<PRDStatus> = {}): PRDStatus {
 
 function mockLinearClient(): ForgeLinearClient {
   return {
-    resolveStateId: vi.fn().mockImplementation((_teamId: string, stateName: string) => {
-      const stateMap: Record<string, string> = {
-        Planned: "state-planned-uuid",
-        "In Progress": "state-inprogress-uuid",
-        "In Review": "state-inreview-uuid",
-        Done: "state-done-uuid",
+    resolveIssueStateByCategory: vi.fn().mockImplementation((_teamId: string, category: string) => {
+      const categoryMap: Record<string, string> = {
+        started: "state-started-uuid",
+        completed: "state-completed-uuid",
+        unstarted: "state-unstarted-uuid",
       };
-      return Promise.resolve(stateMap[stateName] ?? `state-${stateName}-uuid`);
+      return Promise.resolve(categoryMap[category] ?? `state-${category}-uuid`);
+    }),
+    resolveProjectStatusByCategory: vi.fn().mockImplementation((category: string) => {
+      const categoryMap: Record<string, string> = {
+        planned: "pstatus-planned-uuid",
+        started: "pstatus-started-uuid",
+        completed: "pstatus-completed-uuid",
+      };
+      return Promise.resolve(categoryMap[category] ?? `pstatus-${category}-uuid`);
     }),
     updateIssueState: vi.fn().mockResolvedValue({ success: true, data: undefined }),
     updateIssueBatch: vi.fn().mockResolvedValue({ success: true, data: { updated: 2, failed: [] } }),
@@ -164,30 +165,28 @@ describe("Integration: verify → status → linear-sync pipeline", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    // syncMilestoneStart should transition issues to In Progress
-    await syncMilestoneStart(client, config, status, "1: Foundation");
+    // syncMilestoneStart should transition issues to started
+    await syncMilestoneStart(client, status, "1: Foundation");
 
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "In Progress");
+    expect(client.resolveIssueStateByCategory).toHaveBeenCalledWith("team-1", "started");
     expect(client.updateIssueBatch).toHaveBeenCalledWith(
       ["issue-1", "issue-2"],
-      { stateId: "state-inprogress-uuid" },
+      { stateId: "state-started-uuid" },
     );
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-inprogress-uuid");
+    expect(client.resolveProjectStatusByCategory).toHaveBeenCalledWith("started");
+    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "pstatus-started-uuid");
 
     // Reset mocks for complete
-    vi.mocked(client.resolveStateId).mockClear();
+    vi.mocked(client.resolveIssueStateByCategory).mockClear();
+    vi.mocked(client.resolveProjectStatusByCategory).mockClear();
     vi.mocked(client.updateIssueBatch).mockClear();
     vi.mocked(client.updateProjectState).mockClear();
 
-    // syncMilestoneComplete should transition issues to Done
-    await syncMilestoneComplete(client, config, status, "1: Foundation", false);
+    // syncMilestoneComplete is now a no-op (issues left for PR automation)
+    await syncMilestoneComplete(client, status, "1: Foundation", false);
 
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "Done");
-    expect(client.updateIssueBatch).toHaveBeenCalledWith(
-      ["issue-1", "issue-2"],
-      { stateId: "state-done-uuid" },
-    );
-    // Not last milestone, so project should NOT be updated to inReview
+    expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
+    expect(client.updateIssueBatch).not.toHaveBeenCalled();
     expect(client.updateProjectState).not.toHaveBeenCalled();
 
     // 5. Verify the chain: pipeline result feeds status update feeds sync
@@ -255,7 +254,7 @@ describe("Integration: verify → status → linear-sync pipeline", () => {
     clearGates();
   });
 
-  it("syncMilestoneComplete on last milestone transitions project to inReview", async () => {
+  it("syncMilestoneComplete on last milestone is a no-op (PR automation handles transitions)", async () => {
     const projectDir = setupDir();
     const slug = "test-project";
     const status = makeStatus();
@@ -265,15 +264,16 @@ describe("Integration: verify → status → linear-sync pipeline", () => {
       typeof import("../../src/linear/sync.js")
     >("../../src/linear/sync.js");
     const client = mockLinearClient();
-    const config = makeConfig();
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    // isLast = true
-    await syncMilestoneComplete(client, config, status, "2: Features", true);
+    // isLast = true, but syncMilestoneComplete is now a no-op
+    await syncMilestoneComplete(client, status, "2: Features", true);
 
-    expect(client.resolveStateId).toHaveBeenCalledWith("team-1", "In Review");
-    expect(client.updateProjectState).toHaveBeenCalledWith("proj-1", "state-inreview-uuid");
+    expect(client.resolveIssueStateByCategory).not.toHaveBeenCalled();
+    expect(client.resolveProjectStatusByCategory).not.toHaveBeenCalled();
+    expect(client.updateIssueBatch).not.toHaveBeenCalled();
+    expect(client.updateProjectState).not.toHaveBeenCalled();
 
     logSpy.mockRestore();
   });
@@ -632,6 +632,7 @@ describe("Integration: skill files reference valid forge CLI commands", () => {
     "sync-start",
     "sync-complete",
     "sync-done",
+    "sync-planned",
     "list-issues",
     "create-project",
     "create-milestone",

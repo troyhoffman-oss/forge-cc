@@ -21,12 +21,6 @@ export interface ForgeConfig {
   gateTimeouts: Record<string, number>;
   maxIterations: number;
   linearTeam: string;
-  linearStates: {
-    planned: string;
-    inProgress: string;
-    inReview: string;
-    done: string;
-  };
   verifyFreshness: number;
   forgeVersion: string;
 }

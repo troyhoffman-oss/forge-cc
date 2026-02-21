@@ -32,27 +32,51 @@ export class ForgeLinearClient {
     this.teamId = opts.teamId;
   }
 
-  /** Resolve a workflow state UUID by its display name for a given team. */
-  async resolveStateId(teamId: string, stateName: string): Promise<string> {
+  /** Resolve an issue workflow state UUID by category (e.g. "started", "completed"). */
+  async resolveIssueStateByCategory(teamId: string, category: string, nameHint?: string): Promise<string> {
     try {
       const states = await this.client.workflowStates({
         filter: {
           team: { id: { eq: teamId } },
-          name: { eq: stateName },
+          type: { eq: category },
         },
       });
-      const node = states.nodes[0];
-      if (!node) {
+      if (states.nodes.length === 0) {
         throw new Error(
-          `Workflow state "${stateName}" not found for team ${teamId}`,
+          `No workflow states with category "${category}" found for team ${teamId}`,
         );
       }
-      return node.id;
+      if (nameHint) {
+        const match = states.nodes.find((s) => s.name === nameHint);
+        if (match) return match.id;
+      }
+      return states.nodes[0].id;
     } catch (err) {
       if (err instanceof Error && err.message.includes("not found")) {
         throw err;
       }
-      console.warn(`[forge] Failed to resolve state "${stateName}":`, err);
+      console.warn(`[forge] Failed to resolve issue state category "${category}":`, err);
+      throw err;
+    }
+  }
+
+  /** Resolve a project status UUID by category (e.g. "planned", "started", "completed"). */
+  async resolveProjectStatusByCategory(category: string): Promise<string> {
+    try {
+      const statuses = await this.client.projectStatuses();
+      const nodes = statuses.nodes;
+      const match = nodes.find((s) => s.type === category);
+      if (!match) {
+        throw new Error(
+          `No project status with category "${category}" found`,
+        );
+      }
+      return match.id;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("not found")) {
+        throw err;
+      }
+      console.warn(`[forge] Failed to resolve project status category "${category}":`, err);
       throw err;
     }
   }
