@@ -25,13 +25,6 @@ export interface ForgeConfig {
   forgeVersion: string;
 }
 
-/** Per-milestone status tracking. */
-export interface MilestoneStatus {
-  status: 'pending' | 'in_progress' | 'complete';
-  linearIssueIds?: string[];
-  completedAt?: string;
-}
-
 /** PRD status file shape stored in .planning/status/. */
 export interface PRDStatus {
   project: string;
@@ -40,7 +33,11 @@ export interface PRDStatus {
   createdAt: string;
   linearProjectId?: string;
   linearTeamId?: string;
-  milestones: Record<string, MilestoneStatus>;
+  milestones: Record<string, {
+    status: 'pending' | 'in_progress' | 'complete';
+    linearIssueIds?: string[];
+    completedAt?: string;
+  }>;
 }
 
 /** Cached verification result. */

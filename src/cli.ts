@@ -6,14 +6,13 @@ import { typesGate } from './gates/types-gate.js';
 import { lintGate } from './gates/lint-gate.js';
 import { testsGate } from './gates/tests-gate.js';
 import { writeVerifyCache } from './state/cache.js';
-import { readStatus, discoverStatuses, findNextPending } from './state/status.js';
+import { readStatus } from './state/status.js';
 import { ForgeLinearClient, IssueRelationType, type LinearResult } from './linear/client.js';
 import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone, syncProjectPlanned } from './linear/sync.js';
 import type { PRDStatus } from './types.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-import { detectFormat } from './runner/detect.js';
 import { discoverGraphs, loadIndex } from './graph/reader.js';
 import { findReady, groupStatus, isProjectComplete } from './graph/query.js';
 
@@ -113,11 +112,6 @@ program
   .requiredOption('--prd <slug>', 'Slug to execute')
   .action(async (opts: { prd: string }) => {
     const projectDir = process.cwd();
-    const format = await detectFormat(projectDir, opts.prd);
-    if (format !== 'graph') {
-      console.error(`[forge] No graph found for slug "${opts.prd}". Only graph-based projects are supported.`);
-      process.exit(1);
-    }
     const { runGraphLoop } = await import('./runner/loop.js');
     await runGraphLoop({ slug: opts.prd, projectDir });
   });
@@ -128,8 +122,8 @@ program
   .action(async () => {
     const projectDir = process.cwd();
 
-    // Collect rows from both graph directories and PRD status files
-    const rows: Array<{ project: string; branch: string; progress: string; next: string; linear: string; format: string }> = [];
+    // Collect rows from graph directories
+    const rows: Array<{ project: string; branch: string; progress: string; next: string; linear: string }> = [];
 
     // Graph-based projects
     const graphSlugs = await discoverGraphs(projectDir);
@@ -148,31 +142,10 @@ program
           progress: `${complete}/${total}`,
           next,
           linear: linearState,
-          format: 'graph',
         });
       } catch {
         // skip invalid graphs
       }
-    }
-
-    // PRD-based projects (legacy)
-    const statuses = await discoverStatuses(projectDir);
-    const pending = findNextPending(statuses);
-    const pendingMap = new Map(pending.map((p) => [p.slug, p.milestone]));
-    for (const s of statuses) {
-      const keys = Object.keys(s.milestones);
-      const complete = keys.filter((k) => s.milestones[k].status === 'complete').length;
-      const total = keys.length;
-      const next = pendingMap.get(s.slug);
-      const linearState = s.linearProjectId ? 'linked' : '-';
-      rows.push({
-        project: s.project,
-        branch: s.branch,
-        progress: `${complete}/${total}`,
-        next: complete === total ? '(done)' : next ?? '-',
-        linear: linearState,
-        format: 'prd',
-      });
     }
 
     if (rows.length === 0) {
@@ -180,7 +153,7 @@ program
       return;
     }
 
-    const headers = { project: 'Project', branch: 'Branch', progress: 'Progress', next: 'Next', linear: 'Linear', format: 'Format' };
+    const headers = { project: 'Project', branch: 'Branch', progress: 'Progress', next: 'Next', linear: 'Linear' };
     const cols = (Object.keys(headers) as Array<keyof typeof headers>).map((key) => {
       const max = Math.max(headers[key].length, ...rows.map((r) => r[key].length));
       return { key, width: max };
