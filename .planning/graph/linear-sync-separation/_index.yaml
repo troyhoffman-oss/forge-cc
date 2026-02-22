@@ -26,13 +26,13 @@ groups:
 requirements:
   REQ-001:
     group: sync-core
-    status: pending
+    status: in_progress
     dependsOn: []
     priority: 2
     linearIssueId: "6876b923-5a35-49e2-a244-5d11504fc756"
   REQ-002:
     group: sync-core
-    status: pending
+    status: in_progress
     dependsOn: []
     priority: 1
     linearIssueId: "b285cc8b-1ef7-4176-9f9a-43a77d074059"
