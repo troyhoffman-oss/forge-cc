@@ -1,0 +1,40 @@
+{
+  "project": "Skill Redesign",
+  "slug": "skill-redesign",
+  "branch": "feat/skill-redesign",
+  "createdAt": "2026-02-22",
+  "linearProjectId": "0096934f-3585-4040-b83b-c25ed36cf04a",
+  "linearTeamId": "72baaa3d-a5f7-4400-9011-a5e88f5a787b",
+  "milestones": {
+    "1": {
+      "status": "complete",
+      "completedAt": "2026-02-22",
+      "linearMilestoneId": "24c1bb60-dab4-460e-b115-8b3c2851b326",
+      "linearIssueIds": [
+        "3013de2f-b01e-43a8-80fa-422e3b450272",
+        "0ac51d2a-1e46-45db-b5d2-e7ea4cd4454b",
+        "34cbf0ee-0735-4109-a0fb-04afa179cee4",
+        "fba3d06e-c178-4dcf-9b99-402f8f1dbf02"
+      ]
+    },
+    "2": {
+      "status": "complete",
+      "completedAt": "2026-02-22",
+      "linearMilestoneId": "4fae7253-9bca-44cb-96ae-108b145f3130",
+      "linearIssueIds": [
+        "82a106a7-1d74-4147-ab75-ca7e492a10d4",
+        "3b5919ef-c668-4149-a658-475ef0393fe4"
+      ]
+    },
+    "3": {
+      "status": "complete",
+      "completedAt": "2026-02-22",
+      "linearMilestoneId": "67a1fe75-c1d5-446d-82bf-099ae31b88c7",
+      "linearIssueIds": [
+        "f8f0fff9-c31c-4d69-ab6c-4bbad14f9d99",
+        "c016f69c-14e1-4f1b-93bf-d3c48d884126",
+        "b5d69508-a2fa-4f57-9fd4-f2ff80301fac"
+      ]
+    }
+  }
+}

@@ -58,6 +58,20 @@ async function installSkills(): Promise<string[]> {
     }
     installed.push(targetName);
   }
+
+  // Copy ref/ subdirectory (adversarial-review.md, requirement-sizing.md, etc.)
+  const refSource = join(skillsSource, "ref");
+  const refTarget = join(targetDir, "ref");
+  try {
+    const refFiles = await readdir(refSource);
+    await mkdir(refTarget, { recursive: true });
+    for (const file of refFiles) {
+      if (!file.endsWith(".md")) continue;
+      await copyFile(join(refSource, file), join(refTarget, file));
+      installed.push(`ref/${file}`);
+    }
+  } catch { /* ref/ doesn't exist — skip */ }
+
   return installed;
 }
 

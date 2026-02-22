@@ -77,7 +77,7 @@ Run verification to confirm everything works:
 npx forge verify
 ```
 
-**CRITICAL: NEVER remove a gate from `.forge.json` to make verification pass.** Deferred gates will be verified later during `/forge:go`.
+**CRITICAL: NEVER remove a gate from `.forge.json` to make verification pass.** Deferred gates will be verified later during `/forge:build`.
 
 If any gate fails, fix the issue before proceeding.
 
@@ -145,5 +145,5 @@ Print a summary:
 
 ### Next Steps
 1. Review the generated `CLAUDE.md` and customize as needed
-2. Run `/forge:spec` to create a PRD for your first feature
+2. Run `/forge:plan` to create a requirement graph for your first feature
 ```
