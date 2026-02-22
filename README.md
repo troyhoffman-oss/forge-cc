@@ -101,12 +101,7 @@ The agent team architecture is skill-driven (defined in `/forge:go` markdown), n
 
 ### `npx forge run` -- Auto-Chain Execution
 
-Run all remaining work for a project autonomously. Forge supports two execution engines:
-
-- **Graph engine** (v2.0+): Executes a requirement graph with dependency ordering. Requirements are processed in topological order -- dependencies complete before dependents start. Each requirement gets a fresh Claude session in an isolated worktree with automatic verification and retry.
-- **Ralph loop** (legacy): Chains milestones sequentially from a PRD status file.
-
-On verification failure, the loop retries up to `maxIterations` times before stopping. Deadlock detection exits cleanly when circular dependencies prevent progress.
+Run all remaining requirements for a project autonomously. The graph engine executes a requirement graph in topological order -- dependencies complete before dependents start. Each requirement gets a fresh Claude session in an isolated worktree with automatic verification and retry. On verification failure, the loop retries up to `maxIterations` times before stopping. Deadlock detection exits cleanly when circular dependencies prevent progress.
 
 ### `/forge:setup` and `/forge:update`
 
@@ -134,7 +129,7 @@ Forge runs **3 verification gates** that catch issues before code ships:
 
 Gates run sequentially with configurable per-gate timeouts (default 2 minutes each). Results are cached to `.forge/last-verify.json`.
 
-**Self-healing (Ralph loop):** When a gate fails during `forge run`, the errors are fed back to Claude as structured context -- file path, line number, error message. Claude fixes the issues and re-runs verification. This loops up to `maxIterations` (default 5) times before stopping. Most failures resolve automatically.
+**Self-healing:** When a gate fails during `forge run`, the errors are fed back to Claude as structured context -- file path, line number, error message. Claude fixes the issues and re-runs verification. This loops up to `maxIterations` (default 5) times before stopping. Most failures resolve automatically.
 
 ---
 
@@ -213,7 +208,7 @@ export LINEAR_API_KEY="lin_api_..."
 |--------|------|---------|-------------|
 | `gates` | `string[]` | `["types", "lint", "tests"]` | Which verification gates to run |
 | `gateTimeouts` | `Record<string, number>` | `{}` | Per-gate timeout in ms (default 120000 per gate) |
-| `maxIterations` | `number` | `5` | Max Ralph loop retry iterations |
+| `maxIterations` | `number` | `5` | Max retry iterations per requirement |
 | `linearTeam` | `string` | `""` | Linear team key or name for lifecycle sync |
 | `linearStates` | `object` | see below | Custom Linear state names |
 | `verifyFreshness` | `number` | `600000` | Verify cache validity in ms (default 10 min) |
@@ -389,7 +384,7 @@ forge-cc/
       client.ts         # @linear/sdk wrapper (team-scoped, category+name fallback)
       sync.ts           # Linear state transitions
     runner/
-      loop.ts           # Graph loop + Ralph loop executors
+      loop.ts           # Graph loop executor
       prompt.ts         # Prompt builder + requirement context
       update.ts         # Version check
     state/
