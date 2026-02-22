@@ -25,40 +25,40 @@ groups:
 requirements:
   req-001:
     group: deletion
-    status: pending
+    status: complete
     dependsOn: []
     linearIssueId: da5e4859-fdac-4569-87d5-8c530f408a21
   req-002:
     group: deletion
-    status: pending
+    status: complete
     dependsOn:
       - req-001
     linearIssueId: 1e388f9b-676c-49d2-b936-0adebe2c881c
   req-003:
     group: deletion
-    status: pending
+    status: complete
     dependsOn:
       - req-002
     linearIssueId: b6905d71-ddaf-444c-8ec9-d4c747dac86e
   req-004:
     group: deletion
-    status: pending
+    status: complete
     dependsOn:
       - req-003
     linearIssueId: 33651fd5-a8da-4e94-aa39-3a130a70b27c
   req-005:
     group: bugfix
-    status: pending
+    status: complete
     dependsOn: []
     linearIssueId: 8dc30d0c-98c9-40fe-934a-8c8033bb8d80
   req-006:
     group: feature
-    status: pending
+    status: complete
     dependsOn: []
     linearIssueId: b7a7dd3b-c892-4eef-888c-7348ab2f4534
   req-007:
     group: validation
-    status: pending
+    status: complete
     dependsOn:
       - req-004
       - req-005
