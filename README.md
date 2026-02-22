@@ -99,9 +99,14 @@ This is the engine. Each milestone is executed by an autonomous agent team:
 
 The agent team architecture is skill-driven (defined in `/forge:go` markdown), not baked into the TypeScript codebase. This makes the orchestration pattern easy to modify.
 
-### `npx forge run` -- Auto-Chain Milestones
+### `npx forge run` -- Auto-Chain Execution
 
-Run all remaining milestones for a PRD autonomously via the Ralph loop. Each milestone gets a fresh Claude session (no context degradation), spawned in an isolated worktree. On verification failure, the loop retries up to `maxIterations` times before stopping.
+Run all remaining work for a project autonomously. Forge supports two execution engines:
+
+- **Graph engine** (v2.0+): Executes a requirement graph with dependency ordering. Requirements are processed in topological order -- dependencies complete before dependents start. Each requirement gets a fresh Claude session in an isolated worktree with automatic verification and retry.
+- **Ralph loop** (legacy): Chains milestones sequentially from a PRD status file.
+
+On verification failure, the loop retries up to `maxIterations` times before stopping. Deadlock detection exits cleanly when circular dependencies prevent progress.
 
 ### `/forge:setup` and `/forge:update`
 
@@ -212,7 +217,7 @@ export LINEAR_API_KEY="lin_api_..."
 | `linearTeam` | `string` | `""` | Linear team key or name for lifecycle sync |
 | `linearStates` | `object` | see below | Custom Linear state names |
 | `verifyFreshness` | `number` | `600000` | Verify cache validity in ms (default 10 min) |
-| `forgeVersion` | `string` | `"1.0.0"` | Version stamp from setup (used by version-check hook) |
+| `forgeVersion` | `string` | `"2.0.0"` | Version stamp from setup (used by version-check hook) |
 
 **`linearStates` defaults:**
 
@@ -256,6 +261,9 @@ npx forge linear sync-start --slug <slug> --milestone <n>
 npx forge linear sync-complete --slug <slug> --milestone <n> [--last]
 npx forge linear sync-done --slug <slug>
 npx forge linear list-issues --slug <slug>
+
+# GitHub Codex
+npx forge codex-poll --owner <owner> --repo <repo> --pr <number>  # Poll for Codex review
 ```
 
 ### Skill Commands
@@ -357,7 +365,7 @@ Run `npx forge doctor` to see which checks fail. Required: Node.js >= 18 and git
 forge-cc/
   src/
     cli.ts              # CLI entry (npx forge)
-    server.ts           # MCP server (stdio transport)
+    codex-poll.ts       # GitHub Codex PR review polling
     types.ts            # Core types
     doctor.ts           # Environment health checks
     setup.ts            # Project scaffolding
@@ -369,15 +377,22 @@ forge-cc/
       types-gate.ts     # TypeScript gate (tsc --noEmit)
       lint-gate.ts      # Lint gate (biome check)
       tests-gate.ts     # Tests gate (vitest/jest)
+    graph/
+      types.ts          # Graph types (GraphIndex, Requirement, etc.)
+      schemas.ts        # Zod schemas for graph YAML
+      reader.ts         # Load index, requirements, overview from disk
+      writer.ts         # Atomic writes for index, requirements, overview
+      query.ts          # findReady, findBlocked, getTransitiveDeps, computeWaves
+      validator.ts      # Structural validation (cycles, dangling deps, conflicts)
+      index.ts          # Public re-exports
     linear/
-      client.ts         # @linear/sdk wrapper (team-scoped)
+      client.ts         # @linear/sdk wrapper (team-scoped, category+name fallback)
       sync.ts           # Linear state transitions
     runner/
-      loop.ts           # Ralph loop executor
-      prompt.ts         # Prompt builder + PRD section extractor
+      loop.ts           # Graph loop + Ralph loop executors
+      prompt.ts         # Prompt builder + requirement context
       update.ts         # Version check
     state/
-      status.ts         # PRD status CRUD
       cache.ts          # Verify cache writer
     worktree/
       manager.ts        # createWorktree, mergeWorktree, removeWorktree
