@@ -21,7 +21,9 @@ function requirementsDir(projectDir: string, slug: string): string {
 }
 
 /** Parse YAML frontmatter from a markdown file. Returns frontmatter object and body string. */
-function parseFrontmatter(content: string): { frontmatter: unknown; body: string } {
+function parseFrontmatter(rawContent: string): { frontmatter: unknown; body: string } {
+  // Normalize CRLF → LF so Windows-authored files parse correctly
+  const content = rawContent.replace(/\r\n/g, "\n");
   if (!content.startsWith("---\n")) {
     throw new Error("Missing YAML frontmatter opening ---");
   }
@@ -58,6 +60,11 @@ export async function loadGraph(projectDir: string, slug: string): Promise<Proje
     if (!entry.endsWith(".md")) continue;
     const raw = await readFile(join(requirementsDir(projectDir, slug), entry), "utf-8");
     const req = parseRequirementFile(raw);
+    if (requirements.has(req.id)) {
+      throw new Error(
+        `Duplicate requirement ID "${req.id}" found in file "${entry}" — another file already defines this ID`,
+      );
+    }
     requirements.set(req.id, req);
   }
 
