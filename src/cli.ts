@@ -114,13 +114,12 @@ program
   .action(async (opts: { prd: string }) => {
     const projectDir = process.cwd();
     const format = await detectFormat(projectDir, opts.prd);
-    if (format === 'graph') {
-      const { runGraphLoop } = await import('./runner/loop.js');
-      await runGraphLoop({ slug: opts.prd, projectDir });
-    } else {
-      const { runRalphLoop } = await import('./runner/loop.js');
-      await runRalphLoop({ slug: opts.prd, projectDir });
+    if (format !== 'graph') {
+      console.error(`[forge] No graph found for slug "${opts.prd}". Only graph-based projects are supported.`);
+      process.exit(1);
     }
+    const { runGraphLoop } = await import('./runner/loop.js');
+    await runGraphLoop({ slug: opts.prd, projectDir });
   });
 
 program
