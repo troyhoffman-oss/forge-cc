@@ -12,7 +12,7 @@ import {
 import { ForgeLinearClient } from "../linear/client.js";
 import {
   syncRequirementStart,
-  syncGraphProjectDone,
+  syncGraphProjectReview,
 } from "../linear/sync.js";
 import { loadIndex, loadOverview, loadRequirement, loadRequirements } from "../graph/reader.js";
 import { updateRequirementStatus } from "../graph/writer.js";
@@ -184,12 +184,12 @@ export async function runGraphLoop(opts: {
     index = await loadIndex(projectDir, slug);
   }
 
-  // Linear sync: mark project done (best-effort)
+  // Linear sync: mark project in review (best-effort)
   const apiKey = process.env.LINEAR_API_KEY;
   if (apiKey && index.linear?.teamId) {
     try {
       const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
-      await syncGraphProjectDone(client, index);
+      await syncGraphProjectReview(client, index);
     } catch {
       // Linear sync is best-effort
     }

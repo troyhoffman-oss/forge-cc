@@ -30,7 +30,7 @@ vi.mock("../../src/worktree/manager.js", () => ({
 // Mock linear sync
 vi.mock("../../src/linear/sync.js", () => ({
   syncRequirementStart: vi.fn().mockResolvedValue(undefined),
-  syncGraphProjectDone: vi.fn().mockResolvedValue(undefined),
+  syncGraphProjectReview: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock linear client

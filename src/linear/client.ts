@@ -28,6 +28,9 @@ export function categoryToName(category: string): string {
     backlog: "Backlog",
     cancelled: "Cancelled",
     triage: "Triage",
+    // "In Review" shares the "started" category with "In Progress" in Linear's data model.
+    // This entry is for documentation and name-based fallback lookups only.
+    inReview: "In Review",
   };
   return map[category] ?? category;
 }
