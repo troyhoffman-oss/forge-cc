@@ -1,0 +1,40 @@
+{
+  "project": "Graph Planning Layer",
+  "slug": "graph-planning-layer",
+  "branch": "feat/graph-planning-layer",
+  "createdAt": "2026-02-21",
+  "linearProjectId": "e3d1c4d9-7def-4c82-b283-5cfd189a3c3b",
+  "linearTeamId": "72baaa3d-a5f7-4400-9011-a5e88f5a787b",
+  "milestones": {
+    "1": {
+      "status": "pending",
+      "linearIssueIds": [
+        "e6d97abb-35ef-452f-baec-6b2eb418767e",
+        "edb37577-7966-4f5d-bb09-1f85f60429fc",
+        "1894a959-d889-4df4-bae8-07de908ea494",
+        "aed497e5-6a5d-484e-bc38-ad78cd3e80ae",
+        "0852022c-11aa-4f2e-baab-ae7429565ca4",
+        "36106391-564f-421d-85bc-97f6b7f6f16c",
+        "3ef2deed-9101-44a7-81db-728bdc6c2856",
+        "5cf21bc0-1d9f-4f3a-8a04-280b4fe4d781"
+      ]
+    },
+    "2": {
+      "status": "pending",
+      "linearIssueIds": [
+        "859c9789-4f81-4592-b436-97341676ef42",
+        "73079e61-4d05-495d-99f8-eb25a6d24641",
+        "f581a7d2-4956-4f0c-9999-d9a1dc04f1f3",
+        "e26c9248-489f-472b-b3a6-05e66442c489"
+      ]
+    },
+    "3": {
+      "status": "pending",
+      "linearIssueIds": [
+        "d6db353c-77d5-4de1-b414-85542b46583f",
+        "20d9440a-ddbf-4ede-ba2b-9d2737b6f042",
+        "6230d6e8-d2c4-4ae4-81aa-beb5bed94d8f"
+      ]
+    }
+  }
+}
