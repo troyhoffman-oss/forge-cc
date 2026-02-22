@@ -1,0 +1,47 @@
+project: "Sample Project"
+slug: sample-project
+branch: feat/sample-project
+createdAt: "2026-02-21"
+
+linear:
+  projectId: "test-project-id"
+  teamId: "test-team-id"
+
+groups:
+  foundation:
+    name: "Foundation"
+    order: 1
+  features:
+    name: "Features"
+    order: 2
+    dependsOn:
+      - foundation
+
+requirements:
+  req-001:
+    group: foundation
+    status: complete
+    dependsOn: []
+    completedAt: "2026-02-20T10:00:00Z"
+    linearIssueId: "issue-001"
+  req-002:
+    group: foundation
+    status: in_progress
+    dependsOn:
+      - req-001
+    linearIssueId: "issue-002"
+  req-003:
+    group: features
+    status: pending
+    dependsOn:
+      - req-001
+      - req-002
+  req-004:
+    group: features
+    status: pending
+    dependsOn:
+      - req-001
+  req-005:
+    group: features
+    status: pending
+    dependsOn: []

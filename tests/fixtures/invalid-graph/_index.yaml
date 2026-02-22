@@ -1,0 +1,31 @@
+project: "Invalid Graph"
+slug: invalid-graph
+branch: feat/invalid-graph
+createdAt: "2026-02-21"
+
+linear:
+  projectId: "test-invalid-project"
+  teamId: "test-team-id"
+
+groups:
+  core:
+    name: "Core"
+    order: 1
+
+requirements:
+  req-001:
+    group: core
+    status: pending
+    dependsOn:
+      - req-003
+      - req-999
+  req-002:
+    group: core
+    status: pending
+    dependsOn:
+      - req-001
+  req-003:
+    group: nonexistent
+    status: pending
+    dependsOn:
+      - req-002
