@@ -6,14 +6,10 @@ import { typesGate } from './gates/types-gate.js';
 import { lintGate } from './gates/lint-gate.js';
 import { testsGate } from './gates/tests-gate.js';
 import { writeVerifyCache } from './state/cache.js';
-import { readStatus, discoverStatuses, findNextPending } from './state/status.js';
 import { ForgeLinearClient, IssueRelationType, type LinearResult } from './linear/client.js';
-import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone, syncProjectPlanned } from './linear/sync.js';
-import type { PRDStatus } from './types.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-import { detectFormat } from './runner/detect.js';
 import { discoverGraphs, loadIndex } from './graph/reader.js';
 import { findReady, groupStatus, isProjectComplete } from './graph/query.js';
 
@@ -36,27 +32,6 @@ function handleResult<T>(result: LinearResult<T>): T {
     process.exit(1);
   }
   return result.data;
-}
-
-async function withSyncContext(
-  slug: string,
-  fn: (ctx: { client: ForgeLinearClient; status: PRDStatus }) => Promise<void>,
-): Promise<void> {
-  const apiKey = requireApiKey();
-  try {
-    const projectDir = process.cwd();
-    const status = await readStatus(projectDir, slug);
-    if (!status.linearTeamId) {
-      console.error(JSON.stringify({ error: 'No linearTeamId in status file' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-    await fn({ client, status });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(JSON.stringify({ error: message }));
-    process.exit(1);
-  }
 }
 
 program
@@ -109,18 +84,12 @@ program
 
 program
   .command('run')
-  .description('Execute requirements (graph) or milestones (PRD) via Ralph loop')
+  .description('Execute graph requirements')
   .requiredOption('--prd <slug>', 'Slug to execute')
   .action(async (opts: { prd: string }) => {
     const projectDir = process.cwd();
-    const format = await detectFormat(projectDir, opts.prd);
-    if (format === 'graph') {
-      const { runGraphLoop } = await import('./runner/loop.js');
-      await runGraphLoop({ slug: opts.prd, projectDir });
-    } else {
-      const { runRalphLoop } = await import('./runner/loop.js');
-      await runRalphLoop({ slug: opts.prd, projectDir });
-    }
+    const { runGraphLoop } = await import('./runner/loop.js');
+    await runGraphLoop({ slug: opts.prd, projectDir });
   });
 
 program
@@ -129,8 +98,8 @@ program
   .action(async () => {
     const projectDir = process.cwd();
 
-    // Collect rows from both graph directories and PRD status files
-    const rows: Array<{ project: string; branch: string; progress: string; next: string; linear: string; format: string }> = [];
+    // Collect rows from graph directories
+    const rows: Array<{ project: string; branch: string; progress: string; next: string; linear: string }> = [];
 
     // Graph-based projects
     const graphSlugs = await discoverGraphs(projectDir);
@@ -149,31 +118,10 @@ program
           progress: `${complete}/${total}`,
           next,
           linear: linearState,
-          format: 'graph',
         });
       } catch {
         // skip invalid graphs
       }
-    }
-
-    // PRD-based projects (legacy)
-    const statuses = await discoverStatuses(projectDir);
-    const pending = findNextPending(statuses);
-    const pendingMap = new Map(pending.map((p) => [p.slug, p.milestone]));
-    for (const s of statuses) {
-      const keys = Object.keys(s.milestones);
-      const complete = keys.filter((k) => s.milestones[k].status === 'complete').length;
-      const total = keys.length;
-      const next = pendingMap.get(s.slug);
-      const linearState = s.linearProjectId ? 'linked' : '-';
-      rows.push({
-        project: s.project,
-        branch: s.branch,
-        progress: `${complete}/${total}`,
-        next: complete === total ? '(done)' : next ?? '-',
-        linear: linearState,
-        format: 'prd',
-      });
     }
 
     if (rows.length === 0) {
@@ -181,7 +129,7 @@ program
       return;
     }
 
-    const headers = { project: 'Project', branch: 'Branch', progress: 'Progress', next: 'Next', linear: 'Linear', format: 'Format' };
+    const headers = { project: 'Project', branch: 'Branch', progress: 'Progress', next: 'Next', linear: 'Linear' };
     const cols = (Object.keys(headers) as Array<keyof typeof headers>).map((key) => {
       const max = Math.max(headers[key].length, ...rows.map((r) => r[key].length));
       return { key, width: max };
@@ -358,69 +306,6 @@ linear
     console.log(JSON.stringify(projects));
   });
 
-// --- Sync commands (moved from linear-sync) ---
-
-linear
-  .command('sync-start')
-  .description('Start a milestone sync')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .requiredOption('--milestone <n>', 'Milestone number')
-  .action(async (opts: { slug: string; milestone: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      await syncMilestoneStart(client, status, opts.milestone);
-      console.log(`[forge] linear sync-start complete for ${opts.slug} ${opts.milestone}`);
-    });
-  });
-
-linear
-  .command('sync-complete')
-  .description('Complete a milestone sync')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .requiredOption('--milestone <n>', 'Milestone number')
-  .option('--last', 'This is the last milestone')
-  .action(async (opts: { slug: string; milestone: string; last?: boolean }) => {
-    await syncMilestoneComplete(opts.milestone);
-    console.log(`[forge] linear sync-complete finished for ${opts.slug} ${opts.milestone}`);
-  });
-
-linear
-  .command('sync-done')
-  .description('Mark project as done in Linear')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .action(async (opts: { slug: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      await syncProjectDone(client, status);
-      console.log(`[forge] linear sync-done complete for ${opts.slug}`);
-    });
-  });
-
-linear
-  .command('sync-planned')
-  .description('Promote project from Backlog to Planned')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .action(async (opts: { slug: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      await syncProjectPlanned(client, status);
-      console.log(`[forge] linear sync-planned complete for ${opts.slug}`);
-    });
-  });
-
-linear
-  .command('list-issues')
-  .description('List all Linear issue identifiers for a PRD slug')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .action(async (opts: { slug: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      if (!status.linearProjectId) {
-        console.error(JSON.stringify({ error: 'No linearProjectId in status file' }));
-        process.exit(1);
-      }
-      const issues = await client.listIssuesByProject(status.linearProjectId);
-      const identifiers = issues.map((i) => i.identifier);
-      console.log(JSON.stringify(identifiers));
-    });
-  });
-
 program
   .command('doctor')
   .description('Check environment')
@@ -441,6 +326,17 @@ program
   .action(async () => {
     const { checkForUpdate } = await import('./runner/update.js');
     await checkForUpdate(process.cwd());
+  });
+
+program
+  .command('codex-poll')
+  .description('Poll GitHub PR for Codex review comments')
+  .requiredOption('--owner <owner>', 'Repository owner')
+  .requiredOption('--repo <repo>', 'Repository name')
+  .requiredOption('--pr <number>', 'PR number')
+  .action(async (opts: { owner: string; repo: string; pr: string }) => {
+    const { pollForCodexReview } = await import('./codex-poll.js');
+    await pollForCodexReview(opts);
   });
 
 program.parse();

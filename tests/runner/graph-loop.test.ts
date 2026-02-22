@@ -29,8 +29,6 @@ vi.mock("../../src/worktree/manager.js", () => ({
 
 // Mock linear sync
 vi.mock("../../src/linear/sync.js", () => ({
-  syncMilestoneStart: vi.fn().mockResolvedValue(undefined),
-  syncMilestoneComplete: vi.fn().mockResolvedValue(undefined),
   syncRequirementStart: vi.fn().mockResolvedValue(undefined),
   syncGraphProjectDone: vi.fn().mockResolvedValue(undefined),
 }));
@@ -282,6 +280,74 @@ describe("Graph loop", () => {
     ).rejects.toThrow("process.exit called");
 
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("exits cleanly on circular dependency deadlock (A→B, B→A both pending)", async () => {
+    const projectDir = setupProjectDir();
+    const slug = "test-graph";
+
+    await writeForgeConfig(projectDir, 3);
+
+    // Circular dependency: REQ-001 depends on REQ-002, REQ-002 depends on REQ-001
+    // Validator should catch this, but if it doesn't, the loop must not hang.
+    const circularIndex = makeIndex({
+      requirements: {
+        "REQ-001": { group: "core", status: "pending", dependsOn: ["REQ-002"] },
+        "REQ-002": { group: "core", status: "pending", dependsOn: ["REQ-001"] },
+      },
+    });
+
+    mockLoadIndex.mockResolvedValueOnce(circularIndex);
+    mockIsProjectComplete.mockReturnValueOnce(false);
+    // findReady returns [] because both are blocked by each other
+    mockFindReady.mockReturnValueOnce([]);
+
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { runGraphLoop } = await import("../../src/runner/loop.js");
+
+    await expect(
+      runGraphLoop({ slug, projectDir }),
+    ).rejects.toThrow("process.exit called");
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    // Should not have spawned Claude at all
+    expect(mockSpawn).not.toHaveBeenCalled();
+
+    stderrSpy.mockRestore();
+  });
+
+  it("exits on deadlock when remaining requirements are all blocked (3-node cycle)", async () => {
+    const projectDir = setupProjectDir();
+    const slug = "test-graph";
+
+    await writeForgeConfig(projectDir, 3);
+
+    // 3-node cycle: A→B, B→C, C→A — none can start
+    const cyclicIndex = makeIndex({
+      requirements: {
+        "REQ-001": { group: "core", status: "pending", dependsOn: ["REQ-003"] },
+        "REQ-002": { group: "core", status: "pending", dependsOn: ["REQ-001"] },
+        "REQ-003": { group: "core", status: "pending", dependsOn: ["REQ-002"] },
+      },
+    });
+
+    mockLoadIndex.mockResolvedValueOnce(cyclicIndex);
+    mockIsProjectComplete.mockReturnValueOnce(false);
+    mockFindReady.mockReturnValueOnce([]);
+
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { runGraphLoop } = await import("../../src/runner/loop.js");
+
+    await expect(
+      runGraphLoop({ slug, projectDir }),
+    ).rejects.toThrow("process.exit called");
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mockSpawn).not.toHaveBeenCalled();
+
+    stderrSpy.mockRestore();
   });
 
   it("completes when isProjectComplete returns true", async () => {

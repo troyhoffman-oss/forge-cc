@@ -15,6 +15,24 @@ export interface ForgeLinearClientOptions {
 }
 
 /**
+ * Map Linear workflow state categories to their default display names.
+ * Must stay in sync with the Linear workspace status names.
+ * Used as a fallback when category-based lookup returns no results
+ * (e.g. when a workspace has statuses with undefined categories).
+ */
+export function categoryToName(category: string): string {
+  const map: Record<string, string> = {
+    started: "In Progress",
+    completed: "Done",
+    planned: "Planned",
+    backlog: "Backlog",
+    cancelled: "Cancelled",
+    triage: "Triage",
+  };
+  return map[category] ?? category;
+}
+
+/**
  * Thin wrapper around @linear/sdk's LinearClient, scoped to a team.
  * All public methods degrade gracefully on API errors (warn, don't crash).
  */
@@ -34,27 +52,48 @@ export class ForgeLinearClient {
 
   /** Resolve an issue workflow state UUID by category (e.g. "started", "completed"). */
   async resolveIssueStateByCategory(teamId: string, category: string, nameHint?: string): Promise<string> {
+    // 1. Try category-based lookup (existing behavior)
     const states = await this.client.workflowStates({
       filter: { team: { id: { eq: teamId } }, type: { eq: category } },
     });
-    if (states.nodes.length === 0) {
-      throw new Error(`No workflow states with category "${category}" found for team ${teamId}`);
+    if (states.nodes.length > 0) {
+      if (nameHint) {
+        const match = states.nodes.find((s) => s.name === nameHint);
+        if (match) return match.id;
+      }
+      return states.nodes[0].id;
     }
-    if (nameHint) {
-      const match = states.nodes.find((s) => s.name === nameHint);
-      if (match) return match.id;
-    }
-    return states.nodes[0].id;
+
+    // 2. Fallback: search all states by name
+    const nameToFind = nameHint ?? categoryToName(category);
+    const allStates = await this.client.workflowStates({
+      filter: { team: { id: { eq: teamId } } },
+    });
+    const nameMatch = allStates.nodes.find((s) => s.name === nameToFind);
+    if (nameMatch) return nameMatch.id;
+
+    throw new Error(`No workflow state matching category "${category}" or name "${nameToFind}" for team ${teamId}`);
   }
 
   /** Resolve a project status UUID by category (e.g. "planned", "started", "completed"). */
-  async resolveProjectStatusByCategory(category: string): Promise<string> {
+  async resolveProjectStatusByCategory(category: string, nameHint?: string): Promise<string> {
+    // 1. Try category-based lookup
     const { nodes } = await this.client.projectStatuses();
-    const match = nodes.find((s) => s.type === category);
-    if (!match) {
-      throw new Error(`No project status with category "${category}" found`);
+    const categoryMatches = nodes.filter((s) => s.type === category);
+    if (categoryMatches.length > 0) {
+      if (nameHint) {
+        const match = categoryMatches.find((s) => s.name === nameHint);
+        if (match) return match.id;
+      }
+      return categoryMatches[0].id;
     }
-    return match.id;
+
+    // 2. Fallback: search all statuses by name
+    const nameToFind = nameHint ?? categoryToName(category);
+    const nameMatch = nodes.find((s) => s.name === nameToFind);
+    if (nameMatch) return nameMatch.id;
+
+    throw new Error(`No project status matching category "${category}" or name "${nameToFind}" found`);
   }
 
   /** Update an issue's workflow state. */
