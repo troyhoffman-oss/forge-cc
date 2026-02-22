@@ -13,6 +13,7 @@ vi.mock("@linear/sdk", () => {
     createIssueBatch: vi.fn(),
     createProjectRelation: vi.fn(),
     createIssueRelation: vi.fn(),
+    issue: vi.fn(),
     updateIssue: vi.fn(),
     updateProject: vi.fn(),
     updateIssueBatch: vi.fn(),
@@ -439,6 +440,52 @@ describe("ForgeLinearClient.getProjectStatusCategory", () => {
     const result = await client.getProjectStatusCategory("proj-1");
     expect(result).toBeNull();
     warnSpy.mockRestore();
+  });
+});
+
+describe("ForgeLinearClient.getIssueIdentifier", () => {
+  it("returns the issue identifier on success", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issue.mockResolvedValue({ identifier: "FRG-42" });
+
+    const result = await client.getIssueIdentifier("issue-uuid-1");
+
+    expect(result).toEqual({ success: true, data: "FRG-42" });
+    expect(mockSdk.issue).toHaveBeenCalledWith("issue-uuid-1");
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issue.mockRejectedValue(new Error("Issue not found"));
+
+    const result = await client.getIssueIdentifier("bad-id");
+
+    expect(result).toEqual({ success: false, error: "Issue not found" });
+  });
+});
+
+describe("ForgeLinearClient.attachIssueBranch", () => {
+  it("returns success when branch is attached", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateIssue.mockResolvedValue({});
+
+    const result = await client.attachIssueBranch("issue-1", "feat/my-branch");
+
+    expect(result).toEqual({ success: true, data: undefined });
+    expect(mockSdk.updateIssue).toHaveBeenCalledWith("issue-1", { branchName: "feat/my-branch" });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.updateIssue.mockRejectedValue(new Error("Permission denied"));
+
+    const result = await client.attachIssueBranch("issue-1", "feat/my-branch");
+
+    expect(result).toEqual({ success: false, error: "Permission denied" });
   });
 });
 

@@ -112,6 +112,29 @@ export class ForgeLinearClient {
     }
   }
 
+  /** Resolve a Linear issue UUID to its human-readable identifier (e.g. "FRG-42"). */
+  async getIssueIdentifier(issueId: string): Promise<LinearResult<string>> {
+    try {
+      const issue = await this.client.issue(issueId);
+      return { success: true, data: issue.identifier };
+    } catch (err) {
+      return wrapError(err);
+    }
+  }
+
+  /** Associate a git branch with a Linear issue. Enables Linear's GitHub PR automation. */
+  async attachIssueBranch(
+    issueId: string,
+    branchName: string,
+  ): Promise<LinearResult<void>> {
+    try {
+      await this.client.updateIssue(issueId, { branchName } as Record<string, unknown>);
+      return { success: true, data: undefined };
+    } catch (err) {
+      return wrapError(err);
+    }
+  }
+
   /** Update a project's status (state name in Linear projects). */
   async updateProjectState(
     projectId: string,
