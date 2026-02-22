@@ -13,6 +13,9 @@ import type { PRDStatus } from './types.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { detectFormat } from './runner/detect.js';
+import { discoverGraphs, loadIndex } from './graph/reader.js';
+import { findReady, groupStatus, isProjectComplete } from './graph/query.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -106,43 +109,79 @@ program
 
 program
   .command('run')
-  .description('Execute milestones via Ralph loop')
-  .requiredOption('--prd <slug>', 'PRD slug to execute')
+  .description('Execute requirements (graph) or milestones (PRD) via Ralph loop')
+  .requiredOption('--prd <slug>', 'Slug to execute')
   .action(async (opts: { prd: string }) => {
-    const { runRalphLoop } = await import('./runner/loop.js');
-    await runRalphLoop({ slug: opts.prd, projectDir: process.cwd() });
+    const projectDir = process.cwd();
+    const format = await detectFormat(projectDir, opts.prd);
+    if (format === 'graph') {
+      const { runGraphLoop } = await import('./runner/loop.js');
+      await runGraphLoop({ slug: opts.prd, projectDir });
+    } else {
+      const { runRalphLoop } = await import('./runner/loop.js');
+      await runRalphLoop({ slug: opts.prd, projectDir });
+    }
   });
 
 program
   .command('status')
-  .description('Show PRD progress')
+  .description('Show project progress')
   .action(async () => {
     const projectDir = process.cwd();
-    const statuses = await discoverStatuses(projectDir);
-    if (statuses.length === 0) {
-      console.log('No PRD status files found.');
-      return;
+
+    // Collect rows from both graph directories and PRD status files
+    const rows: Array<{ project: string; branch: string; progress: string; next: string; linear: string; format: string }> = [];
+
+    // Graph-based projects
+    const graphSlugs = await discoverGraphs(projectDir);
+    for (const slug of graphSlugs) {
+      try {
+        const index = await loadIndex(projectDir, slug);
+        const reqs = Object.values(index.requirements);
+        const total = reqs.length;
+        const complete = reqs.filter(r => r.status === 'complete').length;
+        const ready = findReady(index);
+        const next = isProjectComplete(index) ? '(done)' : ready.length > 0 ? ready[0] : '(blocked)';
+        const linearState = index.linear?.projectId ? 'linked' : '-';
+        rows.push({
+          project: index.project,
+          branch: index.branch,
+          progress: `${complete}/${total}`,
+          next,
+          linear: linearState,
+          format: 'graph',
+        });
+      } catch {
+        // skip invalid graphs
+      }
     }
+
+    // PRD-based projects (legacy)
+    const statuses = await discoverStatuses(projectDir);
     const pending = findNextPending(statuses);
     const pendingMap = new Map(pending.map((p) => [p.slug, p.milestone]));
-
-    // Calculate column widths
-    const rows = statuses.map((s) => {
+    for (const s of statuses) {
       const keys = Object.keys(s.milestones);
       const complete = keys.filter((k) => s.milestones[k].status === 'complete').length;
       const total = keys.length;
       const next = pendingMap.get(s.slug);
       const linearState = s.linearProjectId ? 'linked' : '-';
-      return {
+      rows.push({
         project: s.project,
         branch: s.branch,
         progress: `${complete}/${total}`,
         next: complete === total ? '(done)' : next ?? '-',
         linear: linearState,
-      };
-    });
+        format: 'prd',
+      });
+    }
 
-    const headers = { project: 'Project', branch: 'Branch', progress: 'Progress', next: 'Next', linear: 'Linear' };
+    if (rows.length === 0) {
+      console.log('No projects found.');
+      return;
+    }
+
+    const headers = { project: 'Project', branch: 'Branch', progress: 'Progress', next: 'Next', linear: 'Linear', format: 'Format' };
     const cols = (Object.keys(headers) as Array<keyof typeof headers>).map((key) => {
       const max = Math.max(headers[key].length, ...rows.map((r) => r[key].length));
       return { key, width: max };
