@@ -287,14 +287,50 @@ describe("ForgeLinearClient.resolveIssueStateByCategory", () => {
     expect(result).toBe("state-2");
   });
 
-  it("throws when no states match category", async () => {
+  it("throws when both category and name lookups fail", async () => {
     const client = new ForgeLinearClient({ apiKey: "test-key" });
     const mockSdk = (client as any).client;
-    mockSdk.workflowStates.mockResolvedValue({ nodes: [] });
+    mockSdk.workflowStates
+      .mockResolvedValueOnce({ nodes: [] })   // category lookup returns empty
+      .mockResolvedValueOnce({ nodes: [] });  // name fallback also returns empty
 
     await expect(
       client.resolveIssueStateByCategory("team-1", "started"),
-    ).rejects.toThrow('No workflow states with category "started" found for team team-1');
+    ).rejects.toThrow('No workflow state matching category "started" or name "In Progress" for team team-1');
+  });
+
+  it("falls back to name-based lookup when category returns empty", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.workflowStates
+      .mockResolvedValueOnce({ nodes: [] })  // category filter returns empty
+      .mockResolvedValueOnce({               // team-only filter returns all states
+        nodes: [
+          { id: "state-a", name: "Backlog" },
+          { id: "state-b", name: "Planned" },
+          { id: "state-c", name: "In Progress" },
+        ],
+      });
+
+    const result = await client.resolveIssueStateByCategory("team-1", "planned");
+    expect(result).toBe("state-b");
+  });
+
+  it("falls back to nameHint when category returns empty", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.workflowStates
+      .mockResolvedValueOnce({ nodes: [] })  // category filter returns empty
+      .mockResolvedValueOnce({               // team-only filter returns all states
+        nodes: [
+          { id: "state-a", name: "Backlog" },
+          { id: "state-b", name: "In Progress" },
+          { id: "state-c", name: "Done" },
+        ],
+      });
+
+    const result = await client.resolveIssueStateByCategory("team-1", "started", "In Progress");
+    expect(result).toBe("state-b");
   });
 });
 
