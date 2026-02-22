@@ -637,10 +637,12 @@ describe("Integration: skill files reference valid forge CLI commands", () => {
     expect(skillFiles.length).toBeGreaterThanOrEqual(4);
 
     const expectedSkills = [
-      "forge-go.md",
+      "forge-build.md",
+      "forge-capture.md",
+      "forge-fix.md",
+      "forge-plan.md",
+      "forge-quick.md",
       "forge-setup.md",
-      "forge-spec.md",
-      "forge-triage.md",
       "forge-update.md",
     ];
 
