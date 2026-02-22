@@ -53,7 +53,7 @@ requirements:
     linearIssueId: "57e71976-0469-456d-9b9e-fb51f8d7849c"
   REQ-005:
     group: docs
-    status: pending
+    status: complete
     dependsOn:
       - REQ-001
       - REQ-003
