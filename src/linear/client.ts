@@ -70,13 +70,24 @@ export class ForgeLinearClient {
   }
 
   /** Resolve a project status UUID by category (e.g. "planned", "started", "completed"). */
-  async resolveProjectStatusByCategory(category: string): Promise<string> {
+  async resolveProjectStatusByCategory(category: string, nameHint?: string): Promise<string> {
+    // 1. Try category-based lookup
     const { nodes } = await this.client.projectStatuses();
-    const match = nodes.find((s) => s.type === category);
-    if (!match) {
-      throw new Error(`No project status with category "${category}" found`);
+    const categoryMatches = nodes.filter((s) => s.type === category);
+    if (categoryMatches.length > 0) {
+      if (nameHint) {
+        const match = categoryMatches.find((s) => s.name === nameHint);
+        if (match) return match.id;
+      }
+      return categoryMatches[0].id;
     }
-    return match.id;
+
+    // 2. Fallback: search all statuses by name
+    const nameToFind = nameHint ?? categoryToName(category);
+    const nameMatch = nodes.find((s) => s.name === nameToFind);
+    if (nameMatch) return nameMatch.id;
+
+    throw new Error(`No project status matching category "${category}" or name "${nameToFind}" found`);
   }
 
   /** Update an issue's workflow state. */

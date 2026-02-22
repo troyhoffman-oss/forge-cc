@@ -350,7 +350,51 @@ describe("ForgeLinearClient.resolveProjectStatusByCategory", () => {
     expect(result).toBe("ps-2");
   });
 
-  it("throws when no statuses match category", async () => {
+  it("prefers nameHint when provided", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "In Progress", type: "started" },
+        { id: "ps-2", name: "Active", type: "started" },
+      ],
+    });
+
+    const result = await client.resolveProjectStatusByCategory("started", "Active");
+    expect(result).toBe("ps-2");
+  });
+
+  it("falls back to name-based lookup when category returns empty", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "Backlog" },
+        { id: "ps-2", name: "Planned" },
+        { id: "ps-3", name: "In Progress" },
+      ],
+    });
+
+    const result = await client.resolveProjectStatusByCategory("planned");
+    expect(result).toBe("ps-2");
+  });
+
+  it("falls back to nameHint when category returns empty", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "Backlog" },
+        { id: "ps-2", name: "In Progress" },
+        { id: "ps-3", name: "Done" },
+      ],
+    });
+
+    const result = await client.resolveProjectStatusByCategory("started", "In Progress");
+    expect(result).toBe("ps-2");
+  });
+
+  it("throws when both category and name lookups fail", async () => {
     const client = new ForgeLinearClient({ apiKey: "test-key" });
     const mockSdk = (client as any).client;
     mockSdk.projectStatuses.mockResolvedValue({
@@ -359,7 +403,7 @@ describe("ForgeLinearClient.resolveProjectStatusByCategory", () => {
 
     await expect(
       client.resolveProjectStatusByCategory("planned"),
-    ).rejects.toThrow('No project status with category "planned" found');
+    ).rejects.toThrow('No project status matching category "planned" or name "Planned" found');
   });
 });
 
