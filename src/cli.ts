@@ -328,4 +328,15 @@ program
     await checkForUpdate(process.cwd());
   });
 
+program
+  .command('codex-poll')
+  .description('Poll GitHub PR for Codex review comments')
+  .requiredOption('--owner <owner>', 'Repository owner')
+  .requiredOption('--repo <repo>', 'Repository name')
+  .requiredOption('--pr <number>', 'PR number')
+  .action(async (opts: { owner: string; repo: string; pr: string }) => {
+    const { pollForCodexReview } = await import('./codex-poll.js');
+    await pollForCodexReview(opts);
+  });
+
 program.parse();
