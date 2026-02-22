@@ -59,6 +59,7 @@ vi.mock("../../src/graph/query.js", () => ({
   findReady: vi.fn(),
   isProjectComplete: vi.fn(),
   buildRequirementContext: vi.fn().mockReturnValue([]),
+  getTransitiveDeps: vi.fn().mockReturnValue([]),
 }));
 
 function makeIndex(overrides?: Partial<GraphIndex>): GraphIndex {
@@ -102,6 +103,7 @@ describe("Graph loop", () => {
   let mockFindReady: ReturnType<typeof vi.fn>;
   let mockIsProjectComplete: ReturnType<typeof vi.fn>;
   let mockBuildRequirementContext: ReturnType<typeof vi.fn>;
+  let mockGetTransitiveDeps: ReturnType<typeof vi.fn>;
   let mockLoadOverview: ReturnType<typeof vi.fn>;
   let mockLoadRequirements: ReturnType<typeof vi.fn>;
 
@@ -122,6 +124,8 @@ describe("Graph loop", () => {
     mockIsProjectComplete = query.isProjectComplete as unknown as ReturnType<typeof vi.fn>;
     mockBuildRequirementContext = query.buildRequirementContext as unknown as ReturnType<typeof vi.fn>;
     mockBuildRequirementContext.mockReturnValue([]);
+    mockGetTransitiveDeps = (query as Record<string, unknown>).getTransitiveDeps as ReturnType<typeof vi.fn>;
+    mockGetTransitiveDeps.mockReturnValue([]);
 
     const reader2 = await import("../../src/graph/reader.js");
     mockLoadOverview = reader2.loadOverview as unknown as ReturnType<typeof vi.fn>;

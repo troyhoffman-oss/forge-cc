@@ -19,10 +19,12 @@ import { ForgeLinearClient } from "../linear/client.js";
 import {
   syncMilestoneStart,
   syncMilestoneComplete,
+  syncRequirementStart,
+  syncGraphProjectDone,
 } from "../linear/sync.js";
 import { loadIndex, loadOverview, loadRequirement, loadRequirements } from "../graph/reader.js";
 import { updateRequirementStatus } from "../graph/writer.js";
-import { findReady, isProjectComplete, buildRequirementContext } from "../graph/query.js";
+import { findReady, isProjectComplete, buildRequirementContext, getTransitiveDeps } from "../graph/query.js";
 import type { PipelineResult } from "../types.js";
 
 const execFileAsync = promisify(execFile);
@@ -232,6 +234,17 @@ export async function runGraphLoop(opts: {
       // Mark in_progress
       index = await updateRequirementStatus(projectDir, slug, reqId, "in_progress");
 
+      // Linear sync: start requirement
+      const apiKey = process.env.LINEAR_API_KEY;
+      if (apiKey && index.linear?.teamId) {
+        try {
+          const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
+          await syncRequirementStart(client, index, reqId);
+        } catch {
+          // Linear sync is best-effort
+        }
+      }
+
       // Load requirement content + overview + dependency context
       const req = await loadRequirement(projectDir, slug, reqId);
       if (!req) {
@@ -239,9 +252,11 @@ export async function runGraphLoop(opts: {
         process.exit(1);
       }
       const overview = await loadOverview(projectDir, slug);
-      const allReqs = await loadRequirements(projectDir, slug,
-        (index.requirements[reqId]?.dependsOn ?? [])
-      );
+      // Load ALL transitive deps, not just direct ones
+      const transitiveDeps = getTransitiveDeps(index, reqId).filter(id => id !== reqId);
+      const allReqs = await loadRequirements(projectDir, slug, transitiveDeps);
+      // Also add the target requirement to the map for buildRequirementContext
+      allReqs.set(reqId, req);
       const depContext = buildRequirementContext(index, allReqs, reqId)
         .filter(r => r.id !== reqId); // exclude self from deps
 
@@ -298,6 +313,17 @@ export async function runGraphLoop(opts: {
 
     // Reload index to recompute ready set
     index = await loadIndex(projectDir, slug);
+  }
+
+  // Linear sync: mark project done (best-effort)
+  const apiKey = process.env.LINEAR_API_KEY;
+  if (apiKey && index.linear?.teamId) {
+    try {
+      const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
+      await syncGraphProjectDone(client, index);
+    } catch {
+      // Linear sync is best-effort
+    }
   }
 
   console.log(`\n[forge] All requirements for "${slug}" complete.`);
