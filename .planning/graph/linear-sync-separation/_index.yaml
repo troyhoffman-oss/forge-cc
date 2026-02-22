@@ -38,14 +38,14 @@ requirements:
     linearIssueId: "b285cc8b-1ef7-4176-9f9a-43a77d074059"
   REQ-003:
     group: sync-core
-    status: pending
+    status: complete
     dependsOn:
       - REQ-001
     priority: 0
     linearIssueId: "04e0a3d5-4dee-47a8-98a9-fdbbbc4ccac0"
   REQ-004:
     group: runner-integration
-    status: pending
+    status: complete
     dependsOn:
       - REQ-001
       - REQ-002
