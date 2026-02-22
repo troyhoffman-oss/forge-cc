@@ -25,21 +25,6 @@ export interface ForgeConfig {
   forgeVersion: string;
 }
 
-/** PRD status file shape stored in .planning/status/. */
-export interface PRDStatus {
-  project: string;
-  slug: string;
-  branch: string;
-  createdAt: string;
-  linearProjectId?: string;
-  linearTeamId?: string;
-  milestones: Record<string, {
-    status: 'pending' | 'in_progress' | 'complete';
-    linearIssueIds?: string[];
-    completedAt?: string;
-  }>;
-}
-
 /** Cached verification result. */
 export interface VerifyCache {
   timestamp: string;

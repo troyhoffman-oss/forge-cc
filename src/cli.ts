@@ -6,10 +6,7 @@ import { typesGate } from './gates/types-gate.js';
 import { lintGate } from './gates/lint-gate.js';
 import { testsGate } from './gates/tests-gate.js';
 import { writeVerifyCache } from './state/cache.js';
-import { readStatus } from './state/status.js';
 import { ForgeLinearClient, IssueRelationType, type LinearResult } from './linear/client.js';
-import { syncMilestoneStart, syncMilestoneComplete, syncProjectDone, syncProjectPlanned } from './linear/sync.js';
-import type { PRDStatus } from './types.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
@@ -35,27 +32,6 @@ function handleResult<T>(result: LinearResult<T>): T {
     process.exit(1);
   }
   return result.data;
-}
-
-async function withSyncContext(
-  slug: string,
-  fn: (ctx: { client: ForgeLinearClient; status: PRDStatus }) => Promise<void>,
-): Promise<void> {
-  const apiKey = requireApiKey();
-  try {
-    const projectDir = process.cwd();
-    const status = await readStatus(projectDir, slug);
-    if (!status.linearTeamId) {
-      console.error(JSON.stringify({ error: 'No linearTeamId in status file' }));
-      process.exit(1);
-    }
-    const client = new ForgeLinearClient({ apiKey, teamId: status.linearTeamId });
-    await fn({ client, status });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(JSON.stringify({ error: message }));
-    process.exit(1);
-  }
 }
 
 program
@@ -108,7 +84,7 @@ program
 
 program
   .command('run')
-  .description('Execute requirements (graph) or milestones (PRD) via Ralph loop')
+  .description('Execute graph requirements')
   .requiredOption('--prd <slug>', 'Slug to execute')
   .action(async (opts: { prd: string }) => {
     const projectDir = process.cwd();
@@ -328,69 +304,6 @@ linear
     const client = new ForgeLinearClient({ apiKey: requireApiKey() });
     const projects = await client.listProjects(opts.team);
     console.log(JSON.stringify(projects));
-  });
-
-// --- Sync commands (moved from linear-sync) ---
-
-linear
-  .command('sync-start')
-  .description('Start a milestone sync')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .requiredOption('--milestone <n>', 'Milestone number')
-  .action(async (opts: { slug: string; milestone: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      await syncMilestoneStart(client, status, opts.milestone);
-      console.log(`[forge] linear sync-start complete for ${opts.slug} ${opts.milestone}`);
-    });
-  });
-
-linear
-  .command('sync-complete')
-  .description('Complete a milestone sync')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .requiredOption('--milestone <n>', 'Milestone number')
-  .option('--last', 'This is the last milestone')
-  .action(async (opts: { slug: string; milestone: string; last?: boolean }) => {
-    await syncMilestoneComplete(opts.milestone);
-    console.log(`[forge] linear sync-complete finished for ${opts.slug} ${opts.milestone}`);
-  });
-
-linear
-  .command('sync-done')
-  .description('Mark project as done in Linear')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .action(async (opts: { slug: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      await syncProjectDone(client, status);
-      console.log(`[forge] linear sync-done complete for ${opts.slug}`);
-    });
-  });
-
-linear
-  .command('sync-planned')
-  .description('Promote project from Backlog to Planned')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .action(async (opts: { slug: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      await syncProjectPlanned(client, status);
-      console.log(`[forge] linear sync-planned complete for ${opts.slug}`);
-    });
-  });
-
-linear
-  .command('list-issues')
-  .description('List all Linear issue identifiers for a PRD slug')
-  .requiredOption('--slug <slug>', 'PRD slug')
-  .action(async (opts: { slug: string }) => {
-    await withSyncContext(opts.slug, async ({ client, status }) => {
-      if (!status.linearProjectId) {
-        console.error(JSON.stringify({ error: 'No linearProjectId in status file' }));
-        process.exit(1);
-      }
-      const issues = await client.listIssuesByProject(status.linearProjectId);
-      const identifiers = issues.map((i) => i.identifier);
-      console.log(JSON.stringify(identifiers));
-    });
   });
 
 program
