@@ -14,7 +14,13 @@ export interface ForgeLinearClientOptions {
   teamId?: string;
 }
 
-function categoryToName(category: string): string {
+/**
+ * Map Linear workflow state categories to their default display names.
+ * Must stay in sync with the Linear workspace status names.
+ * Used as a fallback when category-based lookup returns no results
+ * (e.g. when a workspace has statuses with undefined categories).
+ */
+export function categoryToName(category: string): string {
   const map: Record<string, string> = {
     started: "In Progress",
     completed: "Done",
