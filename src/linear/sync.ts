@@ -36,6 +36,7 @@ export async function syncRequirementStart(
   client: ForgeLinearClient,
   index: GraphIndex,
   requirementId: string,
+  branchName?: string,
 ): Promise<SyncResult> {
   const meta = index.requirements[requirementId];
   const result = emptySyncResult();
@@ -56,6 +57,16 @@ export async function syncRequirementStart(
     } else {
       console.warn(`[forge] Failed to update issue: ${updateResult.error}`);
       result.issuesFailed = [meta.linearIssueId];
+    }
+  }
+
+  // Attach branch to issue if both are available
+  if (meta?.linearIssueId && branchName) {
+    try {
+      await client.attachIssueBranch(meta.linearIssueId, branchName);
+      console.log(`[forge] Attached branch "${branchName}" to issue ${requirementId}`);
+    } catch {
+      console.warn(`[forge] Failed to attach branch to issue ${requirementId}`);
     }
   }
 

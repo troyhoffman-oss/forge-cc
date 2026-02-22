@@ -381,4 +381,5 @@ export class ForgeLinearClient {
       return wrapError(err);
     }
   }
+
 }
