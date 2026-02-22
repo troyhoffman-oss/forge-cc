@@ -29,8 +29,6 @@ vi.mock("../../src/worktree/manager.js", () => ({
 
 // Mock linear sync
 vi.mock("../../src/linear/sync.js", () => ({
-  syncMilestoneStart: vi.fn().mockResolvedValue(undefined),
-  syncMilestoneComplete: vi.fn().mockResolvedValue(undefined),
   syncRequirementStart: vi.fn().mockResolvedValue(undefined),
   syncGraphProjectDone: vi.fn().mockResolvedValue(undefined),
 }));
