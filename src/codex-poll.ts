@@ -4,9 +4,28 @@ export interface CodexPollOptions {
   pr: string;
 }
 
+export interface GitHubReview {
+  id: number;
+  state: string;
+  body: string;
+  user?: { login: string };
+  performed_via_github_app?: { slug: string };
+}
+
+export interface GitHubComment {
+  id: number;
+  body: string;
+  path?: string;
+  user?: { login: string };
+  performed_via_github_app?: { slug: string };
+}
+
+/** Known Codex bot login names. */
+const CODEX_LOGINS = ["codex-bot", "github-codex", "codex"];
+
 /** Fetch all pages from a GitHub API list endpoint. */
-async function fetchAllPages(url: string, headers: Record<string, string>): Promise<any[]> {
-  const results: any[] = [];
+export async function fetchAllPages<T>(url: string, headers: Record<string, string>): Promise<T[]> {
+  const results: T[] = [];
   let nextUrl: string | null = `${url}${url.includes("?") ? "&" : "?"}per_page=100`;
 
   while (nextUrl) {
@@ -14,7 +33,7 @@ async function fetchAllPages(url: string, headers: Record<string, string>): Prom
     if (!res.ok) {
       throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
     }
-    const page: any[] = await res.json() as any[];
+    const page = await res.json() as T[];
     results.push(...page);
 
     // Parse Link header for next page
@@ -26,11 +45,10 @@ async function fetchAllPages(url: string, headers: Record<string, string>): Prom
   return results;
 }
 
-function isCodexActivity(item: any): boolean {
-  return (
-    item.user?.login?.toLowerCase().includes("codex") ||
-    item.performed_via_github_app?.slug?.toLowerCase().includes("codex")
-  );
+export function isCodexActivity(item: { user?: { login: string }; performed_via_github_app?: { slug: string } }): boolean {
+  const login = item.user?.login?.toLowerCase();
+  if (login && CODEX_LOGINS.includes(login)) return true;
+  return item.performed_via_github_app?.slug === "codex";
 }
 
 export async function pollForCodexReview(opts: CodexPollOptions): Promise<void> {
@@ -59,10 +77,10 @@ export async function pollForCodexReview(opts: CodexPollOptions): Promise<void> 
 
     try {
       const reviewsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/reviews`;
-      const reviews = await fetchAllPages(reviewsUrl, headers);
+      const reviews = await fetchAllPages<GitHubReview>(reviewsUrl, headers);
 
       const commentsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments`;
-      const comments = await fetchAllPages(commentsUrl, headers);
+      const comments = await fetchAllPages<GitHubComment>(commentsUrl, headers);
 
       const codexReviews = reviews.filter(isCodexActivity);
       const codexComments = comments.filter(isCodexActivity);
@@ -70,8 +88,8 @@ export async function pollForCodexReview(opts: CodexPollOptions): Promise<void> 
       if (codexReviews.length > 0 || codexComments.length > 0) {
         const result = {
           found: true,
-          reviews: codexReviews.map((r: any) => ({ id: r.id, state: r.state, body: r.body, user: r.user?.login })),
-          comments: codexComments.map((c: any) => ({ id: c.id, body: c.body, path: c.path, user: c.user?.login })),
+          reviews: codexReviews.map((r) => ({ id: r.id, state: r.state, body: r.body, user: r.user?.login })),
+          comments: codexComments.map((c) => ({ id: c.id, body: c.body, path: c.path, user: c.user?.login })),
         };
         console.log(JSON.stringify(result, null, 2));
         process.exit(0);
