@@ -4,6 +4,35 @@ export interface CodexPollOptions {
   pr: string;
 }
 
+/** Fetch all pages from a GitHub API list endpoint. */
+async function fetchAllPages(url: string, headers: Record<string, string>): Promise<any[]> {
+  const results: any[] = [];
+  let nextUrl: string | null = `${url}${url.includes("?") ? "&" : "?"}per_page=100`;
+
+  while (nextUrl) {
+    const res: Response = await fetch(nextUrl, { headers });
+    if (!res.ok) {
+      throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
+    }
+    const page: any[] = await res.json() as any[];
+    results.push(...page);
+
+    // Parse Link header for next page
+    const link: string | null = res.headers.get("link");
+    const next: RegExpMatchArray | null | undefined = link?.match(/<([^>]+)>;\s*rel="next"/);
+    nextUrl = next ? next[1] : null;
+  }
+
+  return results;
+}
+
+function isCodexActivity(item: any): boolean {
+  return (
+    item.user?.login?.toLowerCase().includes("codex") ||
+    item.performed_via_github_app?.slug?.toLowerCase().includes("codex")
+  );
+}
+
 export async function pollForCodexReview(opts: CodexPollOptions): Promise<void> {
   const { owner, repo, pr } = opts;
   const token = process.env.GITHUB_TOKEN;
@@ -28,42 +57,27 @@ export async function pollForCodexReview(opts: CodexPollOptions): Promise<void> 
 
     console.error(`[forge] Polling for Codex review (attempt ${i + 1}/${maxPolls})...`);
 
-    // Check PR reviews
-    const reviewsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/reviews`;
-    const reviewsRes = await fetch(reviewsUrl, { headers });
-    if (!reviewsRes.ok) {
-      console.error(`[forge] GitHub API error: ${reviewsRes.status} ${reviewsRes.statusText}`);
-      continue;
-    }
-    const reviews: any[] = await reviewsRes.json() as any[];
+    try {
+      const reviewsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/reviews`;
+      const reviews = await fetchAllPages(reviewsUrl, headers);
 
-    // Check PR review comments
-    const commentsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments`;
-    const commentsRes = await fetch(commentsUrl, { headers });
-    if (!commentsRes.ok) {
-      console.error(`[forge] GitHub API error: ${commentsRes.status} ${commentsRes.statusText}`);
-      continue;
-    }
-    const comments: any[] = await commentsRes.json() as any[];
+      const commentsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments`;
+      const comments = await fetchAllPages(commentsUrl, headers);
 
-    // Filter for Codex-related activity
-    const codexReviews = reviews.filter((r: any) =>
-      r.user?.login?.toLowerCase().includes("codex") ||
-      r.performed_via_github_app?.slug?.toLowerCase().includes("codex")
-    );
-    const codexComments = comments.filter((c: any) =>
-      c.user?.login?.toLowerCase().includes("codex") ||
-      c.performed_via_github_app?.slug?.toLowerCase().includes("codex")
-    );
+      const codexReviews = reviews.filter(isCodexActivity);
+      const codexComments = comments.filter(isCodexActivity);
 
-    if (codexReviews.length > 0 || codexComments.length > 0) {
-      const result = {
-        found: true,
-        reviews: codexReviews.map((r: any) => ({ id: r.id, state: r.state, body: r.body, user: r.user?.login })),
-        comments: codexComments.map((c: any) => ({ id: c.id, body: c.body, path: c.path, user: c.user?.login })),
-      };
-      console.log(JSON.stringify(result, null, 2));
-      process.exit(0);
+      if (codexReviews.length > 0 || codexComments.length > 0) {
+        const result = {
+          found: true,
+          reviews: codexReviews.map((r: any) => ({ id: r.id, state: r.state, body: r.body, user: r.user?.login })),
+          comments: codexComments.map((c: any) => ({ id: c.id, body: c.body, path: c.path, user: c.user?.login })),
+        };
+        console.log(JSON.stringify(result, null, 2));
+        process.exit(0);
+      }
+    } catch (err) {
+      console.error(`[forge] Poll attempt ${i + 1} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
