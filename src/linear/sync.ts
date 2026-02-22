@@ -82,3 +82,19 @@ export async function syncGraphProjectReview(
 
   return result;
 }
+
+/** Transition project to "Planned" after planning phase completes. */
+export async function syncGraphProjectPlanned(
+  client: ForgeLinearClient,
+  index: GraphIndex,
+): Promise<SyncResult> {
+  const result = emptySyncResult();
+
+  if (index.linear?.projectId) {
+    await transitionProject(client, result, index.linear.projectId, "planned", "Planned");
+  } else {
+    console.warn("[forge] No Linear projectId in graph index, skipping planned transition");
+  }
+
+  return result;
+}

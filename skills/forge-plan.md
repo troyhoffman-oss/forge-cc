@@ -271,7 +271,12 @@ Create the project and issues in Linear.
    - Issue ID in each requirement entry
    - Write via `writeIndex()`
 
-5. **Commit the graph directory** to the current feature branch:
+5. **Transition project to Planned:**
+   ```bash
+   npx forge linear sync-planned --slug {slug}
+   ```
+
+6. **Commit the graph directory** to the current feature branch:
 
    ```bash
    git add .planning/graph/{slug}/

@@ -306,6 +306,24 @@ linear
     console.log(JSON.stringify(projects));
   });
 
+linear
+  .command('sync-planned')
+  .description('Transition project to Planned after planning completes')
+  .requiredOption('--slug <slug>', 'Graph slug')
+  .action(async (opts: { slug: string }) => {
+    const apiKey = requireApiKey();
+    const projectDir = process.cwd();
+    const index = await loadIndex(projectDir, opts.slug);
+    if (!index.linear?.teamId) {
+      console.error(JSON.stringify({ error: 'No Linear teamId in graph index' }));
+      process.exit(1);
+    }
+    const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
+    const { syncGraphProjectPlanned } = await import('./linear/sync.js');
+    const result = await syncGraphProjectPlanned(client, index);
+    console.log(JSON.stringify(result));
+  });
+
 program
   .command('doctor')
   .description('Check environment')

@@ -408,6 +408,61 @@ describe("ForgeLinearClient.resolveProjectStatusByCategory", () => {
   });
 });
 
+// ============================================================
+// Sync function tests
+// ============================================================
+
+// Dynamic import for sync functions
+const { syncGraphProjectPlanned } = await import("../../src/linear/sync.js");
+
+describe("syncGraphProjectPlanned", () => {
+  it("transitions project to Planned", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "Backlog", type: "backlog" },
+        { id: "ps-2", name: "Planned", type: "planned" },
+      ],
+    });
+    mockSdk.updateProject.mockResolvedValue({});
+
+    const index = {
+      project: "Test",
+      slug: "test",
+      branch: "feat/test",
+      createdAt: new Date().toISOString(),
+      linear: { projectId: "proj-1", teamId: "team-1" },
+      groups: {},
+      requirements: {},
+    };
+
+    const result = await syncGraphProjectPlanned(client, index);
+
+    expect(result.projectUpdated).toBe(true);
+    expect(mockSdk.updateProject).toHaveBeenCalledWith("proj-1", { statusId: "ps-2" });
+  });
+
+  it("skips when no projectId", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+
+    const index = {
+      project: "Test",
+      slug: "test",
+      branch: "feat/test",
+      createdAt: new Date().toISOString(),
+      groups: {},
+      requirements: {},
+    };
+
+    const result = await syncGraphProjectPlanned(client, index);
+
+    expect(result.projectUpdated).toBe(false);
+    warnSpy.mockRestore();
+  });
+});
+
 describe("ForgeLinearClient.getProjectStatusCategory", () => {
   it("returns status category from project", async () => {
     const client = new ForgeLinearClient({ apiKey: "test-key" });
