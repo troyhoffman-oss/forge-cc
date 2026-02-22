@@ -1,0 +1,28 @@
+{
+  "project": "Graph Runner Integration",
+  "slug": "graph-runner-integration",
+  "branch": "feat/graph-runner-integration",
+  "createdAt": "2026-02-21",
+  "linearProjectId": "7954a7a9-e261-4f09-9bcc-df695bfee24f",
+  "linearTeamId": "72baaa3d-a5f7-4400-9011-a5e88f5a787b",
+  "milestones": {
+    "1": {
+      "status": "pending",
+      "linearIssueIds": [
+        "c2b5a12c-d2cb-4155-a2b7-db00aeacc7e2",
+        "a3774ec0-90ca-4562-83a7-bffd072e2f8c",
+        "9b899d86-906c-458c-aeaf-156eae5d8918",
+        "2f6e15cb-248a-4350-82d3-824d4474071e"
+      ]
+    },
+    "2": {
+      "status": "pending",
+      "linearIssueIds": [
+        "2374cd96-2fdd-44be-830c-d5a4dfa6ad4a",
+        "22a2ae23-3544-4881-863c-e95e755645ec",
+        "7ee978ed-afda-4b44-a5a7-d3aa88c9fe5b",
+        "4b2c9229-1b90-4f03-8df1-ad0fcf24edbe"
+      ]
+    }
+  }
+}
