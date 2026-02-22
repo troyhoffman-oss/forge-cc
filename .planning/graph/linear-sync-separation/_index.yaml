@@ -1,0 +1,62 @@
+project: "Linear Sync Separation"
+slug: "linear-sync-separation"
+branch: "feat/linear-sync-separation"
+createdAt: "2026-02-22T00:00:00Z"
+
+linear:
+  projectId: "d43aa3aa-ee42-4332-8ecb-ff28c28fb047"
+  teamId: "72baaa3d-a5f7-4400-9011-a5e88f5a787b"
+
+groups:
+  sync-core:
+    name: "Sync & Client Core"
+    order: 1
+    dependsOn: []
+  runner-integration:
+    name: "Runner Integration"
+    order: 2
+    dependsOn:
+      - sync-core
+  docs:
+    name: "Docs & Config"
+    order: 3
+    dependsOn:
+      - sync-core
+
+requirements:
+  REQ-001:
+    group: sync-core
+    status: pending
+    dependsOn: []
+    priority: 2
+    linearIssueId: "6876b923-5a35-49e2-a244-5d11504fc756"
+  REQ-002:
+    group: sync-core
+    status: pending
+    dependsOn: []
+    priority: 1
+    linearIssueId: "b285cc8b-1ef7-4176-9f9a-43a77d074059"
+  REQ-003:
+    group: sync-core
+    status: pending
+    dependsOn:
+      - REQ-001
+    priority: 0
+    linearIssueId: "04e0a3d5-4dee-47a8-98a9-fdbbbc4ccac0"
+  REQ-004:
+    group: runner-integration
+    status: pending
+    dependsOn:
+      - REQ-001
+      - REQ-002
+    priority: 1
+    linearIssueId: "57e71976-0469-456d-9b9e-fb51f8d7849c"
+  REQ-005:
+    group: docs
+    status: pending
+    dependsOn:
+      - REQ-001
+      - REQ-003
+      - REQ-004
+    priority: 0
+    linearIssueId: "fcb3dd96-1bc5-4ddb-8784-7587e0462865"
