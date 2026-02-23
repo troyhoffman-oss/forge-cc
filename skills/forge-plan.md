@@ -323,7 +323,8 @@ Create the project, milestones, and issues in Linear.
    - Write via `writeIndex()`
 
 5b. **Archive original capture issues:**
-   - If the plan was created from a captured project, archive the original capture issues
+   - If the plan was created from a captured project **and** `captureIssueIds` is non-empty, archive the original capture issues
+   - Skip this step if there are no captured issues (capture allows creating projects with zero issues)
    - Resolve the "cancelled" state: `resolveIssueStateByCategory(teamId, 'cancelled')`
    - Call `updateIssueBatch(captureIssueIds, { stateId: cancelledStateId })` to cancel all original issues
    - This replaces the rough capture issues with the properly structured requirement graph issues
