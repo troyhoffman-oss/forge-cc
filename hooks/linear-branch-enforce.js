@@ -13,6 +13,7 @@
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { execSync } from "node:child_process";
 
 // ── stdin reading ──────────────────────────────────────────────────────
 let input = "";
@@ -171,7 +172,6 @@ function resolveIdentifier() {
   // Step 2: If no reqId from build context, try extracting from branch name
   if (!reqId) {
     try {
-      const { execSync } = require("node:child_process");
       const branch = execSync("git branch --show-current", {
         encoding: "utf-8",
         timeout: 3000,
@@ -315,23 +315,18 @@ function resolveIdentifierFromApi(linearIssueId) {
     const forgeDir = resolveForgePackageDir();
     if (!forgeDir) return null;
 
-    // Use dynamic require of the compiled dist
-    const clientModule = require(join(forgeDir, "dist", "linear", "client.js"));
-    const ForgeLinearClient = clientModule.ForgeLinearClient;
-    const client = new ForgeLinearClient({ apiKey });
-
-    // Synchronous workaround: we can't await in this context, so use
-    // child_process to run a tiny inline script that resolves the identifier.
-    const { execSync } = require("node:child_process");
+    // Synchronous workaround: spawn a child process with ESM-compatible import()
+    const clientPath = join(forgeDir, "dist", "linear", "client.js").replace(/\\/g, "/");
     const script = `
-      const { ForgeLinearClient } = require(${JSON.stringify(join(forgeDir, "dist", "linear", "client.js"))});
-      const client = new ForgeLinearClient({ apiKey: ${JSON.stringify(apiKey)} });
-      client.getIssueIdentifier(${JSON.stringify(linearIssueId)}).then(r => {
+      import(${JSON.stringify("file:///" + clientPath)}).then(mod => {
+        const client = new mod.ForgeLinearClient({ apiKey: ${JSON.stringify(apiKey)} });
+        return client.getIssueIdentifier(${JSON.stringify(linearIssueId)});
+      }).then(r => {
         if (r.success) process.stdout.write(r.data);
       }).catch(() => {});
     `;
 
-    const result = execSync(`node -e ${JSON.stringify(script)}`, {
+    const result = execSync(`node --input-type=module -e ${JSON.stringify(script)}`, {
       encoding: "utf-8",
       timeout: 5000,
       stdio: ["pipe", "pipe", "pipe"],
@@ -358,7 +353,6 @@ function resolveForgePackageDir() {
 
   // Try npm root -g (Unix / fallback)
   try {
-    const { execSync } = require("node:child_process");
     const globalRoot = execSync("npm root -g", {
       encoding: "utf-8",
       timeout: 3000,

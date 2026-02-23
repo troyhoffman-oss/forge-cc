@@ -236,25 +236,29 @@ async function installLinearHooks(projectDir: string): Promise<boolean> {
   }
   const hooks = settings.hooks as Record<string, unknown[]>;
 
+  // Resolve the actual hook script paths from the installed forge-cc package.
+  // packageRoot is the forge-cc install dir (works for both local and global installs).
+  const hooksDir = join(packageRoot, "hooks").replace(/\\/g, "/");
+
   const forgeHooks: Record<string, Record<string, unknown>> = {
     WorktreeCreate: {
       hooks: [{
         type: "command",
-        command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-worktree-create.js\"",
+        command: `node "${hooksDir}/linear-worktree-create.js"`,
       }],
     },
     PreToolUse: {
       matcher: "Bash",
       hooks: [{
         type: "command",
-        command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-branch-enforce.js\"",
+        command: `node "${hooksDir}/linear-branch-enforce.js"`,
       }],
     },
     PostToolUse: {
       matcher: "Bash",
       hooks: [{
         type: "command",
-        command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-post-action.js\"",
+        command: `node "${hooksDir}/linear-post-action.js"`,
         async: true,
       }],
     },

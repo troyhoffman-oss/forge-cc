@@ -102,7 +102,14 @@ async function main() {
   if (isPrCreate) {
     await handlePrCreate(client, activeGraph, toolResponse, syncGraphProjectReview);
   } else if (isPrMerge) {
-    await handlePrMerge(client, activeGraph, syncGraphProjectCompleted);
+    // Only transition to Completed if the merge actually succeeded —
+    // failed merges (conflicts, failed checks) should not update Linear.
+    // gh pr merge outputs "✓ Merged" or "Merged pull request" on success.
+    const mergeSucceeded = toolResponse &&
+      (/[Mm]erged pull request/.test(toolResponse) || toolResponse.includes("✓"));
+    if (mergeSucceeded) {
+      await handlePrMerge(client, activeGraph, syncGraphProjectCompleted);
+    }
   }
 }
 
