@@ -3,7 +3,7 @@
 ## What This Is
 Unified dev workflow tool: CLI verification, enforcement hooks, graph-based workflow skills (`/forge:capture`, `/forge:plan`, `/forge:build`, `/forge:fix`, `/forge:quick`, `/forge:setup`, `/forge:update`), and Linear lifecycle management. Single npm package.
 
-**Package:** `forge-cc` **v2.0.0**
+**Package:** `forge-cc` **v2.0.2**
 **Tech:** TypeScript (ES2022, strict), Node.js, Commander, Playwright, Zod, Vitest
 
 ## Quick Reference

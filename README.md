@@ -58,7 +58,7 @@ Seven skill commands cover the full lifecycle from raw idea to production-ready 
 
 ### `/forge:capture` -- Brain Dump to Backlog
 
-Paste sticky notes, Slack messages, or stream-of-consciousness feature ideas. Forge extracts distinct projects, deduplicates against your existing Linear backlog, and creates them after your confirmation. Projects are created at "Planned" state.
+Paste sticky notes, Slack messages, or stream-of-consciousness feature ideas. Forge extracts distinct projects, deduplicates against your existing Linear backlog, and creates them after your confirmation. Projects are created at "Backlog" state.
 
 ### `/forge:plan` -- Interview to Requirement Graph
 
@@ -316,7 +316,7 @@ export LINEAR_API_KEY="lin_api_..."
 | `linearTeam` | `string` | `""` | Linear team key or name for lifecycle sync |
 | `linearStates` | `object` | see below | Custom Linear state names |
 | `verifyFreshness` | `number` | `600000` | Verify cache validity in ms (default 10 min) |
-| `forgeVersion` | `string` | `"2.0.0"` | Version stamp from setup (used by version-check hook) |
+| `forgeVersion` | `string` | `"2.0.2"` | Version stamp from setup (used by version-check hook) |
 
 **`linearStates` defaults:**
 
@@ -388,10 +388,13 @@ Skills are Claude Code slash commands installed to `~/.claude/commands/forge/`:
 
 ### Enforcement Hooks
 
-Forge installs two Claude Code hooks during setup:
+Forge installs five Claude Code hooks during setup:
 
 - **Pre-commit hook** (`pre-commit-verify.js`) -- Blocks commits that haven't passed verification. Checks branch protection (no direct commits to main/master), verify cache freshness, and `result === 'PASSED'` in `.forge/last-verify.json`.
 - **Version check hook** (`version-check.js`) -- Non-blocking notice when a newer forge-cc version is available or when project setup is stale.
+- **WorktreeCreate hook** (`linear-worktree-create.js`) -- Creates worktrees with Linear issue identifiers in branch names (e.g., `feat/slug/FRG-132-req-001`) and transitions issues to In Progress.
+- **PreToolUse hook** (`linear-branch-enforce.js`) -- Rewrites manual `git checkout -b` branch names to include Linear identifiers.
+- **PostToolUse hook** (`linear-post-action.js`) -- Links PRs to Linear issues on `gh pr create` and transitions project status on PR merge.
 
 ---
 
@@ -474,7 +477,7 @@ forge-cc/
       index.ts          # Public re-exports
     linear/
       client.ts         # @linear/sdk wrapper (team-scoped, category+name fallback)
-      sync.ts           # Linear state transitions (syncRequirementStart, syncGraphProjectReview, syncGraphProjectPlanned, syncGraphProjectCompleted)
+      sync.ts           # Linear state transitions + resolveRequirementContext for hooks
     runner/
       loop.ts           # Graph loop executor (sequential requirement execution)
       prompt.ts         # Prompt builder (attention-aware requirement context)
@@ -485,7 +488,7 @@ forge-cc/
       manager.ts        # createWorktree, mergeWorktree, removeWorktree
   skills/               # Claude Code skill definitions (markdown)
     ref/                # Reference docs (adversarial-review, requirement-sizing, graph-correction)
-  hooks/                # Installable hooks (pre-commit, version-check)
+  hooks/                # Installable hooks (pre-commit, version-check, linear-worktree-create, linear-branch-enforce, linear-post-action)
   tests/                # Test suite (vitest)
 ```
 
