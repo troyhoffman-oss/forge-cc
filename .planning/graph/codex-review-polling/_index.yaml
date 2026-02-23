@@ -1,0 +1,56 @@
+slug: codex-review-polling
+project: Codex PR Review Polling
+branch: feat/codex-review-polling
+
+linear:
+  projectId: "69f5413d-a3a2-4dc9-88aa-1f9700f4c36b"
+  teamId: "72baaa3d-a5f7-4400-9011-a5e88f5a787b"
+
+groups:
+  - name: Infrastructure
+    description: Make codex-poll.ts usable as a library function
+  - name: Protocol
+    description: Create the shared Codex review reference doc
+    dependsOn:
+      - Infrastructure
+  - name: Skill Integration
+    description: Wire the protocol into all PR-creating skills
+    dependsOn:
+      - Protocol
+
+requirements:
+  req-001:
+    title: "Refactor codex-poll to return data instead of process.exit"
+    group: Infrastructure
+    status: pending
+    dependsOn: []
+    linearIssueId: "a324d43b-4f23-4113-ab8f-efbb0a339494"
+    files:
+      creates: []
+      modifies:
+        - src/codex-poll.ts
+        - tests/codex-poll.test.ts
+  req-002:
+    title: "Create ref/codex-review.md shared protocol"
+    group: Protocol
+    status: pending
+    dependsOn:
+      - req-001
+    linearIssueId: "9580db51-4c01-4028-b0b4-b73a50bdb570"
+    files:
+      creates:
+        - skills/ref/codex-review.md
+      modifies: []
+  req-003:
+    title: "Wire Codex review step into build, quick, and fix skills"
+    group: Skill Integration
+    status: pending
+    dependsOn:
+      - req-002
+    linearIssueId: "c37f4ce2-82ec-47af-9efb-25784e49e686"
+    files:
+      creates: []
+      modifies:
+        - skills/forge-build.md
+        - skills/forge-quick.md
+        - skills/forge-fix.md
