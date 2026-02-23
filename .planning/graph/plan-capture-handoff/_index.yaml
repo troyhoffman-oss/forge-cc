@@ -23,21 +23,24 @@ groups:
 requirements:
   req-001:
     group: linear-client
-    status: pending
+    status: complete
     dependsOn: []
     priority: 1
     linearIssueId: "1a020681-bf8d-416e-8c97-dfdb96bcf82f"
+    completedAt: "2026-02-23"
   req-002:
     group: plan-skill
-    status: pending
+    status: complete
     dependsOn:
       - req-001
     priority: 2
     linearIssueId: "91d78e13-7c20-4c59-a3da-1614f31ae4a4"
+    completedAt: "2026-02-23"
   req-003:
     group: plan-skill
-    status: pending
+    status: complete
     dependsOn:
       - req-001
     priority: 3
     linearIssueId: "15ffe3a4-5680-4e30-8427-4846ce92b751"
+    completedAt: "2026-02-23"
