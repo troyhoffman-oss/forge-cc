@@ -18,10 +18,10 @@ async function transitionProject(
   result: SyncResult,
   projectId: string,
   category: string,
-  label: string,
+  label?: string,
 ): Promise<void> {
   const statusId = await client.resolveProjectStatusByCategory(category, label);
-  console.log(`[forge] Updating project ${projectId} to "${label}"`);
+  console.log(`[forge] Updating project ${projectId} to "${label ?? category}"`);
   const r = await client.updateProjectState(projectId, statusId);
   if (r.success) {
     result.projectUpdated = true;
@@ -92,7 +92,7 @@ export async function syncGraphProjectCompleted(
   const result = emptySyncResult();
 
   if (index.linear?.projectId) {
-    await transitionProject(client, result, index.linear.projectId, "completed", "Completed");
+    await transitionProject(client, result, index.linear.projectId, "completed");
   } else {
     console.warn("[forge] No Linear projectId in graph index, skipping completed transition");
   }

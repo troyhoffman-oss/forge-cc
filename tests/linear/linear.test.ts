@@ -496,6 +496,33 @@ describe("syncGraphProjectCompleted", () => {
     expect(mockSdk.updateProject).toHaveBeenCalledWith("proj-1", { statusId: "ps-2" });
   });
 
+  it("falls back to default completed name mapping when category lookup is unavailable", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "Backlog" },
+        { id: "ps-2", name: "Done" },
+      ],
+    });
+    mockSdk.updateProject.mockResolvedValue({});
+
+    const index = {
+      project: "Test",
+      slug: "test",
+      branch: "feat/test",
+      createdAt: new Date().toISOString(),
+      linear: { projectId: "proj-1", teamId: "team-1" },
+      groups: {},
+      requirements: {},
+    };
+
+    const result = await syncGraphProjectCompleted(client, index);
+
+    expect(result.projectUpdated).toBe(true);
+    expect(mockSdk.updateProject).toHaveBeenCalledWith("proj-1", { statusId: "ps-2" });
+  });
+
   it("skips when no projectId", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const client = new ForgeLinearClient({ apiKey: "test-key" });

@@ -1,8 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
+const ROOT_DIR = join(__dirname, "..", "..");
 const DIST_CLI = join(__dirname, "..", "..", "dist", "cli.js");
 const DIST_LOOP = join(__dirname, "..", "..", "dist", "runner", "loop.js");
 const DIST_SYNC = join(__dirname, "..", "..", "dist", "linear", "sync.js");
@@ -35,7 +36,44 @@ function runCli(args: string[]): Promise<{ code: number | null; stdout: string; 
   });
 }
 
+async function runCommand(bin: string, args: string[]): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(bin, args, {
+      cwd: ROOT_DIR,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr || `${bin} ${args.join(" ")} exited ${code}`));
+      }
+    });
+
+    child.on("error", reject);
+  });
+}
+
+async function ensureDistRuntime(): Promise<void> {
+  try {
+    await access(DIST_CLI);
+  } catch {
+    const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+    await runCommand(npmBin, ["run", "build"]);
+  }
+}
+
 describe("dist Linear runtime surface", () => {
+  beforeAll(async () => {
+    await ensureDistRuntime();
+  });
+
   it("exposes `forge linear ship`, `sync-planned`, and `sync-merged` in help output", async () => {
     const result = await runCli(["linear", "--help"]);
 
