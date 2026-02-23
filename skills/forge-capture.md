@@ -152,13 +152,13 @@ For each project's issues, call `client.createIssueBatch()`:
       description: "{issue description}",
       teamId: teamId,
       projectId: "{project's Linear ID}",
-      stateId: "{Planned state ID}"
+      stateId: "{Backlog state ID}"
     }
   ]
 }
 ```
 
-To get the "Planned" state ID, look up the team's workflow states and find the one named "Planned". If "Planned" does not exist, fall back to "Backlog".
+To get the "Backlog" state ID, look up the team's workflow states and find the one with category "backlog". If not found, fall back to "Triage".
 
 **Error handling:**
 - If a project creation fails, report it but continue with remaining projects
@@ -183,7 +183,7 @@ Print a summary of everything created:
 {for each project with issues:}
 - {project name}: {count} issues
 
-**Linear state:** All projects and issues created at "Planned"
+**Linear state:** All projects and issues created at "Backlog"
 ```
 
 If any items failed, include a failures section:
@@ -198,7 +198,7 @@ If any items failed, include a failures section:
 
 | Item    | Created State |
 |---------|--------------|
-| Project | Planned      |
-| Issue   | Planned      |
+| Project | Backlog      |
+| Issue   | Backlog      |
 
-Do NOT set any item to "In Progress", "Todo", or "Backlog". Everything starts at "Planned" — the user promotes items when ready.
+Everything starts at "Backlog" — captured ideas haven't been planned yet. The plan skill transitions to "Planned" when requirements are defined.
