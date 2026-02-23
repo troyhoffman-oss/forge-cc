@@ -208,16 +208,44 @@ Gates run sequentially with configurable per-gate timeouts (default 2 minutes ea
 Forge manages your Linear project lifecycle end-to-end. State transitions happen automatically as work progresses through the graph:
 
 ```
- Linear State:    Backlog  -->  Planned  -->  In Progress  -->  Done
-                     |             |               |              |
- Forge Action:    /forge:       /forge:plan      /forge:build    all requirements
-                  capture       syncs issues     starts each     complete,
-                  creates       to Linear        requirement     project synced
-                  projects                                       to Done
+ Linear State:    Backlog  -->  Planned  -->  In Progress  -->  In Review  -->  Completed
+                     |             |               |                |               |
+ Forge Action:    /forge:       /forge:plan      /forge:build   forge linear     forge linear
+                  capture       syncs issues     starts each     ship opens PR    sync-merged
+                  creates       to Linear        requirement     + links issues   after PR merge
+                  projects
 ```
 
-- `syncRequirementStart()` -- Moves the issue to "In Progress" and the project to "In Progress" (best-effort, never crashes on API errors)
-- `syncGraphProjectDone()` -- Moves all issues to "Done" and the project to "Done"
+- `syncRequirementStart()` -- Moves the issue to "In Progress" and moves the project to "In Progress" (best-effort, never crashes on API errors)
+- `syncGraphProjectReview()` -- Moves the project to "In Review" when `forge linear ship` opens/reuses a PR
+- `syncGraphProjectPlanned()` -- Moves the project to "Planned" after planning completes (`forge linear sync-planned --slug <slug>`)
+- `syncGraphProjectCompleted()` -- Moves the project to "Completed" after PR merge (`forge linear sync-merged --slug <slug>`)
+
+### Deterministic Handoff (Build -> PR -> Merge)
+
+`forge run` completes requirements and leaves the graph in a shippable state. PR handoff is a separate explicit step:
+
+```bash
+# 1) Build requirements
+npx forge run --prd <slug>
+
+# 2) Ship: push branch + open/reuse PR + attach PR URL to complete requirement issues
+npx forge linear ship --slug <slug>
+
+# Optional override if complete requirements are missing linearIssueId
+npx forge linear ship --slug <slug> --allow-missing-issue-id
+
+# 3) After PR merge: move Linear project to Completed
+npx forge linear sync-merged --slug <slug>
+```
+
+`forge linear ship` behavior:
+- Pushes the graph branch (`_index.yaml -> branch`) to `origin`
+- Creates a PR if one does not exist, or reuses the existing open PR for that branch
+- Moves the Linear project to **In Review**
+- Attaches the PR URL to all **complete** requirements in the slug that have `linearIssueId`
+- Blocks by default if a complete requirement is missing `linearIssueId` (override with `--allow-missing-issue-id`)
+- Warns and continues if attaching a PR URL to a Linear issue fails
 
 State names are configurable via `linearStates` in `.forge.json`. The Linear client uses category-based status resolution with name-based fallback -- it works with custom workflow states out of the box.
 
@@ -336,6 +364,9 @@ npx forge linear create-project-relation --project <id> --related-project <id> -
 npx forge linear create-issue-relation --issue <id> --related-issue <id> --type <blocks|duplicate|related>
 npx forge linear list-teams
 npx forge linear list-projects --team <teamId>
+npx forge linear sync-planned --slug <slug>
+npx forge linear ship --slug <slug> [--base <branch>] [--title <title>] [--body <body>] [--draft] [--allow-missing-issue-id]
+npx forge linear sync-merged --slug <slug>
 
 # GitHub Codex
 npx forge codex-poll --owner <owner> --repo <repo> --pr <number>
@@ -398,6 +429,8 @@ Check:
 2. Your graph's `_index.yaml` has `linear.projectId` and `linear.teamId` populated (set during `/forge:plan`)
 3. Run `npx forge doctor` to validate the API key and team configuration
 
+If `forge linear ship` exits with missing `linearIssueId`, at least one **complete** requirement in the slug is missing issue linkage. Add `linearIssueId` in the graph index, or rerun with `--allow-missing-issue-id` to continue without linking those requirements.
+
 ### `forge run` on Windows
 
 On Windows, to locate the globally installed `forge-cc` package programmatically, use `process.env.APPDATA + '/npm/node_modules/forge-cc'`. Don't use bash path traversal -- backslash escaping breaks (the `\n` in `npm\node_modules` is interpreted as a newline).
@@ -441,7 +474,7 @@ forge-cc/
       index.ts          # Public re-exports
     linear/
       client.ts         # @linear/sdk wrapper (team-scoped, category+name fallback)
-      sync.ts           # Linear state transitions (syncRequirementStart, syncGraphProjectDone)
+      sync.ts           # Linear state transitions (syncRequirementStart, syncGraphProjectReview, syncGraphProjectPlanned, syncGraphProjectCompleted)
     runner/
       loop.ts           # Graph loop executor (sequential requirement execution)
       prompt.ts         # Prompt builder (attention-aware requirement context)

@@ -10,12 +10,16 @@ import { ForgeLinearClient, IssueRelationType, type LinearResult } from './linea
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { discoverGraphs, loadIndex } from './graph/reader.js';
+import type { GraphIndex } from './graph/types.js';
 import { findReady, groupStatus, isProjectComplete } from './graph/query.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const pkg = JSON.parse(readFileSync(resolve(__dirname, '..', 'package.json'), 'utf8'));
+const execFileAsync = promisify(execFile);
 
 function requireApiKey(): string {
   const apiKey = process.env.LINEAR_API_KEY;
@@ -32,6 +36,30 @@ function handleResult<T>(result: LinearResult<T>): T {
     process.exit(1);
   }
   return result.data;
+}
+
+async function runCmd(bin: string, args: string[], cwd: string): Promise<string> {
+  const { stdout } = await execFileAsync(bin, args, { cwd });
+  return stdout.trim();
+}
+
+async function findOpenPrUrl(projectDir: string, branch: string): Promise<string | null> {
+  const stdout = await runCmd(
+    'gh',
+    ['pr', 'list', '--head', branch, '--state', 'open', '--limit', '1', '--json', 'url'],
+    projectDir,
+  );
+  const rows = JSON.parse(stdout) as Array<{ url?: string }>;
+  return rows[0]?.url ?? null;
+}
+
+function getCompleteRequirementScope(index: GraphIndex): Array<{ requirementId: string; linearIssueId?: string }> {
+  return Object.entries(index.requirements)
+    .filter(([, meta]) => meta.status === 'complete')
+    .map(([requirementId, meta]) => ({
+      requirementId,
+      linearIssueId: meta.linearIssueId,
+    }));
 }
 
 program
@@ -307,6 +335,106 @@ linear
   });
 
 linear
+  .command('ship')
+  .description('Push branch, open/reuse PR, link PR URL to complete issues, and move project to In Review')
+  .requiredOption('--slug <slug>', 'Graph slug')
+  .option('--base <branch>', 'PR base branch (defaults to repository default)')
+  .option('--title <title>', 'PR title (defaults to graph project name)')
+  .option('--body <body>', 'PR body')
+  .option('--draft', 'Create PR as draft')
+  .option('--allow-missing-issue-id', 'Allow PR linking when complete requirements are missing linearIssueId')
+  .action(async (opts: {
+    slug: string;
+    base?: string;
+    title?: string;
+    body?: string;
+    draft?: boolean;
+    allowMissingIssueId?: boolean;
+  }) => {
+    const apiKey = requireApiKey();
+    const projectDir = process.cwd();
+    const index = await loadIndex(projectDir, opts.slug);
+    const branch = index.branch;
+
+    const scoped = getCompleteRequirementScope(index);
+    const missingLinearIssueIds = scoped
+      .filter((item) => !item.linearIssueId)
+      .map((item) => item.requirementId);
+    if (missingLinearIssueIds.length > 0 && !opts.allowMissingIssueId) {
+      console.error(
+        JSON.stringify({
+          error:
+            `Missing linearIssueId for complete requirements: ${missingLinearIssueIds.join(', ')}. ` +
+            'Use --allow-missing-issue-id to continue without linking those requirements.',
+        }),
+      );
+      process.exit(1);
+    }
+    if (missingLinearIssueIds.length > 0) {
+      console.warn(
+        `[forge] Missing linearIssueId for complete requirements: ${missingLinearIssueIds.join(', ')} (continuing by override)`,
+      );
+    }
+
+    console.log(`[forge] Pushing branch "${branch}" to origin`);
+    await runCmd('git', ['push', '--set-upstream', 'origin', branch], projectDir);
+
+    let prUrl = await findOpenPrUrl(projectDir, branch);
+    if (!prUrl) {
+      const title = opts.title ?? index.project;
+      const body = opts.body ?? `Automated ship for graph "${opts.slug}".`;
+      const createArgs = ['pr', 'create', '--head', branch, '--title', title, '--body', body];
+      if (opts.base) {
+        createArgs.push('--base', opts.base);
+      }
+      if (opts.draft) {
+        createArgs.push('--draft');
+      }
+      console.log(`[forge] Creating pull request for "${branch}"`);
+      await runCmd('gh', createArgs, projectDir);
+      prUrl = await findOpenPrUrl(projectDir, branch);
+    }
+
+    if (!prUrl) {
+      console.error(JSON.stringify({ error: `Could not resolve open PR URL for branch "${branch}"` }));
+      process.exit(1);
+    }
+
+    const client = new ForgeLinearClient({ apiKey, teamId: index.linear?.teamId });
+    const { syncGraphProjectReview } = await import('./linear/sync.js');
+    await syncGraphProjectReview(client, index);
+
+    const linkTargets = scoped.filter((item): item is { requirementId: string; linearIssueId: string } =>
+      Boolean(item.linearIssueId),
+    );
+
+    let issuesLinked = 0;
+    const issueLinkFailures: string[] = [];
+    for (const target of linkTargets) {
+      const result = await client.attachIssuePullRequest(target.linearIssueId, prUrl);
+      if (result.success) {
+        issuesLinked++;
+      } else {
+        issueLinkFailures.push(target.requirementId);
+        console.warn(
+          `[forge] Failed to attach PR URL to ${target.requirementId} (${target.linearIssueId}): ${result.error}`,
+        );
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        slug: opts.slug,
+        branch,
+        prUrl,
+        issuesLinked,
+        issueLinkFailures,
+        missingLinearIssueIds,
+      }),
+    );
+  });
+
+linear
   .command('sync-planned')
   .description('Transition project to Planned after planning completes')
   .requiredOption('--slug <slug>', 'Graph slug')
@@ -321,6 +449,20 @@ linear
     const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
     const { syncGraphProjectPlanned } = await import('./linear/sync.js');
     const result = await syncGraphProjectPlanned(client, index);
+    console.log(JSON.stringify(result));
+  });
+
+linear
+  .command('sync-merged')
+  .description('Transition project to Completed after PR merge')
+  .requiredOption('--slug <slug>', 'Graph slug')
+  .action(async (opts: { slug: string }) => {
+    const apiKey = requireApiKey();
+    const projectDir = process.cwd();
+    const index = await loadIndex(projectDir, opts.slug);
+    const client = new ForgeLinearClient({ apiKey, teamId: index.linear?.teamId });
+    const { syncGraphProjectCompleted } = await import('./linear/sync.js');
+    const result = await syncGraphProjectCompleted(client, index);
     console.log(JSON.stringify(result));
   });
 

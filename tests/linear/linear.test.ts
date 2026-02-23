@@ -14,6 +14,8 @@ vi.mock("@linear/sdk", () => {
     createProjectRelation: vi.fn(),
     createIssueRelation: vi.fn(),
     issue: vi.fn(),
+    issueVcsBranchSearch: vi.fn(),
+    attachmentLinkGitHubPR: vi.fn(),
     updateIssue: vi.fn(),
     updateProject: vi.fn(),
     updateIssueBatch: vi.fn(),
@@ -413,7 +415,10 @@ describe("ForgeLinearClient.resolveProjectStatusByCategory", () => {
 // ============================================================
 
 // Dynamic import for sync functions
-const { syncGraphProjectPlanned } = await import("../../src/linear/sync.js");
+const {
+  syncGraphProjectPlanned,
+  syncGraphProjectCompleted,
+} = await import("../../src/linear/sync.js");
 
 describe("syncGraphProjectPlanned", () => {
   it("transitions project to Planned", async () => {
@@ -457,6 +462,81 @@ describe("syncGraphProjectPlanned", () => {
     };
 
     const result = await syncGraphProjectPlanned(client, index);
+
+    expect(result.projectUpdated).toBe(false);
+    warnSpy.mockRestore();
+  });
+});
+
+describe("syncGraphProjectCompleted", () => {
+  it("transitions project to Completed", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "Planned", type: "planned" },
+        { id: "ps-2", name: "Completed", type: "completed" },
+      ],
+    });
+    mockSdk.updateProject.mockResolvedValue({});
+
+    const index = {
+      project: "Test",
+      slug: "test",
+      branch: "feat/test",
+      createdAt: new Date().toISOString(),
+      linear: { projectId: "proj-1", teamId: "team-1" },
+      groups: {},
+      requirements: {},
+    };
+
+    const result = await syncGraphProjectCompleted(client, index);
+
+    expect(result.projectUpdated).toBe(true);
+    expect(mockSdk.updateProject).toHaveBeenCalledWith("proj-1", { statusId: "ps-2" });
+  });
+
+  it("falls back to default completed name mapping when category lookup is unavailable", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projectStatuses.mockResolvedValue({
+      nodes: [
+        { id: "ps-1", name: "Backlog" },
+        { id: "ps-2", name: "Done" },
+      ],
+    });
+    mockSdk.updateProject.mockResolvedValue({});
+
+    const index = {
+      project: "Test",
+      slug: "test",
+      branch: "feat/test",
+      createdAt: new Date().toISOString(),
+      linear: { projectId: "proj-1", teamId: "team-1" },
+      groups: {},
+      requirements: {},
+    };
+
+    const result = await syncGraphProjectCompleted(client, index);
+
+    expect(result.projectUpdated).toBe(true);
+    expect(mockSdk.updateProject).toHaveBeenCalledWith("proj-1", { statusId: "ps-2" });
+  });
+
+  it("skips when no projectId", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+
+    const index = {
+      project: "Test",
+      slug: "test",
+      branch: "feat/test",
+      createdAt: new Date().toISOString(),
+      groups: {},
+      requirements: {},
+    };
+
+    const result = await syncGraphProjectCompleted(client, index);
 
     expect(result.projectUpdated).toBe(false);
     warnSpy.mockRestore();
@@ -521,26 +601,81 @@ describe("ForgeLinearClient.getIssueIdentifier", () => {
   });
 });
 
-describe("ForgeLinearClient.attachIssueBranch", () => {
-  it("returns success when branch is attached", async () => {
+describe("ForgeLinearClient.attachIssuePullRequest", () => {
+  it("returns success when PR URL is attached", async () => {
     const client = new ForgeLinearClient({ apiKey: "test-key" });
     const mockSdk = (client as any).client;
-    mockSdk.updateIssue.mockResolvedValue({});
+    mockSdk.attachmentLinkGitHubPR.mockResolvedValue({});
 
-    const result = await client.attachIssueBranch("issue-1", "feat/my-branch");
+    const result = await client.attachIssuePullRequest("issue-1", "https://github.com/acme/repo/pull/123");
 
     expect(result).toEqual({ success: true, data: undefined });
-    expect(mockSdk.updateIssue).toHaveBeenCalledWith("issue-1", { branchName: "feat/my-branch" });
+    expect(mockSdk.attachmentLinkGitHubPR).toHaveBeenCalledWith("issue-1", "https://github.com/acme/repo/pull/123");
   });
 
   it("returns error on API failure", async () => {
     const client = new ForgeLinearClient({ apiKey: "test-key" });
     const mockSdk = (client as any).client;
-    mockSdk.updateIssue.mockRejectedValue(new Error("Permission denied"));
+    mockSdk.attachmentLinkGitHubPR.mockRejectedValue(new Error("integration missing"));
+
+    const result = await client.attachIssuePullRequest("issue-1", "https://github.com/acme/repo/pull/123");
+
+    expect(result).toEqual({ success: false, error: "integration missing" });
+  });
+});
+
+describe("ForgeLinearClient.attachIssueBranch", () => {
+  it("returns success when branch is linked to the issue", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issueVcsBranchSearch.mockResolvedValue({
+      id: "issue-1",
+      identifier: "FRG-1",
+    });
+
+    const result = await client.attachIssueBranch("issue-1", "feat/my-branch");
+
+    expect(result).toEqual({ success: true, data: undefined });
+    expect(mockSdk.issueVcsBranchSearch).toHaveBeenCalledWith("feat/my-branch");
+  });
+
+  it("returns actionable error when branch is not linked yet", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issueVcsBranchSearch.mockResolvedValue(undefined);
+
+    const result = await client.attachIssueBranch("issue-1", "feat/my-branch");
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        'Branch "feat/my-branch" is not linked in Linear yet. Linear links branches from connected VCS activity (push/PR), not via issue update.',
+    });
+  });
+
+  it("returns error when branch links to a different issue", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issueVcsBranchSearch.mockResolvedValue({
+      id: "issue-2",
+      identifier: "FRG-2",
+    });
+
+    const result = await client.attachIssueBranch("issue-1", "feat/my-branch");
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Branch "feat/my-branch" is linked to FRG-2, not issue id issue-1.',
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issueVcsBranchSearch.mockRejectedValue(new Error("Permission denied"));
 
     const result = await client.attachIssueBranch("issue-1", "feat/my-branch");
 
     expect(result).toEqual({ success: false, error: "Permission denied" });
   });
 });
-
