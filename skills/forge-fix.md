@@ -1,3 +1,23 @@
+---
+name: forge-fix
+hooks:
+  WorktreeCreate:
+    - hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-worktree-create.js\""
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-branch-enforce.js\""
+  PostToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-post-action.js\""
+          async: true
+---
+
 # /forge:fix — Surgical Recovery
 
 Fix a specific failed or broken requirement with targeted diagnosis, minimal changes, and re-verification. This is the recovery path when `/forge:build` fails a requirement after max iterations.
@@ -135,7 +155,7 @@ Run `npx tsc --noEmit` between every fix iteration to catch integration issues e
    ```
    updateRequirementStatus(projectDir, slug, reqId, "complete")
    ```
-3. Sync Linear: Issue → Done
+3. Linear sync is handled automatically by the PostToolUse hook when the PR is created/merged.
 4. Print result:
 
 ```
@@ -145,7 +165,7 @@ Run `npx tsc --noEmit` between every fix iteration to catch integration issues e
 **Fix applied:** {1-2 sentence summary of what changed}
 **Verification:** All gates pass
 **Review:** PASS
-**Linear:** Issue → Done
+**Linear:** Synced via hooks
 ```
 
 **If abandoned or manual-incomplete:**
@@ -160,7 +180,7 @@ Print the current state and preserve the worktree for later:
 **Remaining issues:** {list}
 ```
 
-**Codex Review (if a PR exists for this graph):** After completing the fix, if a PR was previously created via `forge linear ship`, follow the **Codex Review Protocol** in `ref/codex-review.md`.
+**Codex Review (if a PR exists for this graph):** After completing the fix, if a PR exists, follow the **Codex Review Protocol** in `ref/codex-review.md`.
 
 **This step is mandatory.** Do not skip to the resume step until the Codex review protocol completes (either comments were resolved or polling timed out with no review found).
 
