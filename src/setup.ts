@@ -211,6 +211,88 @@ async function updateClaudeMd(projectDir: string): Promise<boolean> {
   return true;
 }
 
+/** Install Linear lifecycle hooks into .claude/settings.json. */
+async function installLinearHooks(projectDir: string): Promise<boolean> {
+  const settingsDir = join(projectDir, ".claude");
+  const settingsPath = join(settingsDir, "settings.json");
+
+  await mkdir(settingsDir, { recursive: true });
+
+  // Read existing settings or start fresh
+  let settings: Record<string, unknown> = {};
+  try {
+    const raw = await readFile(settingsPath, "utf-8");
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      settings = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // File doesn't exist or is malformed — start fresh
+  }
+
+  // Ensure hooks object exists
+  if (!settings.hooks || typeof settings.hooks !== "object" || Array.isArray(settings.hooks)) {
+    settings.hooks = {};
+  }
+  const hooks = settings.hooks as Record<string, unknown[]>;
+
+  const forgeHooks: Record<string, Record<string, unknown>> = {
+    WorktreeCreate: {
+      hooks: [{
+        type: "command",
+        command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-worktree-create.js\"",
+      }],
+    },
+    PreToolUse: {
+      matcher: "Bash",
+      hooks: [{
+        type: "command",
+        command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-branch-enforce.js\"",
+      }],
+    },
+    PostToolUse: {
+      matcher: "Bash",
+      hooks: [{
+        type: "command",
+        command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-post-action.js\"",
+        async: true,
+      }],
+    },
+  };
+
+  let changed = false;
+
+  for (const [hookType, entry] of Object.entries(forgeHooks)) {
+    if (!Array.isArray(hooks[hookType])) {
+      hooks[hookType] = [];
+    }
+    const existing = hooks[hookType] as Record<string, unknown>[];
+
+    // Extract the command string from our entry for idempotency check
+    const entryHooks = (entry.hooks as Record<string, unknown>[]);
+    const cmdString = entryHooks[0].command as string;
+
+    // Check if an entry with this command already exists
+    const alreadyPresent = existing.some((e) => {
+      const eHooks = e.hooks;
+      if (!Array.isArray(eHooks)) return false;
+      return (eHooks as Record<string, unknown>[]).some(
+        (h) => h.command === cmdString,
+      );
+    });
+
+    if (!alreadyPresent) {
+      existing.push(entry);
+      changed = true;
+    }
+  }
+
+  if (!changed) return false;
+
+  await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+  return true;
+}
+
 /** Validate Linear connection if API key is set. */
 async function validateLinear(): Promise<boolean> {
   const apiKey = process.env.LINEAR_API_KEY;
@@ -258,13 +340,19 @@ export async function runSetup(opts: SetupOptions): Promise<void> {
     console.log("Add to .claude/settings.json hooks to activate");
   }
 
-  // Step 4: Update CLAUDE.md
+  // Step 4: Install Linear lifecycle hooks into .claude/settings.json
+  const hooksInstalled = await installLinearHooks(projectDir);
+  if (hooksInstalled) {
+    console.log("Linear hooks installed in .claude/settings.json");
+  }
+
+  // Step 5: Update CLAUDE.md
   const claudeUpdated = await updateClaudeMd(projectDir);
   if (claudeUpdated) {
     console.log("Forge section added to CLAUDE.md");
   }
 
-  // Step 5: Validate Linear
+  // Step 6: Validate Linear
   await validateLinear();
 
   console.log("\nSetup complete. Run 'npx forge doctor' to verify your environment.");
