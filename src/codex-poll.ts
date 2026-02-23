@@ -51,12 +51,18 @@ export function isCodexActivity(item: { user?: { login: string }; performed_via_
   return item.performed_via_github_app?.slug === "codex";
 }
 
-export async function pollForCodexReview(opts: CodexPollOptions): Promise<void> {
+export interface CodexPollResult {
+  found: boolean;
+  reviews: Array<{ id: number; state: string; body: string; user?: string }>;
+  comments: Array<{ id: number; body: string; path?: string; user?: string }>;
+  error?: string;
+}
+
+export async function pollForCodexReview(opts: CodexPollOptions): Promise<CodexPollResult> {
   const { owner, repo, pr } = opts;
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
-    console.error(JSON.stringify({ found: false, error: "GITHUB_TOKEN not set" }));
-    process.exit(1);
+    return { found: false, reviews: [], comments: [], error: "GITHUB_TOKEN not set" };
   }
 
   const headers: Record<string, string> = {
@@ -86,19 +92,16 @@ export async function pollForCodexReview(opts: CodexPollOptions): Promise<void> 
       const codexComments = comments.filter(isCodexActivity);
 
       if (codexReviews.length > 0 || codexComments.length > 0) {
-        const result = {
+        return {
           found: true,
           reviews: codexReviews.map((r) => ({ id: r.id, state: r.state, body: r.body, user: r.user?.login })),
           comments: codexComments.map((c) => ({ id: c.id, body: c.body, path: c.path, user: c.user?.login })),
         };
-        console.log(JSON.stringify(result, null, 2));
-        process.exit(0);
       }
     } catch (err) {
       console.error(`[forge] Poll attempt ${i + 1} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  console.log(JSON.stringify({ found: false, error: "No Codex review found after 8 minutes" }));
-  process.exit(1);
+  return { found: false, reviews: [], comments: [], error: "No Codex review found after 8 minutes" };
 }
