@@ -496,7 +496,9 @@ program
   .requiredOption('--pr <number>', 'PR number')
   .action(async (opts: { owner: string; repo: string; pr: string }) => {
     const { pollForCodexReview } = await import('./codex-poll.js');
-    await pollForCodexReview(opts);
+    const result = await pollForCodexReview(opts);
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(result.found ? 0 : 1);
   });
 
 program.parse();

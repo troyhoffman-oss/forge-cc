@@ -99,29 +99,44 @@ describe("fetchAllPages", () => {
   });
 });
 
-describe("pollForCodexReview timeout path", () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+describe("pollForCodexReview", () => {
   let originalFetch: typeof globalThis.fetch;
+  let origToken: string | undefined;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    // Use non-throwing mock to avoid unhandled rejections with fake timers
-    exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    origToken = process.env.GITHUB_TOKEN;
     vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.useRealTimers();
     vi.restoreAllMocks();
+    if (origToken === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = origToken;
+    }
   });
 
-  it("exits with found:false after exhausting all polls with no Codex activity", async () => {
-    const origToken = process.env.GITHUB_TOKEN;
+  it("returns found:false with error when GITHUB_TOKEN is not set", async () => {
+    delete process.env.GITHUB_TOKEN;
+    const { pollForCodexReview } = await import("../src/codex-poll.js");
+
+    const result = await pollForCodexReview({ owner: "test", repo: "repo", pr: "1" });
+
+    expect(result).toEqual({
+      found: false,
+      reviews: [],
+      comments: [],
+      error: "GITHUB_TOKEN not set",
+    });
+  });
+
+  it("returns found:false after exhausting all polls with no Codex activity", async () => {
     process.env.GITHUB_TOKEN = "test-token";
 
-    // Mock fetch to always return empty arrays (no codex reviews or comments)
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve([]),
@@ -134,18 +149,51 @@ describe("pollForCodexReview timeout path", () => {
 
     const pollPromise = pollForCodexReview({ owner: "test", repo: "repo", pr: "1" });
 
-    // Advance through all 8 poll intervals (7 waits of 60s each)
     for (let i = 0; i < 7; i++) {
       await vi.advanceTimersByTimeAsync(60_000);
     }
 
-    await pollPromise;
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    const result = await pollPromise;
 
-    if (origToken === undefined) {
-      delete process.env.GITHUB_TOKEN;
-    } else {
-      process.env.GITHUB_TOKEN = origToken;
-    }
+    expect(result).toEqual({
+      found: false,
+      reviews: [],
+      comments: [],
+      error: "No Codex review found after 8 minutes",
+    });
+  });
+
+  it("returns found:true with reviews when Codex review is found", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+
+    const codexReview = {
+      id: 42,
+      state: "commented",
+      body: "Looks good",
+      user: { login: "codex-bot" },
+    };
+
+    // First call returns reviews, second call returns comments
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([codexReview]),
+        headers: new Headers(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([]),
+        headers: new Headers(),
+      });
+
+    const { pollForCodexReview } = await import("../src/codex-poll.js");
+
+    const result = await pollForCodexReview({ owner: "test", repo: "repo", pr: "1" });
+
+    expect(result).toEqual({
+      found: true,
+      reviews: [{ id: 42, state: "commented", body: "Looks good", user: "codex-bot" }],
+      comments: [],
+    });
   });
 });
