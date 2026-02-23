@@ -160,6 +160,10 @@ Print the current state and preserve the worktree for later:
 **Remaining issues:** {list}
 ```
 
+**Codex Review (if a PR exists for this graph):** After completing the fix, if a PR was previously created via `forge linear ship`, follow the **Codex Review Protocol** in `ref/codex-review.md`.
+
+**This step is mandatory.** Do not skip to the resume step until the Codex review protocol completes (either comments were resolved or polling timed out with no review found).
+
 ---
 
 ### Step 5 — Resume Build (optional)
@@ -192,6 +196,7 @@ options:
 ## Key References
 
 - `ref/adversarial-review.md` — Full review protocol (reviewer receives requirement file + actual files on disk, NOT diff/builder summary; stub detection; PASS/FAIL output)
+- `ref/codex-review.md` — Codex auto-review polling, evaluation, and resolution protocol
 - `ref/graph-correction.md` — Mid-execution correction protocol (for context on how graph state evolves)
 
 ## Graph Module API

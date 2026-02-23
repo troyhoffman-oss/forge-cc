@@ -121,6 +121,10 @@ options:
 - Transition the issue to **Done**
 - Add the commit SHA or PR URL as a comment on the issue
 
+**Codex Review (if PR was created):** Follow the **Codex Review Protocol** in `ref/codex-review.md`.
+
+**This step is mandatory.** Do not skip to the report step until the Codex review protocol completes (either comments were resolved or polling timed out with no review found).
+
 ---
 
 ### Step 7 — Report
