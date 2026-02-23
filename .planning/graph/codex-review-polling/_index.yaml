@@ -22,7 +22,7 @@ requirements:
   req-001:
     title: "Refactor codex-poll to return data instead of process.exit"
     group: Infrastructure
-    status: pending
+    status: complete
     dependsOn: []
     linearIssueId: "a324d43b-4f23-4113-ab8f-efbb0a339494"
     files:
@@ -33,7 +33,7 @@ requirements:
   req-002:
     title: "Create ref/codex-review.md shared protocol"
     group: Protocol
-    status: pending
+    status: complete
     dependsOn:
       - req-001
     linearIssueId: "9580db51-4c01-4028-b0b4-b73a50bdb570"

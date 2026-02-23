@@ -249,15 +249,27 @@ options:
 
 ---
 
-### Step 6 — Completion
+### Step 6 — Ship and Codex Review
 
-When the execution loop ends, determine the final state:
+When the execution loop ends and `isProjectComplete(index)` is true:
 
-**If `isProjectComplete(index)` is true:**
+1. **Ship the PR:**
+   ```bash
+   npx forge linear ship --slug {slug}
+   ```
+   This pushes the branch, creates a PR, links issues, and transitions the project to In Review.
 
-```
-syncGraphProjectReview(client, index)  // Project → In Review in Linear
-```
+2. **Codex Review:** If a PR was created, follow the **Codex Review Protocol** in `ref/codex-review.md`.
+
+   **This step is mandatory.** Do not skip to the summary step until the Codex review protocol completes (either comments were resolved or polling timed out with no review found).
+
+---
+
+### Step 7 — Completion
+
+Determine the final state:
+
+**If all requirements are complete:**
 
 Print the completion summary:
 
@@ -328,6 +340,7 @@ Keep these limits during execution to preserve the orchestrator's context window
 ## Key References
 
 - `ref/adversarial-review.md` — Full review protocol (reviewer receives requirement file + actual files on disk, NOT diff/builder summary; stub detection; PASS/FAIL output)
+- `ref/codex-review.md` — Codex auto-review polling, evaluation, and resolution protocol
 - `ref/graph-correction.md` — Mid-execution correction protocol (discovered reqs, missing edges, file scope, group ordering; checkpoint timing; auto-apply rules)
 - `ref/requirement-sizing.md` — Sizing rules (hard/soft limits, splitting guide)
 
