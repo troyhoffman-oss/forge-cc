@@ -1,0 +1,43 @@
+project: "Plan-Capture Handoff"
+slug: plan-capture-handoff
+branch: feat/plan-capture-handoff
+createdAt: "2026-02-23"
+
+linear:
+  projectId: "66742efc-2215-4bd0-aade-f4e0dc02c962"
+  teamId: "72baaa3d-a5f7-4400-9011-a5e88f5a787b"
+
+groups:
+  linear-client:
+    name: "Linear Client"
+    order: 1
+    dependsOn: []
+    linearMilestoneId: "28075921-e39f-4771-af79-4d21675100fa"
+  plan-skill:
+    name: "Plan Skill"
+    order: 2
+    dependsOn:
+      - linear-client
+    linearMilestoneId: "ed14911e-99c1-4c49-812f-0f822ba1a72a"
+
+requirements:
+  req-001:
+    group: linear-client
+    status: pending
+    dependsOn: []
+    priority: 1
+    linearIssueId: "1a020681-bf8d-416e-8c97-dfdb96bcf82f"
+  req-002:
+    group: plan-skill
+    status: pending
+    dependsOn:
+      - req-001
+    priority: 2
+    linearIssueId: "91d78e13-7c20-4c59-a3da-1614f31ae4a4"
+  req-003:
+    group: plan-skill
+    status: pending
+    dependsOn:
+      - req-001
+    priority: 3
+    linearIssueId: "15ffe3a4-5680-4e30-8427-4846ce92b751"
