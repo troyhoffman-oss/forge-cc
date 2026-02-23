@@ -131,34 +131,34 @@ options:
 Create all confirmed items:
 
 **Projects:**
-For each confirmed project, call `client.createProject()`:
+For each confirmed project, call `client.createProject()`. It returns `LinearResult<{ id, url }>` — check `.success` and use `.data.id` for the project ID. The method deduplicates by name automatically.
 ```
-{
+const result = await client.createProject({
   name: "{project name}",
   description: "{project description}",
   teamIds: [teamId]
-}
+});
+// result.success, result.data.id, result.data.url
 ```
 
-Track the returned `projectId` for each project — needed for issue creation.
+Track `result.data.id` for each project — needed for issue creation.
 
 **Issues (if requested):**
-For each project's issues, call `client.createIssueBatch()`:
+For each project's issues, call `client.createIssueBatch()` with an array (not wrapped in an object). It returns `LinearResult<{ ids, identifiers }>`.
 ```
-{
-  issues: [
-    {
-      title: "{issue title}",
-      description: "{issue description}",
-      teamId: teamId,
-      projectId: "{project's Linear ID}",
-      stateId: "{Backlog state ID}"
-    }
-  ]
-}
+const result = await client.createIssueBatch([
+  {
+    title: "{issue title}",
+    description: "{issue description}",
+    teamId: teamId,
+    projectId: "{project's Linear ID}",
+    stateId: "{Backlog state ID}"
+  }
+]);
+// result.success, result.data.ids, result.data.identifiers
 ```
 
-To get the "Backlog" state ID, look up the team's workflow states and find the one with category "backlog". If not found, fall back to "Triage".
+To get the "Backlog" state ID, use `client.resolveIssueStateByCategory(teamId, 'backlog')`.
 
 **Error handling:**
 - If a project creation fails, report it but continue with remaining projects
