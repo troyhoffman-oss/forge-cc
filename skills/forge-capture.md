@@ -158,7 +158,7 @@ const result = await client.createIssueBatch([
 // result.success, result.data.ids, result.data.identifiers
 ```
 
-To get the "Backlog" state ID, look up the team's workflow states and find the one with category "backlog". If not found, fall back to "Triage".
+To get the "Backlog" state ID, use `client.resolveIssueStateByCategory(teamId, 'backlog')`.
 
 **Error handling:**
 - If a project creation fails, report it but continue with remaining projects
