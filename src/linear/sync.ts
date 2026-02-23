@@ -1,5 +1,57 @@
 import type { ForgeLinearClient } from "./client.js";
-import type { GraphIndex } from "../graph/types.js";
+import type { GraphIndex, RequirementMeta } from "../graph/types.js";
+import { discoverGraphs, loadIndex } from "../graph/reader.js";
+
+/** Resolved context for a requirement: its graph index, metadata, and Linear issue identifier. */
+export interface RequirementContext {
+  index: GraphIndex;
+  meta: RequirementMeta;
+  issueIdentifier: string | null;
+}
+
+/**
+ * Resolve a requirement's context from the project directory and reqId.
+ *
+ * Scans all graphs in `.planning/graph/` to find the requirement, then
+ * optionally resolves the Linear issue identifier via the API client.
+ *
+ * Shared by WorktreeCreate and PreToolUse hooks.
+ */
+export async function resolveRequirementContext(
+  projectDir: string,
+  reqId: string,
+  client?: ForgeLinearClient,
+): Promise<RequirementContext | null> {
+  const slugs = await discoverGraphs(projectDir);
+
+  for (const slug of slugs) {
+    let index: GraphIndex;
+    try {
+      index = await loadIndex(projectDir, slug);
+    } catch {
+      continue;
+    }
+
+    const meta = index.requirements[reqId];
+    if (!meta) continue;
+
+    let issueIdentifier: string | null = null;
+    if (meta.linearIssueId && client) {
+      try {
+        const result = await client.getIssueIdentifier(meta.linearIssueId);
+        if (result.success) {
+          issueIdentifier = result.data;
+        }
+      } catch {
+        // Degrade gracefully — identifier is optional
+      }
+    }
+
+    return { index, meta, issueIdentifier };
+  }
+
+  return null;
+}
 
 export interface SyncResult {
   issuesTransitioned: number;

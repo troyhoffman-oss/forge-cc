@@ -1,0 +1,118 @@
+slug: runner-consolidation
+project: Forge Runner Loop Consolidation
+branch: feat/runner-consolidation
+
+linear:
+  projectId: "c74490aa-bfc2-479a-a25f-b0d1f1c45034"
+  teamId: "72baaa3d-a5f7-4400-9011-a5e88f5a787b"
+
+groups:
+  - name: Hook Infrastructure
+    description: Core hooks that enforce Linear lifecycle invisibly
+    linearMilestoneId: "a6fa0034-b5f0-48c7-bb2e-39dab7de12a2"
+  - name: Plan Lifecycle
+    description: Milestone creation and issue assignment during planning
+    linearMilestoneId: "d51ab5ac-e6c4-4dfa-8359-c8bc67fcfefe"
+  - name: Capture Lifecycle
+    description: Fix initial project state to Backlog
+    linearMilestoneId: "f6cc174f-8437-4ce4-aa4a-aef70f4a58b4"
+  - name: Build Skill Integration
+    description: Wire computeWaves and hook frontmatter into build skill
+    dependsOn:
+      - Hook Infrastructure
+    linearMilestoneId: "a6f9106b-94d2-40fd-b9b9-4a5e5c03207c"
+  - name: Hook Installation
+    description: Ensure hooks are installed via forge setup
+    dependsOn:
+      - Hook Infrastructure
+    linearMilestoneId: "2208a253-a723-4838-a894-018876484b2f"
+
+requirements:
+  req-001:
+    title: "WorktreeCreate hook — branch naming + issue sync"
+    group: Hook Infrastructure
+    status: complete
+    dependsOn: []
+    linearIssueId: "18e5fcac-02e8-4f76-9f7f-1e72a86c0fcd"
+    files:
+      creates:
+        - hooks/linear-worktree-create.js
+      modifies:
+        - src/linear/sync.ts
+  req-002:
+    title: "PreToolUse Bash hook — manual branch name rewriting"
+    group: Hook Infrastructure
+    status: complete
+    dependsOn: []
+    linearIssueId: "c488a0ab-56f3-4da0-a6cf-7420b35dbf5f"
+    files:
+      creates:
+        - hooks/linear-branch-enforce.js
+      modifies: []
+  req-003:
+    title: "PostToolUse Bash hook — PR and merge reactions"
+    group: Hook Infrastructure
+    status: complete
+    dependsOn: []
+    linearIssueId: "40f450e3-8b57-4d24-b303-cc904f9b5fce"
+    files:
+      creates:
+        - hooks/linear-post-action.js
+      modifies: []
+  req-004:
+    title: "Plan skill creates milestones and assigns issues"
+    group: Plan Lifecycle
+    status: complete
+    dependsOn: []
+    linearIssueId: "bd2ceb32-a5b7-4e84-a9e3-093352215112"
+    files:
+      creates: []
+      modifies:
+        - skills/forge-plan.md
+  req-005:
+    title: "Capture skill creates projects at Backlog"
+    group: Capture Lifecycle
+    status: complete
+    dependsOn: []
+    linearIssueId: "b00af56d-494f-4fcb-83b3-c608cf83819e"
+    files:
+      creates: []
+      modifies:
+        - skills/forge-capture.md
+  req-006:
+    title: "Build skill wires computeWaves for agent team execution"
+    group: Build Skill Integration
+    status: complete
+    dependsOn:
+      - req-001
+    linearIssueId: "ffc13203-1044-44fe-9a24-cc7fb1054006"
+    files:
+      creates: []
+      modifies:
+        - skills/forge-build.md
+  req-007:
+    title: "Build skill adds hook definitions in frontmatter"
+    group: Build Skill Integration
+    status: complete
+    dependsOn:
+      - req-001
+      - req-002
+      - req-003
+    linearIssueId: "bd76e957-d2cc-45c0-acc3-76df8ec74866"
+    files:
+      creates: []
+      modifies:
+        - skills/forge-build.md
+  req-008:
+    title: "forge setup installs hooks into settings.json"
+    group: Hook Installation
+    status: complete
+    dependsOn:
+      - req-001
+      - req-002
+      - req-003
+    linearIssueId: "7889bec8-667e-43d7-80fa-641c3ac0cfa3"
+    files:
+      creates: []
+      modifies:
+        - src/setup.ts

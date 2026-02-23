@@ -1,3 +1,23 @@
+---
+name: forge-build
+hooks:
+  WorktreeCreate:
+    - hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-worktree-create.js\""
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-branch-enforce.js\""
+  PostToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-post-action.js\""
+          async: true
+---
+
 # /forge:build — Graph Execution with Adversarial Review
 
 Orchestrates requirement graph execution with worktree isolation, adversarial review, and Linear state transitions. Replaces `/forge:go`.
@@ -59,42 +79,55 @@ options:
 
 ### Step 1 — Execution Loop
 
-Execute requirements one at a time in priority order until the graph is complete.
+Execute requirements in parallel waves using `computeWaves()`. Each wave contains requirements whose dependencies are satisfied. Requirements within a wave run in parallel; waves run sequentially.
 
 ```
-while (!isProjectComplete(index)) {
-  ready = findReady(index)
-  if (ready.length === 0) break  // all blocked or discovered
+waves = computeWaves(index)
 
-  reqId = ready[0]  // priority desc → group order → insertion order
-  result = executeRequirement(index, reqId)
+for each wave in waves:
+  // Filter to pending/ready requirements only — skip already-complete ones
+  waveReqs = wave.filter(reqId => index.requirements[reqId].status !== "complete")
+  if (waveReqs.length === 0) continue  // entire wave already complete
 
-  if (result === "complete") {
-    updateRequirementStatus(projectDir, slug, reqId, "complete")
-  } else if (result === "failed") {
-    handleFailure(index, reqId, result.errors)
-  }
+  if (waveReqs.length === 1):
+    // Sequential fallback — no team overhead for a single requirement
+    reqId = waveReqs[0]
+    Spawn a builder agent via Task tool with isolation: "worktree"
+    The builder executes Step 2 (build → verify → adversarial review)
 
-  // Reload index — status may have changed, corrections may have been applied
-  index = loadIndex(projectDir, slug)
-}
+    if (result === "complete"):
+      updateRequirementStatus(projectDir, slug, reqId, "complete")
+      mergeWorktree()
+    else if (result === "failed"):
+      handleFailure(index, reqId, result.errors)  // Step 4
 
-syncGraphProjectReview(client, index)  // Project → In Review
+  else:
+    // Parallel execution — spawn agent team for the wave
+    Create team via TeamCreate (team_name: "{slug}-wave-{N}")
+    For each reqId in waveReqs:
+      Create task via TaskCreate (subject: reqId, description: requirement prompt)
+      Spawn builder agent via Task tool with:
+        - isolation: "worktree"
+        - team_name: "{slug}-wave-{N}"
+        - The builder executes Step 2 independently
+
+    Coordinate: wait for all builders to complete
+    For each completed requirement:
+      updateRequirementStatus(projectDir, slug, reqId, "complete")
+      mergeWorktree()
+    For each failed requirement:
+      handleFailure(index, reqId, result.errors)  // Step 4
+
+  // Between waves — checkpoint:
+  Restage all files (git add -A && git reset)  // parallel agents disrupt each other's index
+  Run npx tsc --noEmit                         // catch integration issues before next wave
+  index = loadIndex(projectDir, slug)           // pick up status changes and corrections
+  Check for discovered requirements or graph corrections (see Step 5)
 ```
 
-**Execution order when multiple requirements are ready:**
+**Wave ordering:** `computeWaves(index)` returns `string[][]` — an array of waves, each wave an array of requirement IDs. Within each wave, requirements have no mutual dependencies and can run in parallel. Waves are ordered so that all dependencies of wave N are in waves 0..N-1.
 
-`findReady()` may return multiple requirement IDs. Order them by:
-1. Priority descending (P0 before P1 before P2)
-2. Group order (earlier groups first)
-3. Insertion order (lower req number first)
-
-Execute `ready[0]` sequentially. Future parallel execution will use `computeWaves()`.
-
-**Between requirements — checkpoint:**
-- Re-run `loadIndex()` to pick up any status changes
-- Check for discovered requirements or graph corrections (see Step 5)
-- Restage all files at wave boundaries — parallel agents can disrupt each other's git index
+**Always delegate to builder agents** for implementation work, even for sequential (single-requirement) waves. The point is preserving the orchestrator's context window, not just parallelism.
 
 ---
 
@@ -255,9 +288,10 @@ When the execution loop ends and `isProjectComplete(index)` is true:
 
 1. **Ship the PR:**
    ```bash
-   npx forge linear ship --slug {slug}
+   git push -u origin feat/{slug}
+   gh pr create --title "{project title}" --body "..."
    ```
-   This pushes the branch, creates a PR, links issues, and transitions the project to In Review.
+   Push the branch and create a PR. The PostToolUse hook automatically links the PR to Linear issues and transitions the project to In Review — no manual `forge linear ship` needed.
 
 2. **Codex Review:** If a PR was created, follow the **Codex Review Protocol** in `ref/codex-review.md`.
 
@@ -306,21 +340,18 @@ All requirements verified and merged.
 
 ## Linear State Reference
 
-State transitions are driven by execution progress:
+All state transitions are handled automatically by hooks and Linear's GitHub integration. No manual sync calls are needed during build execution.
 
-| Item | Transition | When |
-|------|-----------|------|
-| Issue | Planned → In Progress | Agent starts working on requirement |
-| Project | Planned → In Progress | First requirement starts |
-| Project | In Progress → In Review | ALL requirements complete, graph done |
+| Item | Transition | Triggered By |
+|------|-----------|-------------|
+| Issue | Planned → In Progress | **WorktreeCreate hook** — fires when builder agent worktree is created |
+| Project | Planned → In Progress | **WorktreeCreate hook** — first requirement starts |
+| Issue | In Progress → In Review | **Linear GitHub integration** — PR opened from branch containing issue identifier |
+| Project | In Progress → In Review | **PostToolUse hook** — fires when `gh pr create` succeeds |
+| Issue | In Review → Completed | **Linear GitHub integration** — PR merged |
+| Project | In Review → Completed | **PostToolUse hook** — fires when `gh pr merge` succeeds |
 
-**Issue review and completion:** Linear's GitHub integration handles issue transitions automatically:
-- Issue → In Review: when a PR is opened from a branch linked to the issue
-- Issue → Completed: when the PR is merged
-
-Forge links issues to branches via `syncRequirementStart`, enabling this automation.
-
-**If any Linear transition fails:** Log a warning and continue. Never block execution on Linear API failures.
+**If any Linear transition fails:** Hooks log warnings to stderr and continue. Never block execution on Linear API failures.
 
 ---
 
@@ -330,10 +361,10 @@ Keep these limits during execution to preserve the orchestrator's context window
 
 | Item | Budget |
 |------|--------|
-| Orchestrator context | Track progress only — delegate all implementation to builder agents |
+| Orchestrator context | Track wave progress only — delegate all implementation to builder agents |
 | Builder prompt | Target requirement + completed dep artifacts + overview + transitive deps |
 | Review prompt | Requirement file + actual files on disk — no diffs, no builder summaries |
-| Between-requirement checkpoint | Reload index, check discoveries, restage files |
+| Between-wave checkpoint | Restage files, run `tsc --noEmit`, reload index, check discoveries |
 
 ---
 
