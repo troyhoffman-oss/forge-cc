@@ -62,11 +62,11 @@ export async function syncRequirementStart(
 
   // Attach branch to issue if both are available
   if (meta?.linearIssueId && branchName) {
-    try {
-      await client.attachIssueBranch(meta.linearIssueId, branchName);
+    const attachResult = await client.attachIssueBranch(meta.linearIssueId, branchName);
+    if (attachResult.success) {
       console.log(`[forge] Attached branch "${branchName}" to issue ${requirementId}`);
-    } catch {
-      console.warn(`[forge] Failed to attach branch to issue ${requirementId}`);
+    } else {
+      console.warn(`[forge] Failed to attach branch to issue ${requirementId}: ${attachResult.error}`);
     }
   }
 
