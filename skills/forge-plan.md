@@ -251,7 +251,7 @@ options:
 
 ### Step 6 — Linear Sync
 
-Create the project and issues in Linear.
+Create the project, milestones, and issues in Linear.
 
 1. **Load `.forge.json`** to get the `linearTeam` name.
 
@@ -260,23 +260,30 @@ Create the project and issues in Linear.
    - Description: content from `overview.md`
    - State: **Planned**
 
-3. **Create Linear issues** — one per requirement:
+3. **Create milestones** — one per group in the graph:
+   - For each group in `_index.yaml`, call `ForgeLinearClient.createMilestone({ name: groupName, projectId })`
+   - Store the returned `milestoneId` as `linearMilestoneId` in the group's entry in `_index.yaml`
+   - Milestone progress auto-calculates in Linear based on child issue completion
+
+4. **Create Linear issues** — one per requirement:
    - Title: requirement title
    - Description: requirement body (context + technical approach)
    - State: **Planned**
    - Labels: group name
+   - `projectMilestoneId`: the group's `linearMilestoneId` from step 3
 
-4. **Store Linear IDs** back into `_index.yaml`:
+5. **Store Linear IDs** back into `_index.yaml`:
    - Project ID at the top level
+   - Milestone IDs in each group entry (`linearMilestoneId`)
    - Issue ID in each requirement entry
    - Write via `writeIndex()`
 
-5. **Transition project to Planned:**
+6. **Transition project to Planned:**
    ```bash
    npx forge linear sync-planned --slug {slug}
    ```
 
-6. **Commit the graph directory** to the current feature branch:
+7. **Commit the graph directory** to the current feature branch:
 
    ```bash
    git add .planning/graph/{slug}/
