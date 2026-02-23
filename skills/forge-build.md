@@ -71,7 +71,6 @@ while (!isProjectComplete(index)) {
 
   if (result === "complete") {
     updateRequirementStatus(projectDir, slug, reqId, "complete")
-    syncRequirementDone(client, index, reqId)  // Issue → Done
   } else if (result === "failed") {
     handleFailure(index, reqId, result.errors)
   }
@@ -80,7 +79,7 @@ while (!isProjectComplete(index)) {
   index = loadIndex(projectDir, slug)
 }
 
-syncGraphProjectDone(client, index)  // Project → Done if all complete
+syncGraphProjectReview(client, index)  // Project → In Review
 ```
 
 **Execution order when multiple requirements are ready:**
@@ -257,7 +256,7 @@ When the execution loop ends, determine the final state:
 **If `isProjectComplete(index)` is true:**
 
 ```
-syncGraphProjectDone(client, index)  // Project → Done in Linear
+syncGraphProjectReview(client, index)  // Project → In Review in Linear
 ```
 
 Print the completion summary:
@@ -268,7 +267,7 @@ Print the completion summary:
 **Slug:** {slug}
 **Requirements completed:** {completed} / {total}
 **Waves executed:** {count}
-**Linear Project:** {project URL} — Done
+**Linear Project:** {project URL} — In Review
 
 All requirements verified and merged.
 ```
@@ -300,9 +299,14 @@ State transitions are driven by execution progress:
 | Item | Transition | When |
 |------|-----------|------|
 | Issue | Planned → In Progress | Agent starts working on requirement |
-| Issue | In Progress → Done | Requirement verified + merged |
 | Project | Planned → In Progress | First requirement starts |
-| Project | In Progress → Done | ALL requirements complete |
+| Project | In Progress → In Review | ALL requirements complete, graph done |
+
+**Issue review and completion:** Linear's GitHub integration handles issue transitions automatically:
+- Issue → In Review: when a PR is opened from a branch linked to the issue
+- Issue → Completed: when the PR is merged
+
+Forge links issues to branches via `syncRequirementStart`, enabling this automation.
 
 **If any Linear transition fails:** Log a warning and continue. Never block execution on Linear API failures.
 

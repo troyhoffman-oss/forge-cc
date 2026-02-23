@@ -20,7 +20,7 @@ async function transitionProject(
   category: string,
   label: string,
 ): Promise<void> {
-  const statusId = await client.resolveProjectStatusByCategory(category);
+  const statusId = await client.resolveProjectStatusByCategory(category, label);
   console.log(`[forge] Updating project ${projectId} to "${label}"`);
   const r = await client.updateProjectState(projectId, statusId);
   if (r.success) {
@@ -36,6 +36,7 @@ export async function syncRequirementStart(
   client: ForgeLinearClient,
   index: GraphIndex,
   requirementId: string,
+  branchName?: string,
 ): Promise<SyncResult> {
   const meta = index.requirements[requirementId];
   const result = emptySyncResult();
@@ -59,6 +60,16 @@ export async function syncRequirementStart(
     }
   }
 
+  // Attach branch to issue if both are available
+  if (meta?.linearIssueId && branchName) {
+    const attachResult = await client.attachIssueBranch(meta.linearIssueId, branchName);
+    if (attachResult.success) {
+      console.log(`[forge] Attached branch "${branchName}" to issue ${requirementId}`);
+    } else {
+      console.warn(`[forge] Failed to attach branch to issue ${requirementId}: ${attachResult.error}`);
+    }
+  }
+
   // Also transition project to "In Progress" if not already
   if (index.linear?.projectId) {
     await transitionProject(client, result, index.linear.projectId, "started", "In Progress");
@@ -67,43 +78,33 @@ export async function syncRequirementStart(
   return result;
 }
 
-/** Transition all graph requirements' issues to "completed" and project to "completed". */
-export async function syncGraphProjectDone(
+/** Transition project to In Review when all requirements are complete. Issues are not touched — Linear's GitHub automation handles issue transitions via PR linking. */
+export async function syncGraphProjectReview(
   client: ForgeLinearClient,
   index: GraphIndex,
 ): Promise<SyncResult> {
-  const teamId = index.linear?.teamId;
-  if (!teamId) {
-    console.warn("[forge] No Linear teamId in graph index, skipping sync");
-    return emptySyncResult();
-  }
-
-  const doneStateId = await client.resolveIssueStateByCategory(teamId, "completed");
   const result = emptySyncResult();
 
-  const allIssueIds: string[] = [];
-  for (const [id, meta] of Object.entries(index.requirements)) {
-    if (meta.linearIssueId) {
-      allIssueIds.push(meta.linearIssueId);
-    } else {
-      console.warn(`[forge] No linearIssueId for requirement "${id}" — skipping`);
-    }
+  if (index.linear?.projectId) {
+    await transitionProject(client, result, index.linear.projectId, "started", "In Review");
+  } else {
+    console.warn("[forge] No Linear projectId in graph index, skipping review transition");
   }
 
-  if (allIssueIds.length > 0) {
-    console.log(`[forge] Transitioning ${allIssueIds.length} issue(s) to "Done"`);
-    const batchResult = await client.updateIssueBatch(allIssueIds, { stateId: doneStateId });
-    if (batchResult.success) {
-      result.issuesTransitioned = batchResult.data.updated;
-      result.issuesFailed = batchResult.data.failed;
-    } else {
-      console.warn(`[forge] Batch update failed: ${batchResult.error}`);
-      result.issuesFailed = allIssueIds;
-    }
-  }
+  return result;
+}
+
+/** Transition project to "Planned" after planning phase completes. */
+export async function syncGraphProjectPlanned(
+  client: ForgeLinearClient,
+  index: GraphIndex,
+): Promise<SyncResult> {
+  const result = emptySyncResult();
 
   if (index.linear?.projectId) {
-    await transitionProject(client, result, index.linear.projectId, "completed", "Done");
+    await transitionProject(client, result, index.linear.projectId, "planned", "Planned");
+  } else {
+    console.warn("[forge] No Linear projectId in graph index, skipping planned transition");
   }
 
   return result;

@@ -20,7 +20,7 @@ vi.mock("../../src/worktree/manager.js", () => ({
 
 vi.mock("../../src/linear/sync.js", () => ({
   syncRequirementStart: vi.fn().mockResolvedValue(undefined),
-  syncGraphProjectDone: vi.fn().mockResolvedValue(undefined),
+  syncGraphProjectReview: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../src/linear/client.js", () => ({
@@ -267,7 +267,7 @@ describe("Integration: graph loop end-to-end", () => {
 
     const sync = await import("../../src/linear/sync.js");
     vi.mocked(sync.syncRequirementStart).mockClear();
-    vi.mocked(sync.syncGraphProjectDone).mockClear();
+    vi.mocked(sync.syncGraphProjectReview).mockClear();
 
     exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
       throw new Error("process.exit called");
@@ -398,9 +398,9 @@ describe("Integration: graph loop end-to-end", () => {
     expect(removeWorktree).toHaveBeenCalledTimes(2);
 
     // --- Verify Linear sync calls ---
-    const { syncRequirementStart, syncGraphProjectDone } = await import("../../src/linear/sync.js");
+    const { syncRequirementStart, syncGraphProjectReview } = await import("../../src/linear/sync.js");
     expect(syncRequirementStart).toHaveBeenCalledTimes(2);
-    expect(syncGraphProjectDone).toHaveBeenCalledTimes(1);
+    expect(syncGraphProjectReview).toHaveBeenCalledTimes(1);
 
     // process.exit should NOT have been called
     expect(exitSpy).not.toHaveBeenCalled();

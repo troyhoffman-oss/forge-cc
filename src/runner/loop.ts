@@ -12,7 +12,7 @@ import {
 import { ForgeLinearClient } from "../linear/client.js";
 import {
   syncRequirementStart,
-  syncGraphProjectDone,
+  syncGraphProjectReview,
 } from "../linear/sync.js";
 import { loadIndex, loadOverview, loadRequirement, loadRequirements } from "../graph/reader.js";
 import { updateRequirementStatus } from "../graph/writer.js";
@@ -103,16 +103,7 @@ export async function runGraphLoop(opts: {
       // Mark in_progress
       index = await updateRequirementStatus(projectDir, slug, reqId, "in_progress");
 
-      // Linear sync: start requirement
       const apiKey = process.env.LINEAR_API_KEY;
-      if (apiKey && index.linear?.teamId) {
-        try {
-          const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
-          await syncRequirementStart(client, index, reqId);
-        } catch {
-          // Linear sync is best-effort
-        }
-      }
 
       // Load requirement content + overview + dependency context
       const req = await loadRequirement(projectDir, slug, reqId);
@@ -129,10 +120,42 @@ export async function runGraphLoop(opts: {
       const depContext = buildRequirementContext(index, allReqs, reqId)
         .filter(r => r.id !== reqId); // exclude self from deps
 
+      // Resolve Linear identifier for branch naming
+      let issueIdentifier: string | null = null;
+      const meta = index.requirements[reqId];
+      if (apiKey && meta?.linearIssueId && index.linear?.teamId) {
+        try {
+          const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
+          const result = await client.getIssueIdentifier(meta.linearIssueId);
+          if (result.success) {
+            issueIdentifier = result.data;
+          }
+        } catch {
+          // Best-effort — fall back to reqId-only branch
+        }
+      }
+
+      if (!issueIdentifier && meta?.linearIssueId) {
+        console.warn(`[forge] Could not resolve Linear identifier for ${reqId} — using reqId-only branch name`);
+      } else if (!meta?.linearIssueId) {
+        console.warn(`[forge] No linearIssueId for ${reqId} — using reqId-only branch name`);
+      }
+
       // Create worktree
       const wtPath = resolve(projectDir, "..", ".forge-wt", repoName(projectDir), `${slug}-${reqId}`);
-      const wtBranch = `${baseBranch}/${reqId}`;
+      const branchSuffix = issueIdentifier ? `${issueIdentifier}-${reqId}` : reqId;
+      const wtBranch = `${baseBranch}/${branchSuffix}`;
       await createWorktree(wtPath, wtBranch, baseBranch, projectDir);
+
+      // Linear sync: start requirement + attach branch
+      if (apiKey && index.linear?.teamId) {
+        try {
+          const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
+          await syncRequirementStart(client, index, reqId, wtBranch);
+        } catch {
+          // Linear sync is best-effort
+        }
+      }
 
       let passed = false;
       let verifyErrors: PipelineResult | null = null;
@@ -184,12 +207,12 @@ export async function runGraphLoop(opts: {
     index = await loadIndex(projectDir, slug);
   }
 
-  // Linear sync: mark project done (best-effort)
+  // Linear sync: mark project in review (best-effort)
   const apiKey = process.env.LINEAR_API_KEY;
   if (apiKey && index.linear?.teamId) {
     try {
       const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
-      await syncGraphProjectDone(client, index);
+      await syncGraphProjectReview(client, index);
     } catch {
       // Linear sync is best-effort
     }

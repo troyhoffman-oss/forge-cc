@@ -28,6 +28,9 @@ export function categoryToName(category: string): string {
     backlog: "Backlog",
     cancelled: "Cancelled",
     triage: "Triage",
+    // "In Review" shares the "started" category with "In Progress" in Linear's data model.
+    // This entry is for documentation and name-based fallback lookups only.
+    inReview: "In Review",
   };
   return map[category] ?? category;
 }
@@ -103,6 +106,29 @@ export class ForgeLinearClient {
   ): Promise<LinearResult<void>> {
     try {
       await this.client.updateIssue(issueId, { stateId });
+      return { success: true, data: undefined };
+    } catch (err) {
+      return wrapError(err);
+    }
+  }
+
+  /** Resolve a Linear issue UUID to its human-readable identifier (e.g. "FRG-42"). */
+  async getIssueIdentifier(issueId: string): Promise<LinearResult<string>> {
+    try {
+      const issue = await this.client.issue(issueId);
+      return { success: true, data: issue.identifier };
+    } catch (err) {
+      return wrapError(err);
+    }
+  }
+
+  /** Associate a git branch with a Linear issue. Enables Linear's GitHub PR automation. */
+  async attachIssueBranch(
+    issueId: string,
+    branchName: string,
+  ): Promise<LinearResult<void>> {
+    try {
+      await this.client.updateIssue(issueId, { branchName } as Record<string, unknown>);
       return { success: true, data: undefined };
     } catch (err) {
       return wrapError(err);
@@ -355,4 +381,5 @@ export class ForgeLinearClient {
       return wrapError(err);
     }
   }
+
 }
