@@ -155,7 +155,7 @@ Run `npx tsc --noEmit` between every fix iteration to catch integration issues e
    ```
    updateRequirementStatus(projectDir, slug, reqId, "complete")
    ```
-3. Linear sync is handled automatically by the PostToolUse hook when the PR is created/merged.
+3. Sync Linear: transition the requirement's issue to **Done** using `client.resolveIssueStateByCategory(teamId, 'completed')`. The PostToolUse hook handles PR-level transitions, but fix flows often complete without `gh pr create/merge`, so this explicit sync is required.
 4. Print result:
 
 ```
@@ -165,7 +165,7 @@ Run `npx tsc --noEmit` between every fix iteration to catch integration issues e
 **Fix applied:** {1-2 sentence summary of what changed}
 **Verification:** All gates pass
 **Review:** PASS
-**Linear:** Synced via hooks
+**Linear:** Issue → Done
 ```
 
 **If abandoned or manual-incomplete:**
