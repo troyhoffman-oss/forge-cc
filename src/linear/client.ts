@@ -122,13 +122,45 @@ export class ForgeLinearClient {
     }
   }
 
-  /** Associate a git branch with a Linear issue. Enables Linear's GitHub PR automation. */
+  /**
+   * Validate whether a git branch is already linked to a Linear issue.
+   * Linear's current IssueUpdateInput does not support setting `branchName` via mutation.
+   */
   async attachIssueBranch(
     issueId: string,
     branchName: string,
   ): Promise<LinearResult<void>> {
     try {
-      await this.client.updateIssue(issueId, { branchName } as Record<string, unknown>);
+      const linkedIssue = await this.client.issueVcsBranchSearch(branchName);
+      if (!linkedIssue) {
+        return {
+          success: false,
+          error:
+            `Branch "${branchName}" is not linked in Linear yet. ` +
+            "Linear links branches from connected VCS activity (push/PR), not via issue update.",
+        };
+      }
+      if (linkedIssue.id !== issueId) {
+        return {
+          success: false,
+          error:
+            `Branch "${branchName}" is linked to ${linkedIssue.identifier}, ` +
+            `not issue id ${issueId}.`,
+        };
+      }
+      return { success: true, data: undefined };
+    } catch (err) {
+      return wrapError(err);
+    }
+  }
+
+  /** Attach a GitHub PR URL to an issue. Warn-only callers can use this to continue on failures. */
+  async attachIssuePullRequest(
+    issueId: string,
+    prUrl: string,
+  ): Promise<LinearResult<void>> {
+    try {
+      await this.client.attachmentLinkGitHubPR(issueId, prUrl);
       return { success: true, data: undefined };
     } catch (err) {
       return wrapError(err);

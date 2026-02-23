@@ -36,7 +36,7 @@ export async function syncRequirementStart(
   client: ForgeLinearClient,
   index: GraphIndex,
   requirementId: string,
-  branchName?: string,
+  _branchName?: string,
 ): Promise<SyncResult> {
   const meta = index.requirements[requirementId];
   const result = emptySyncResult();
@@ -60,16 +60,6 @@ export async function syncRequirementStart(
     }
   }
 
-  // Attach branch to issue if both are available
-  if (meta?.linearIssueId && branchName) {
-    const attachResult = await client.attachIssueBranch(meta.linearIssueId, branchName);
-    if (attachResult.success) {
-      console.log(`[forge] Attached branch "${branchName}" to issue ${requirementId}`);
-    } else {
-      console.warn(`[forge] Failed to attach branch to issue ${requirementId}: ${attachResult.error}`);
-    }
-  }
-
   // Also transition project to "In Progress" if not already
   if (index.linear?.projectId) {
     await transitionProject(client, result, index.linear.projectId, "started", "In Progress");
@@ -78,7 +68,7 @@ export async function syncRequirementStart(
   return result;
 }
 
-/** Transition project to In Review when all requirements are complete. Issues are not touched — Linear's GitHub automation handles issue transitions via PR linking. */
+/** Transition project to In Review when a PR is opened (ship step). */
 export async function syncGraphProjectReview(
   client: ForgeLinearClient,
   index: GraphIndex,
@@ -89,6 +79,22 @@ export async function syncGraphProjectReview(
     await transitionProject(client, result, index.linear.projectId, "started", "In Review");
   } else {
     console.warn("[forge] No Linear projectId in graph index, skipping review transition");
+  }
+
+  return result;
+}
+
+/** Transition project to Completed after the linked PR is merged. */
+export async function syncGraphProjectCompleted(
+  client: ForgeLinearClient,
+  index: GraphIndex,
+): Promise<SyncResult> {
+  const result = emptySyncResult();
+
+  if (index.linear?.projectId) {
+    await transitionProject(client, result, index.linear.projectId, "completed", "Completed");
+  } else {
+    console.warn("[forge] No Linear projectId in graph index, skipping completed transition");
   }
 
   return result;

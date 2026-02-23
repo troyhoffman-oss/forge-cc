@@ -10,10 +10,7 @@ import {
   removeWorktree,
 } from "../worktree/manager.js";
 import { ForgeLinearClient } from "../linear/client.js";
-import {
-  syncRequirementStart,
-  syncGraphProjectReview,
-} from "../linear/sync.js";
+import { syncRequirementStart } from "../linear/sync.js";
 import { loadIndex, loadOverview, loadRequirement, loadRequirements } from "../graph/reader.js";
 import { updateRequirementStatus } from "../graph/writer.js";
 import { findReady, isProjectComplete, buildRequirementContext, getTransitiveDeps } from "../graph/query.js";
@@ -27,7 +24,6 @@ const cliPath = join(__dirname, "..", "cli.js");
 function repoName(projectDir: string): string {
   return basename(resolve(projectDir));
 }
-
 
 function spawnClaude(prompt: string, cwd: string): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -147,7 +143,7 @@ export async function runGraphLoop(opts: {
       const wtBranch = `${baseBranch}/${branchSuffix}`;
       await createWorktree(wtPath, wtBranch, baseBranch, projectDir);
 
-      // Linear sync: start requirement + attach branch
+      // Linear sync: start requirement
       if (apiKey && index.linear?.teamId) {
         try {
           const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
@@ -205,17 +201,6 @@ export async function runGraphLoop(opts: {
 
     // Reload index to recompute ready set
     index = await loadIndex(projectDir, slug);
-  }
-
-  // Linear sync: mark project in review (best-effort)
-  const apiKey = process.env.LINEAR_API_KEY;
-  if (apiKey && index.linear?.teamId) {
-    try {
-      const client = new ForgeLinearClient({ apiKey, teamId: index.linear.teamId });
-      await syncGraphProjectReview(client, index);
-    } catch {
-      // Linear sync is best-effort
-    }
   }
 
   console.log(`\n[forge] All requirements for "${slug}" complete.`);
