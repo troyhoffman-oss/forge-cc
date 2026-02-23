@@ -1,3 +1,23 @@
+---
+name: forge-build
+hooks:
+  WorktreeCreate:
+    - hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-worktree-create.js\""
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-branch-enforce.js\""
+  PostToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "node \"$CLAUDE_PROJECT_DIR/node_modules/forge-cc/hooks/linear-post-action.js\""
+          async: true
+---
+
 # /forge:build — Graph Execution with Adversarial Review
 
 Orchestrates requirement graph execution with worktree isolation, adversarial review, and Linear state transitions. Replaces `/forge:go`.
@@ -268,9 +288,10 @@ When the execution loop ends and `isProjectComplete(index)` is true:
 
 1. **Ship the PR:**
    ```bash
-   npx forge linear ship --slug {slug}
+   git push -u origin feat/{slug}
+   gh pr create --title "{project title}" --body "..."
    ```
-   This pushes the branch, creates a PR, links issues, and transitions the project to In Review.
+   Push the branch and create a PR. The PostToolUse hook automatically links the PR to Linear issues and transitions the project to In Review — no manual `forge linear ship` needed.
 
 2. **Codex Review:** If a PR was created, follow the **Codex Review Protocol** in `ref/codex-review.md`.
 
@@ -319,21 +340,18 @@ All requirements verified and merged.
 
 ## Linear State Reference
 
-State transitions are driven by execution progress:
+All state transitions are handled automatically by hooks and Linear's GitHub integration. No manual sync calls are needed during build execution.
 
-| Item | Transition | When |
-|------|-----------|------|
-| Issue | Planned → In Progress | Agent starts working on requirement |
-| Project | Planned → In Progress | First requirement starts |
-| Project | In Progress → In Review | ALL requirements complete, graph done |
+| Item | Transition | Triggered By |
+|------|-----------|-------------|
+| Issue | Planned → In Progress | **WorktreeCreate hook** — fires when builder agent worktree is created |
+| Project | Planned → In Progress | **WorktreeCreate hook** — first requirement starts |
+| Issue | In Progress → In Review | **Linear GitHub integration** — PR opened from branch containing issue identifier |
+| Project | In Progress → In Review | **PostToolUse hook** — fires when `gh pr create` succeeds |
+| Issue | In Review → Completed | **Linear GitHub integration** — PR merged |
+| Project | In Review → Completed | **PostToolUse hook** — fires when `gh pr merge` succeeds |
 
-**Issue review and completion:** Linear's GitHub integration handles issue transitions automatically:
-- Issue → In Review: when a PR is opened from a branch linked to the issue
-- Issue → Completed: when the PR is merged
-
-Forge links issues to branches via `syncRequirementStart`, enabling this automation.
-
-**If any Linear transition fails:** Log a warning and continue. Never block execution on Linear API failures.
+**If any Linear transition fails:** Hooks log warnings to stderr and continue. Never block execution on Linear API failures.
 
 ---
 
