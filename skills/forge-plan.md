@@ -2,7 +2,7 @@
 
 Runs an adaptive interview and produces a requirement graph in `.planning/graph/{slug}/`. Replaces `/forge:spec`.
 
-**Trigger:** `/forge:plan` or `/forge:plan --from-capture <project-slug>`
+**Trigger:** `/forge:plan`
 
 ## Instructions
 
@@ -10,16 +10,37 @@ Follow these steps exactly. Do not skip confirmation or commit until the user ap
 
 ---
 
-### Step 0 — Detect Context
+### Step 0 — Load Captured Projects
 
-Check for the `--from-capture` flag and detect the project type.
+Load captured Linear projects and let the user pick one, or start from scratch.
 
-**If `--from-capture <project-slug>` is provided:**
-- Load the Linear project description for `<project-slug>` using `ForgeLinearClient`
-- Use the project description as pre-populated context — skip "what are you building?"
-- Jump directly to clarifying questions in Step 2
+1. **Load `.forge.json`** to get the `linearTeam` name.
+2. **Resolve team ID** via `ForgeLinearClient.listTeams()` — find the team matching `linearTeam`.
+3. **Fetch captured projects** by calling `listProjectsByStatus(teamId, 'backlog')`.
 
-**Codebase detection — scan the current directory:**
+**If projects found:**
+
+Present them via AskUserQuestion. Show each project's name and truncated description (first 100 characters). Include a "Start from scratch" escape hatch as the last option.
+
+<AskUserQuestion>
+question: "Which captured project do you want to plan?"
+options:
+  - "{project1.name} — {project1.description.slice(0, 100)}..."
+  - "{project2.name} — {project2.description.slice(0, 100)}..."
+  - ...
+  - "Start from scratch"
+</AskUserQuestion>
+
+- If the user selects a project, store the selected **project ID** for use in subsequent steps. Load the project description as pre-populated context for the interview.
+- If the user selects "Start from scratch", proceed as if no projects were found.
+
+**If no projects found:**
+
+Print: "No captured projects found. Starting from scratch."
+
+**Codebase detection (runs after project selection or fallback):**
+
+Scan the current directory:
 
 ```bash
 ls src/ package.json go.mod Cargo.toml pyproject.toml 2>/dev/null
@@ -61,7 +82,30 @@ Gather context about the existing project. Keep the scan under ~2K tokens.
 
 Conduct a structured interview using `AskUserQuestion` for all prompts.
 
-**Project-level questions (always ask):**
+**If a captured project was selected in Step 0:**
+
+1. Call `getProjectDetails(projectId)` to load the full project description
+2. Call `getProjectIssues(projectId)` to load all captured issues
+3. Store the issue IDs for later archival in Step 6
+4. Use the project description as context — skip "What problem does this project solve?" and "What are the top 3 goals?"
+5. Still ask "What is explicitly out of scope?"
+6. Present captured issues as draft requirements:
+
+<AskUserQuestion>
+question: "Here are the issues from capture:
+{for each issue: '- {title}: {description snippet}'}
+
+Which should become requirements? Any to merge, split, or drop?"
+options:
+  - "Use all as-is — refine in sizing"
+  - "I want to adjust — let me describe"
+</AskUserQuestion>
+
+7. Use the approved draft requirements as input to the "Converge on requirements" section — skip re-asking for behaviors that are already covered by captured issues
+
+**If no captured project (standalone fallback):** Keep the current interview flow below.
+
+**Project-level questions (always ask when no captured project):**
 
 <AskUserQuestion>
 question: "What problem does this project solve? Who are the primary users?"
@@ -277,6 +321,13 @@ Create the project, milestones, and issues in Linear.
    - Milestone IDs in each group entry (`linearMilestoneId`)
    - Issue ID in each requirement entry
    - Write via `writeIndex()`
+
+5b. **Archive original capture issues:**
+   - If the plan was created from a captured project **and** `captureIssueIds` is non-empty, archive the original capture issues
+   - Skip this step if there are no captured issues (capture allows creating projects with zero issues)
+   - Resolve the "cancelled" state: `resolveIssueStateByCategory(teamId, 'cancelled')`
+   - Call `updateIssueBatch(captureIssueIds, { stateId: cancelledStateId })` to cancel all original issues
+   - This replaces the rough capture issues with the properly structured requirement graph issues
 
 6. **Transition project to Planned:**
    ```bash

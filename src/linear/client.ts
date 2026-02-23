@@ -180,6 +180,27 @@ export class ForgeLinearClient {
     }
   }
 
+  /** Get full project details including id, name, description, and status category. */
+  async getProjectDetails(
+    projectId: string,
+  ): Promise<LinearResult<{ id: string; name: string; description: string; statusCategory: string | null }>> {
+    try {
+      const project = await this.client.project(projectId);
+      const status = await project.status;
+      return {
+        success: true,
+        data: {
+          id: project.id,
+          name: project.name,
+          description: project.description ?? "",
+          statusCategory: status?.type ?? null,
+        },
+      };
+    } catch (err) {
+      return wrapError(err);
+    }
+  }
+
   /** Get the current status category of a project (e.g. "backlog", "planned", "started", "completed"). */
   async getProjectStatusCategory(projectId: string): Promise<string | null> {
     try {
@@ -220,6 +241,63 @@ export class ForgeLinearClient {
       }));
     } catch (err) {
       console.warn("[forge] Failed to list issues by project:", err);
+      return [];
+    }
+  }
+
+  /** List projects filtered by team and status category. Includes description. */
+  async listProjectsByStatus(
+    teamId: string,
+    statusCategory: string,
+  ): Promise<Array<{ id: string; name: string; description: string; state: string }>> {
+    try {
+      const result = await this.client.projects({
+        filter: {
+          accessibleTeams: { some: { id: { eq: teamId } } },
+        },
+      });
+      const projects: Array<{ id: string; name: string; description: string; state: string }> = [];
+      for (const p of result.nodes) {
+        const status = await p.status;
+        if (status?.type === statusCategory) {
+          projects.push({
+            id: p.id,
+            name: p.name,
+            description: p.description ?? "",
+            state: status?.name ?? "Unknown",
+          });
+        }
+      }
+      return projects;
+    } catch (err) {
+      console.warn("[forge] Failed to list projects by status:", err);
+      return [];
+    }
+  }
+
+  /** Get all issues for a project with title, description, and state. */
+  async getProjectIssues(
+    projectId: string,
+  ): Promise<Array<{ id: string; title: string; description: string; state: string }>> {
+    try {
+      const result = await this.client.issues({
+        filter: {
+          project: { id: { eq: projectId } },
+        },
+      });
+      const issues: Array<{ id: string; title: string; description: string; state: string }> = [];
+      for (const i of result.nodes) {
+        const state = await i.state;
+        issues.push({
+          id: i.id,
+          title: i.title,
+          description: i.description ?? "",
+          state: state?.name ?? "Unknown",
+        });
+      }
+      return issues;
+    } catch (err) {
+      console.warn("[forge] Failed to get project issues:", err);
       return [];
     }
   }
