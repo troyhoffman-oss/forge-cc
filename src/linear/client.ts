@@ -246,7 +246,7 @@ export class ForgeLinearClient {
     }
   }
 
-  /** Create a new project. */
+  /** Create a new project. Deduplicates by name — returns existing project if one matches. */
   async createProject(input: {
     name: string;
     description?: string;
@@ -254,6 +254,18 @@ export class ForgeLinearClient {
     priority?: number;
   }): Promise<LinearResult<{ id: string; url: string }>> {
     try {
+      // Dedup: check if a project with this name already exists for the team
+      if (input.teamIds.length > 0) {
+        const existing = await this.listProjects(input.teamIds[0]);
+        const match = existing.find((p) => p.name === input.name);
+        if (match) {
+          return {
+            success: true,
+            data: { id: match.id, url: `https://linear.app/project/${match.id}` },
+          };
+        }
+      }
+
       const payload = await this.client.createProject(input);
       const project = payload.project;
       if (!project) {
