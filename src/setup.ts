@@ -47,11 +47,13 @@ async function installSkills(): Promise<string[]> {
   }
 
   const installed: string[] = [];
+  const expectedFiles = new Set<string>();
   for (const file of files) {
     if (!file.endsWith(".md") || file === "README.md") continue;
     // Strip "forge-" prefix so forge-go.md → go.md (shows as forge:go)
     const targetName = file.replace(/^forge-/, "");
     await copyFile(join(skillsSource, file), join(targetDir, targetName));
+    expectedFiles.add(targetName);
     // Clean up old prefixed copy if it exists (prevents duplicates)
     if (targetName !== file) {
       try { await unlink(join(targetDir, file)); } catch { /* already gone */ }
@@ -59,18 +61,42 @@ async function installSkills(): Promise<string[]> {
     installed.push(targetName);
   }
 
+  // Remove stale skill files that no longer exist in the source
+  try {
+    const existingFiles = await readdir(targetDir);
+    for (const file of existingFiles) {
+      if (!file.endsWith(".md")) continue;
+      if (!expectedFiles.has(file)) {
+        await unlink(join(targetDir, file));
+      }
+    }
+  } catch { /* target dir read failed — skip cleanup */ }
+
   // Copy ref/ subdirectory (adversarial-review.md, requirement-sizing.md, etc.)
   const refSource = join(skillsSource, "ref");
   const refTarget = join(targetDir, "ref");
+  const expectedRefFiles = new Set<string>();
   try {
     const refFiles = await readdir(refSource);
     await mkdir(refTarget, { recursive: true });
     for (const file of refFiles) {
       if (!file.endsWith(".md")) continue;
       await copyFile(join(refSource, file), join(refTarget, file));
+      expectedRefFiles.add(file);
       installed.push(`ref/${file}`);
     }
   } catch { /* ref/ doesn't exist — skip */ }
+
+  // Remove stale ref files
+  try {
+    const existingRefFiles = await readdir(refTarget);
+    for (const file of existingRefFiles) {
+      if (!file.endsWith(".md")) continue;
+      if (!expectedRefFiles.has(file)) {
+        await unlink(join(refTarget, file));
+      }
+    }
+  } catch { /* ref dir read failed — skip cleanup */ }
 
   return installed;
 }
