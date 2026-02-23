@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/Users/TroyHoffman/forge-cc/hooks/linear-worktree-create.js\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/Users/TroyHoffman/forge-cc/hooks/linear-branch-enforce.js\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/Users/TroyHoffman/forge-cc/hooks/linear-post-action.js\"",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
