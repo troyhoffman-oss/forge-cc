@@ -82,7 +82,30 @@ Gather context about the existing project. Keep the scan under ~2K tokens.
 
 Conduct a structured interview using `AskUserQuestion` for all prompts.
 
-**Project-level questions (always ask):**
+**If a captured project was selected in Step 0:**
+
+1. Call `getProjectDetails(projectId)` to load the full project description
+2. Call `getProjectIssues(projectId)` to load all captured issues
+3. Store the issue IDs for later archival in Step 6
+4. Use the project description as context — skip "What problem does this project solve?" and "What are the top 3 goals?"
+5. Still ask "What is explicitly out of scope?"
+6. Present captured issues as draft requirements:
+
+<AskUserQuestion>
+question: "Here are the issues from capture:
+{for each issue: '- {title}: {description snippet}'}
+
+Which should become requirements? Any to merge, split, or drop?"
+options:
+  - "Use all as-is — refine in sizing"
+  - "I want to adjust — let me describe"
+</AskUserQuestion>
+
+7. Use the approved draft requirements as input to the "Converge on requirements" section — skip re-asking for behaviors that are already covered by captured issues
+
+**If no captured project (standalone fallback):** Keep the current interview flow below.
+
+**Project-level questions (always ask when no captured project):**
 
 <AskUserQuestion>
 question: "What problem does this project solve? Who are the primary users?"
@@ -298,6 +321,12 @@ Create the project, milestones, and issues in Linear.
    - Milestone IDs in each group entry (`linearMilestoneId`)
    - Issue ID in each requirement entry
    - Write via `writeIndex()`
+
+5b. **Archive original capture issues:**
+   - If the plan was created from a captured project, archive the original capture issues
+   - Resolve the "cancelled" state: `resolveIssueStateByCategory(teamId, 'cancelled')`
+   - Call `updateIssueBatch(captureIssueIds, { stateId: cancelledStateId })` to cancel all original issues
+   - This replaces the rough capture issues with the properly structured requirement graph issues
 
 6. **Transition project to Planned:**
    ```bash
