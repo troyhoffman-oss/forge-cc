@@ -410,6 +410,177 @@ describe("ForgeLinearClient.resolveProjectStatusByCategory", () => {
   });
 });
 
+describe("ForgeLinearClient.getProjectDetails", () => {
+  it("returns project details with status category", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockResolvedValue({
+      id: "proj-1",
+      name: "My Project",
+      description: "A test project",
+      status: Promise.resolve({ type: "started", name: "In Progress" }),
+    });
+
+    const result = await client.getProjectDetails("proj-1");
+    expect(result).toEqual({
+      success: true,
+      data: {
+        id: "proj-1",
+        name: "My Project",
+        description: "A test project",
+        statusCategory: "started",
+      },
+    });
+  });
+
+  it("returns null statusCategory when status is null", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockResolvedValue({
+      id: "proj-1",
+      name: "My Project",
+      description: "A test project",
+      status: Promise.resolve(null),
+    });
+
+    const result = await client.getProjectDetails("proj-1");
+    expect(result).toEqual({
+      success: true,
+      data: {
+        id: "proj-1",
+        name: "My Project",
+        description: "A test project",
+        statusCategory: null,
+      },
+    });
+  });
+
+  it("returns empty description when project has no description", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockResolvedValue({
+      id: "proj-1",
+      name: "My Project",
+      description: undefined,
+      status: Promise.resolve({ type: "planned", name: "Planned" }),
+    });
+
+    const result = await client.getProjectDetails("proj-1");
+    expect(result).toEqual({
+      success: true,
+      data: {
+        id: "proj-1",
+        name: "My Project",
+        description: "",
+        statusCategory: "planned",
+      },
+    });
+  });
+
+  it("returns error on API failure", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.project.mockRejectedValue(new Error("Not found"));
+
+    const result = await client.getProjectDetails("proj-1");
+    expect(result).toEqual({ success: false, error: "Not found" });
+  });
+});
+
+describe("ForgeLinearClient.listProjectsByStatus", () => {
+  it("returns projects matching the requested status category", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projects.mockResolvedValue({
+      nodes: [
+        { id: "proj-1", name: "Active Project", description: "Desc 1", status: Promise.resolve({ type: "started", name: "In Progress" }) },
+        { id: "proj-2", name: "Planned Project", description: "Desc 2", status: Promise.resolve({ type: "planned", name: "Planned" }) },
+        { id: "proj-3", name: "Another Active", description: undefined, status: Promise.resolve({ type: "started", name: "In Progress" }) },
+      ],
+    });
+
+    const result = await client.listProjectsByStatus("team-1", "started");
+    expect(result).toEqual([
+      { id: "proj-1", name: "Active Project", description: "Desc 1", state: "In Progress" },
+      { id: "proj-3", name: "Another Active", description: "", state: "In Progress" },
+    ]);
+  });
+
+  it("returns empty array when no projects match the status", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projects.mockResolvedValue({
+      nodes: [
+        { id: "proj-1", name: "Done Project", description: "Desc", status: Promise.resolve({ type: "completed", name: "Done" }) },
+      ],
+    });
+
+    const result = await client.listProjectsByStatus("team-1", "started");
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array on API error", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.projects.mockRejectedValue(new Error("API error"));
+
+    const result = await client.listProjectsByStatus("team-1", "started");
+    expect(result).toEqual([]);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+describe("ForgeLinearClient.getProjectIssues", () => {
+  it("returns issues with title, description, and state", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issues.mockResolvedValue({
+      nodes: [
+        { id: "issue-1", title: "Fix bug", description: "Bug details", state: Promise.resolve({ name: "In Progress" }) },
+        { id: "issue-2", title: "Add feature", description: undefined, state: Promise.resolve({ name: "Backlog" }) },
+      ],
+    });
+
+    const result = await client.getProjectIssues("proj-1");
+    expect(result).toEqual([
+      { id: "issue-1", title: "Fix bug", description: "Bug details", state: "In Progress" },
+      { id: "issue-2", title: "Add feature", description: "", state: "Backlog" },
+    ]);
+    expect(mockSdk.issues).toHaveBeenCalledWith({
+      filter: { project: { id: { eq: "proj-1" } } },
+    });
+  });
+
+  it("returns Unknown state when issue state is null", async () => {
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issues.mockResolvedValue({
+      nodes: [
+        { id: "issue-1", title: "Orphan issue", description: "No state", state: Promise.resolve(null) },
+      ],
+    });
+
+    const result = await client.getProjectIssues("proj-1");
+    expect(result).toEqual([
+      { id: "issue-1", title: "Orphan issue", description: "No state", state: "Unknown" },
+    ]);
+  });
+
+  it("returns empty array on API error", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new ForgeLinearClient({ apiKey: "test-key" });
+    const mockSdk = (client as any).client;
+    mockSdk.issues.mockRejectedValue(new Error("API error"));
+
+    const result = await client.getProjectIssues("proj-1");
+    expect(result).toEqual([]);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
 // ============================================================
 // Sync function tests
 // ============================================================
