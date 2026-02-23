@@ -75,20 +75,18 @@ async function installSkills(): Promise<string[]> {
   // Copy ref/ subdirectory (adversarial-review.md, requirement-sizing.md, etc.)
   const refSource = join(skillsSource, "ref");
   const refTarget = join(targetDir, "ref");
-  const expectedRefFiles = new Set<string>();
   try {
     const refFiles = await readdir(refSource);
     await mkdir(refTarget, { recursive: true });
+    const expectedRefFiles = new Set<string>();
     for (const file of refFiles) {
       if (!file.endsWith(".md")) continue;
       await copyFile(join(refSource, file), join(refTarget, file));
       expectedRefFiles.add(file);
       installed.push(`ref/${file}`);
     }
-  } catch { /* ref/ doesn't exist — skip */ }
 
-  // Remove stale ref files
-  try {
+    // Remove stale ref files (only after successful source scan)
     const existingRefFiles = await readdir(refTarget);
     for (const file of existingRefFiles) {
       if (!file.endsWith(".md")) continue;
@@ -96,7 +94,7 @@ async function installSkills(): Promise<string[]> {
         await unlink(join(refTarget, file));
       }
     }
-  } catch { /* ref dir read failed — skip cleanup */ }
+  } catch { /* ref/ doesn't exist or read failed — skip */ }
 
   return installed;
 }
