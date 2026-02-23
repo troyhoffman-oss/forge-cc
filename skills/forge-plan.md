@@ -2,7 +2,7 @@
 
 Runs an adaptive interview and produces a requirement graph in `.planning/graph/{slug}/`. Replaces `/forge:spec`.
 
-**Trigger:** `/forge:plan` or `/forge:plan --from-capture <project-slug>`
+**Trigger:** `/forge:plan`
 
 ## Instructions
 
@@ -10,16 +10,37 @@ Follow these steps exactly. Do not skip confirmation or commit until the user ap
 
 ---
 
-### Step 0 — Detect Context
+### Step 0 — Load Captured Projects
 
-Check for the `--from-capture` flag and detect the project type.
+Load captured Linear projects and let the user pick one, or start from scratch.
 
-**If `--from-capture <project-slug>` is provided:**
-- Load the Linear project description for `<project-slug>` using `ForgeLinearClient`
-- Use the project description as pre-populated context — skip "what are you building?"
-- Jump directly to clarifying questions in Step 2
+1. **Load `.forge.json`** to get the `linearTeam` name.
+2. **Resolve team ID** via `ForgeLinearClient.listTeams()` — find the team matching `linearTeam`.
+3. **Fetch captured projects** by calling `listProjectsByStatus(teamId, 'backlog')`.
 
-**Codebase detection — scan the current directory:**
+**If projects found:**
+
+Present them via AskUserQuestion. Show each project's name and truncated description (first 100 characters). Include a "Start from scratch" escape hatch as the last option.
+
+<AskUserQuestion>
+question: "Which captured project do you want to plan?"
+options:
+  - "{project1.name} — {project1.description.slice(0, 100)}..."
+  - "{project2.name} — {project2.description.slice(0, 100)}..."
+  - ...
+  - "Start from scratch"
+</AskUserQuestion>
+
+- If the user selects a project, store the selected **project ID** for use in subsequent steps. Load the project description as pre-populated context for the interview.
+- If the user selects "Start from scratch", proceed as if no projects were found.
+
+**If no projects found:**
+
+Print: "No captured projects found. Starting from scratch."
+
+**Codebase detection (runs after project selection or fallback):**
+
+Scan the current directory:
 
 ```bash
 ls src/ package.json go.mod Cargo.toml pyproject.toml 2>/dev/null
